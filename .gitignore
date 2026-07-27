@@ -8,6 +8,9 @@ dist/
 prisma/*.db
 prisma/migrations/dev.db*
 
+# Herramientas locales
+.claude/
+
 # Logs y varios
 *.log
 npm-debug.log*
