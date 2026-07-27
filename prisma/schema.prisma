@@ -1,0 +1,39 @@
+// Esquema de Prisma para el clasificador de mensajes.
+//
+// La cadena de conexión llega por DATABASE_URL (en .env), NUNCA hardcodeada.
+// Genera el cliente con `npm run prisma:generate` y crea la tabla con
+// `npm run prisma:migrate` una vez tengas una base de datos PostgreSQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Un mensaje entrante ya categorizado y resumido.
+model Message {
+  id        String   @id @default(cuid())
+  /// Tipo de mensaje (p.ej. "text").
+  tipo      String
+  /// Contenido original del mensaje.
+  contenido String
+  /// Categoría asignada por la IA (tarea, idea, pregunta, ...).
+  categoria String
+  /// Resumen conciso generado por la IA.
+  resumen   String
+  /// Fecha de recepción/procesamiento.
+  fecha     DateTime @default(now())
+
+  // --- FASE 2: búsqueda semántica por embeddings ---
+  // Preparado pero NO activo todavía. Requiere la extensión `pgvector` en
+  // PostgreSQL y el datasource con `extensions = [vector]`. Cuando se active:
+  //   embedding  Unsupported("vector(1536)")?
+  // (Se deja comentado para no forzar la extensión en la fase 1.)
+
+  @@index([categoria])
+  @@index([fecha])
+  @@map("messages")
+}
