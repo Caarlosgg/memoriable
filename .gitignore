@@ -11,6 +11,9 @@ prisma/migrations/dev.db*
 # Herramientas locales
 .claude/
 
+# Contador del fusible de coste (estado local, no se versiona)
+.budget.json
+
 # Logs y varios
 *.log
 npm-debug.log*
