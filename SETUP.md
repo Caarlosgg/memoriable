@@ -6,8 +6,8 @@ final funcionando.
 ## 1. Clona el repositorio
 
 ```bash
-git clone <URL-de-este-repositorio>
-cd telegram-claude-classifier
+git clone https://github.com/Caarlosgg/memoria-ia.git
+cd memoria-ia
 ```
 
 ## 2. Instala las dependencias
