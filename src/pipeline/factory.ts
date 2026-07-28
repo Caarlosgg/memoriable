@@ -14,7 +14,7 @@ import type { Pipeline } from './processMessage.js';
 
 /** Construye el fusible de coste diario respaldado en disco. */
 export function resolveBudget(logger: Logger = rootLogger): BudgetGuard {
-  const store = new FileBudgetStore(DEFAULT_BUDGET_FILE, (err) =>
+  const store = new FileBudgetStore(env.BUDGET_FILE ?? DEFAULT_BUDGET_FILE, (err) =>
     logger.warn('cost.budget_store_error', errorContext(err)),
   );
   return new DailyBudget(env.MAX_MESSAGES_PER_DAY, store);

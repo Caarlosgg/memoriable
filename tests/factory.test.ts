@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryLogger } from '../src/logging/logger.js';
 
@@ -68,5 +71,22 @@ describe('pipeline/factory', () => {
     const { logger } = createMemoryLogger();
 
     expect(resolveBudget(logger).snapshot().max).toBe(2);
+  });
+
+  it('el fusible persiste en BUDGET_FILE cuando se define (necesario en Docker)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'budget-test-'));
+    const budgetFile = join(dir, 'budget.json');
+    try {
+      vi.stubEnv('BUDGET_FILE', budgetFile);
+      const { resolveBudget } = await import('../src/pipeline/factory.js');
+      const { logger } = createMemoryLogger();
+
+      resolveBudget(logger).tryConsume();
+
+      expect(existsSync(budgetFile)).toBe(true);
+      expect(JSON.parse(readFileSync(budgetFile, 'utf8'))).toMatchObject({ used: 1 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

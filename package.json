@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "check": "npm run typecheck && npm test",
     "test": "vitest run",
     "test:watch": "vitest",

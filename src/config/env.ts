@@ -129,6 +129,8 @@ export const env = {
   ANTHROPIC_MODEL: readString('ANTHROPIC_MODEL') ?? DEFAULT_MODEL,
   /** Fusible de coste: máximo de llamadas a la API de Anthropic por día. */
   MAX_MESSAGES_PER_DAY: readPositiveInt('MAX_MESSAGES_PER_DAY', DEFAULT_MAX_MESSAGES_PER_DAY),
+  /** Fichero donde persiste el contador del fusible (debe ser escribible). */
+  BUDGET_FILE: readString('BUDGET_FILE'),
   LOG_LEVEL: readString('LOG_LEVEL'),
 } as const;
 
