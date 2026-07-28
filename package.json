@@ -25,9 +25,9 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.68.0",
     "@prisma/client": "^6.2.1",
     "dotenv": "^16.4.7",
+    "groq-sdk": "^1.4.0",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {

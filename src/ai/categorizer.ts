@@ -9,17 +9,20 @@ import {
 } from './types.js';
 
 /**
- * Interfaz mínima del cliente de Claude que usa el categorizador. Se define
- * aquí (en vez de depender del tipo completo de la SDK) para que los tests
- * puedan inyectar un mock trivial sin construir un cliente real. El cliente
- * real de Anthropic es estructuralmente compatible.
+ * Interfaz mínima del cliente de Groq que usa el categorizador. Se define aquí
+ * (en vez de depender del tipo completo de la SDK) para que los tests puedan
+ * inyectar un mock trivial sin construir un cliente real. El cliente real de
+ * Groq es estructuralmente compatible.
+ *
+ * La API de Groq es compatible con la de OpenAI (`chat.completions.create`).
  */
-export interface ClaudeClient {
-  messages: {
-    create(params: unknown): Promise<{
-      content: Array<{ type: string; text?: string }>;
-      stop_reason?: string | null;
-    }>;
+export interface GroqChatClient {
+  chat: {
+    completions: {
+      create(params: unknown): Promise<{
+        choices: Array<{ message?: { content?: string | null } }>;
+      }>;
+    };
   };
 }
 
@@ -31,23 +34,13 @@ const SYSTEM_PROMPT = [
   'No añadas texto fuera del JSON.',
 ].join('\n');
 
-const OUTPUT_SCHEMA = {
-  type: 'object',
-  properties: {
-    categoria: { type: 'string', enum: [...CATEGORIES] },
-    resumen: { type: 'string' },
-  },
-  required: ['categoria', 'resumen'],
-  additionalProperties: false,
-} as const;
-
-/** Extrae el primer bloque de texto de la respuesta de Claude. */
-function firstText(content: Array<{ type: string; text?: string }>): string {
-  const block = content.find((b) => b.type === 'text' && typeof b.text === 'string');
-  if (!block || typeof block.text !== 'string') {
-    throw new Error('La respuesta de Claude no contiene ningún bloque de texto.');
+/** Extrae el texto de la respuesta del modelo. */
+function firstText(choices: Array<{ message?: { content?: string | null } }>): string {
+  const content = choices[0]?.message?.content;
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    throw new Error('La respuesta de Groq no contiene ningún bloque de texto.');
   }
-  return block.text;
+  return content;
 }
 
 /**
@@ -59,7 +52,7 @@ export function parseAnalysis(raw: string, fallbackContenido: string): Analysis 
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error('La respuesta de Claude no es un JSON válido: ' + raw.slice(0, 200));
+    throw new Error('La respuesta del modelo no es un JSON válido: ' + raw.slice(0, 200));
   }
 
   const record = (data ?? {}) as Record<string, unknown>;
@@ -71,24 +64,33 @@ export function parseAnalysis(raw: string, fallbackContenido: string): Analysis 
 }
 
 /**
- * Categorizador que usa la API de Anthropic (Claude). No conoce Telegram ni la
- * base de datos: solo transforma un mensaje en un análisis.
+ * Categorizador que usa la API de Groq (modelo abierto GPT-OSS por defecto).
+ * No conoce Telegram ni la base de datos: solo transforma un mensaje en un
+ * análisis.
  */
-export class AnthropicCategorizer implements Categorizer {
+export class GroqCategorizer implements Categorizer {
   constructor(
-    private readonly client: ClaudeClient,
-    private readonly model: string = env.ANTHROPIC_MODEL,
+    private readonly client: GroqChatClient,
+    private readonly model: string = env.GROQ_MODEL,
   ) {}
 
   async analyze(message: IncomingMessage): Promise<Analysis> {
-    const response = await this.client.messages.create({
+    const response = await this.client.chat.completions.create({
       model: this.model,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      output_config: { format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
-      messages: [{ role: 'user', content: message.contenido }],
+      // Clasificar un mensaje corto no requiere cadena de razonamiento larga:
+      // 'low' abarata y acelera, y 'hidden' mantiene el contenido como JSON
+      // limpio (sin el razonamiento mezclado en la respuesta).
+      reasoning_effort: 'low',
+      reasoning_format: 'hidden',
+      response_format: { type: 'json_object' },
+      temperature: 0,
+      max_completion_tokens: 1024,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: message.contenido },
+      ],
     });
 
-    return parseAnalysis(firstText(response.content), message.contenido);
+    return parseAnalysis(firstText(response.choices), message.contenido);
   }
 }

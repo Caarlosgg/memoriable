@@ -56,7 +56,7 @@ export function isTransientError(err: unknown): boolean {
   if (typeof candidate.status === 'number') return isTransientStatus(candidate.status);
   if (typeof candidate.code === 'string' && TRANSIENT_CODES.has(candidate.code)) return true;
 
-  // Errores de conexión/timeout de la SDK de Anthropic.
+  // Errores de conexión/timeout de la SDK de Groq.
   const name = typeof candidate.name === 'string' ? candidate.name : '';
   return name === 'APIConnectionError' || name === 'APIConnectionTimeoutError';
 }
@@ -114,7 +114,7 @@ const defaultSleep = (ms: number): Promise<void> =>
   });
 
 /**
- * Decorador que hace robusta la llamada a la API de Anthropic:
+ * Decorador que hace robusta la llamada a la API de Groq:
  *
  * - timeout por intento,
  * - reintentos con backoff exponencial + jitter ante fallos transitorios
@@ -172,7 +172,7 @@ export class ResilientCategorizer implements Categorizer {
 
         if (status === 401 || status === 403) {
           this.logger?.error('ai.auth_failed', {
-            hint: 'Revisa ANTHROPIC_API_KEY: la clave es inválida o no tiene permisos.',
+            hint: 'Revisa GROQ_API_KEY: la clave es inválida o no tiene permisos.',
           });
           break;
         }
@@ -193,7 +193,7 @@ export class ResilientCategorizer implements Categorizer {
     }
 
     this.logger?.error('ai.fallback_offline', {
-      reason: 'la API de Anthropic no respondió correctamente',
+      reason: 'la API de Groq no respondió correctamente',
       ...errorContext(lastError),
     });
     return this.fallback.analyze(message);

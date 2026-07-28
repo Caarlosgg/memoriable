@@ -1,5 +1,5 @@
 /**
- * Fusible de coste: limita cuántas llamadas de pago (API de Anthropic) se
+ * Fusible de coste: limita cuántas llamadas de pago (API de Groq) se
  * pueden hacer por día.
  *
  * NO es lógica de facturación: es una protección ante bugs en bucle o uso

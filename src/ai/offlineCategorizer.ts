@@ -1,12 +1,12 @@
 import type { Analysis, Categorizer, Category, IncomingMessage } from './types.js';
 
 /**
- * Categorizador heurístico offline. NO usa la API de Anthropic: sirve para
+ * Categorizador heurístico offline. NO usa la API de Groq: sirve para
  * poder ejecutar el pipeline completo (por ejemplo desde el CLI de simulación)
- * cuando falta `ANTHROPIC_API_KEY`, sin depender de servicios reales.
+ * cuando falta `GROQ_API_KEY`, sin depender de servicios reales.
  *
  * Es deliberadamente simple: reglas por palabras clave. La categorización real
- * la hace `AnthropicCategorizer`.
+ * la hace `GroqCategorizer`.
  */
 export class OfflineCategorizer implements Categorizer {
   async analyze(message: IncomingMessage): Promise<Analysis> {

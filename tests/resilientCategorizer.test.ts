@@ -140,7 +140,7 @@ describe('ResilientCategorizer', () => {
     expect(resultado).toHaveProperty('categoria');
     expect(records.find((r) => r.event === 'ai.auth_failed')).toMatchObject({
       level: 'error',
-      hint: expect.stringContaining('ANTHROPIC_API_KEY'),
+      hint: expect.stringContaining('GROQ_API_KEY'),
     });
   });
 

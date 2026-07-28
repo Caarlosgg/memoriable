@@ -21,7 +21,7 @@ const noopLogger: Pick<Logger, 'info' | 'warn' | 'error'> = {
  * resumen) con el `Categorizer` y persiste el resultado con el `Repository`,
  * registrando cada paso de forma estructurada.
  *
- * No conoce Telegram, ni Prisma, ni la SDK de Anthropic: recibe sus
+ * No conoce Telegram, ni Prisma, ni la SDK de Groq: recibe sus
  * colaboradores por inyección, de modo que es totalmente testeable con mocks.
  *
  * Lanza `InvalidMessageError` si el contenido no es aprovechable (vacío o no

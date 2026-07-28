@@ -2,7 +2,7 @@ import type { IncomingMessage } from '../ai/types.js';
 import { InMemoryMessageRepository } from '../db/repository.js';
 import { resolveCategorizer } from '../pipeline/factory.js';
 import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
-import { hasAnthropic } from '../config/env.js';
+import { env, hasGroq } from '../config/env.js';
 
 /**
  * Ejecuta el pipeline sobre un texto de ejemplo. Extraído aparte del arranque
@@ -30,9 +30,9 @@ async function main(): Promise<void> {
 
   console.log(`\n📨 Mensaje entrante: "${texto}"`);
   console.log(
-    hasAnthropic()
-      ? '🤖 Categorizando con Claude (ANTHROPIC_API_KEY presente)...'
-      : '🧪 Sin ANTHROPIC_API_KEY: usando categorizador heurístico offline.',
+    hasGroq()
+      ? `🤖 Categorizando con Groq (${env.GROQ_MODEL})...`
+      : '🧪 Sin GROQ_API_KEY: usando categorizador heurístico offline.',
   );
 
   const stored = await runSimulation(texto);

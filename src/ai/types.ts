@@ -31,7 +31,7 @@ export interface Analysis {
 
 /**
  * Contrato de categorización/resumen. La lógica de negocio depende de esta
- * interfaz, no de la SDK de Anthropic, para poder inyectar mocks en tests.
+ * interfaz, no de la SDK de Groq, para poder inyectar mocks en tests.
  */
 export interface Categorizer {
   analyze(message: IncomingMessage): Promise<Analysis>;

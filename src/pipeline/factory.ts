@@ -1,10 +1,10 @@
-import { createAnthropicClient } from '../ai/anthropic.js';
-import { AnthropicCategorizer } from '../ai/categorizer.js';
+import { createGroqClient } from '../ai/groq.js';
+import { GroqCategorizer } from '../ai/categorizer.js';
 import { BudgetedCategorizer } from '../ai/budgetedCategorizer.js';
 import { OfflineCategorizer } from '../ai/offlineCategorizer.js';
 import { ResilientCategorizer } from '../ai/resilientCategorizer.js';
 import type { Categorizer } from '../ai/types.js';
-import { env, hasAnthropic, hasDatabase } from '../config/env.js';
+import { env, hasGroq, hasDatabase } from '../config/env.js';
 import { DailyBudget, type BudgetGuard } from '../cost/budget.js';
 import { DEFAULT_BUDGET_FILE, FileBudgetStore } from '../cost/fileBudgetStore.js';
 import { InMemoryMessageRepository, type MessageRepository } from '../db/repository.js';
@@ -26,7 +26,7 @@ export function resolveBudget(logger: Logger = rootLogger): BudgetGuard {
  *
  *   BudgetedCategorizer  → corta el gasto cuando se agota el presupuesto
  *     └─ ResilientCategorizer → timeout + reintentos con backoff
- *          └─ AnthropicCategorizer → llamada real a Claude
+ *          └─ GroqCategorizer → llamada real a Groq
  *
  * Ambas capas caen al categorizador offline, de modo que el pipeline siempre
  * devuelve una categorización aunque no haya API (o no convenga usarla).
@@ -34,20 +34,20 @@ export function resolveBudget(logger: Logger = rootLogger): BudgetGuard {
 export function resolveCategorizer(logger: Logger = rootLogger): Categorizer {
   const offline = new OfflineCategorizer();
 
-  if (!hasAnthropic()) {
+  if (!hasGroq()) {
     logger.warn('ai.offline_mode', {
-      reason: 'ANTHROPIC_API_KEY no definida',
+      reason: 'GROQ_API_KEY no definida',
       action: 'se usa el categorizador heurístico offline',
     });
     return offline;
   }
 
-  const claude = new AnthropicCategorizer(createAnthropicClient());
-  const resilient = new ResilientCategorizer(claude, offline, { logger });
+  const groq = new GroqCategorizer(createGroqClient());
+  const resilient = new ResilientCategorizer(groq, offline, { logger });
   const budgeted = new BudgetedCategorizer(resilient, offline, resolveBudget(logger), { logger });
 
   logger.info('ai.online_mode', {
-    model: env.ANTHROPIC_MODEL,
+    model: env.GROQ_MODEL,
     maxMessagesPerDay: env.MAX_MESSAGES_PER_DAY,
   });
   return budgeted;

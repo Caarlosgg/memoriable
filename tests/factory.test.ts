@@ -10,8 +10,8 @@ describe('pipeline/factory', () => {
     vi.unstubAllEnvs();
   });
 
-  it('sin ANTHROPIC_API_KEY usa el categorizador offline y avisa', async () => {
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
+  it('sin GROQ_API_KEY usa el categorizador offline y avisa', async () => {
+    vi.stubEnv('GROQ_API_KEY', '');
     const { resolveCategorizer } = await import('../src/pipeline/factory.js');
     const { OfflineCategorizer } = await import('../src/ai/offlineCategorizer.js');
     const { logger, records } = createMemoryLogger();
@@ -20,8 +20,8 @@ describe('pipeline/factory', () => {
     expect(records.find((r) => r.event === 'ai.offline_mode')).toMatchObject({ level: 'warn' });
   });
 
-  it('con ANTHROPIC_API_KEY envuelve Claude en fusible de coste y resiliencia', async () => {
-    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test');
+  it('con GROQ_API_KEY envuelve Groq en fusible de coste y resiliencia', async () => {
+    vi.stubEnv('GROQ_API_KEY', 'gsk_test');
     const { resolveCategorizer } = await import('../src/pipeline/factory.js');
     const { BudgetedCategorizer } = await import('../src/ai/budgetedCategorizer.js');
     const { logger, records } = createMemoryLogger();
@@ -29,7 +29,7 @@ describe('pipeline/factory', () => {
     // La capa externa es el fusible de coste: nada llega a la API sin pasar por él.
     expect(resolveCategorizer(logger)).toBeInstanceOf(BudgetedCategorizer);
     expect(records.find((r) => r.event === 'ai.online_mode')).toMatchObject({
-      model: 'claude-haiku-4-5',
+      model: 'openai/gpt-oss-120b',
       maxMessagesPerDay: 50,
     });
   });
@@ -54,7 +54,7 @@ describe('pipeline/factory', () => {
   });
 
   it('resolvePipeline devuelve las tres piezas listas', async () => {
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    vi.stubEnv('GROQ_API_KEY', '');
     vi.stubEnv('DATABASE_URL', '');
     const { resolvePipeline } = await import('../src/pipeline/factory.js');
     const { logger } = createMemoryLogger();

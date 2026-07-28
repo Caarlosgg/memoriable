@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AnthropicCategorizer, parseAnalysis, type ClaudeClient } from '../src/ai/categorizer.js';
+import { GroqCategorizer, parseAnalysis, type GroqChatClient } from '../src/ai/categorizer.js';
 
-function mockClient(text: string): ClaudeClient {
+function mockClient(content: string): GroqChatClient {
   return {
-    messages: {
-      create: vi.fn().mockResolvedValue({
-        content: [{ type: 'text', text }],
-        stop_reason: 'end_turn',
-      }),
+    chat: {
+      completions: {
+        create: vi.fn().mockResolvedValue({
+          choices: [{ message: { content } }],
+        }),
+      },
     },
   };
 }
@@ -33,25 +34,43 @@ describe('parseAnalysis', () => {
   });
 });
 
-describe('AnthropicCategorizer', () => {
-  it('analiza un mensaje usando el cliente de Claude', async () => {
+describe('GroqCategorizer', () => {
+  it('analiza un mensaje usando el cliente de Groq', async () => {
     const client = mockClient('{"categoria":"pregunta","resumen":"¿Qué hora es?"}');
-    const categorizer = new AnthropicCategorizer(client, 'claude-opus-4-8');
+    const categorizer = new GroqCategorizer(client, 'openai/gpt-oss-120b');
 
     const result = await categorizer.analyze({ tipo: 'text', contenido: '¿Qué hora es?' });
 
     expect(result).toEqual({ categoria: 'pregunta', resumen: '¿Qué hora es?' });
-    expect(client.messages.create).toHaveBeenCalledOnce();
-    const params = (client.messages.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
-    expect(params.model).toBe('claude-opus-4-8');
-    expect(params.messages[0].content).toBe('¿Qué hora es?');
+    expect(client.chat.completions.create).toHaveBeenCalledOnce();
+
+    const params = (client.chat.completions.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(params.model).toBe('openai/gpt-oss-120b');
+    // El mensaje del usuario va como último turno; el primero es el system prompt.
+    expect(params.messages[1].content).toBe('¿Qué hora es?');
+    // Pide JSON explícitamente: sin esto el modelo tiende a envolverlo en prosa.
+    expect(params.response_format).toEqual({ type: 'json_object' });
   });
 
-  it('lanza si la respuesta no trae bloque de texto', async () => {
-    const client: ClaudeClient = {
-      messages: { create: vi.fn().mockResolvedValue({ content: [], stop_reason: 'end_turn' }) },
+  it('lanza si la respuesta no trae contenido', async () => {
+    const client: GroqChatClient = {
+      chat: {
+        completions: {
+          create: vi.fn().mockResolvedValue({ choices: [{ message: { content: '' } }] }),
+        },
+      },
     };
-    const categorizer = new AnthropicCategorizer(client);
+    const categorizer = new GroqCategorizer(client);
+    await expect(categorizer.analyze({ tipo: 'text', contenido: 'x' })).rejects.toThrow(
+      /ningún bloque de texto/,
+    );
+  });
+
+  it('lanza si la respuesta no trae ninguna opción', async () => {
+    const client: GroqChatClient = {
+      chat: { completions: { create: vi.fn().mockResolvedValue({ choices: [] }) } },
+    };
+    const categorizer = new GroqCategorizer(client);
     await expect(categorizer.analyze({ tipo: 'text', contenido: 'x' })).rejects.toThrow(
       /ningún bloque de texto/,
     );

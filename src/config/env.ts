@@ -10,13 +10,19 @@ import 'dotenv/config';
  * ejecutable y testeable aunque falten secretos.
  */
 
-/** Modelo por defecto: el más barato que resuelve bien clasificar/resumir. */
-export const DEFAULT_MODEL = 'claude-haiku-4-5';
+/**
+ * Modelo por defecto: modelo abierto de OpenAI servido por Groq. Barato y muy
+ * rápido, sobrado para clasificar y resumir un mensaje corto.
+ *
+ * El identificador lleva el prefijo `openai/` a propósito: es el nombre exacto
+ * que expone Groq (`openai/gpt-oss-120b`), no `gpt-oss-120b` a secas.
+ */
+export const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 
 /** Fusible de coste por defecto: deliberadamente bajo. */
 export const DEFAULT_MAX_MESSAGES_PER_DAY = 50;
 
-export type RequiredEnvVar = 'DATABASE_URL' | 'TELEGRAM_BOT_TOKEN' | 'ANTHROPIC_API_KEY';
+export type RequiredEnvVar = 'DATABASE_URL' | 'TELEGRAM_BOT_TOKEN' | 'GROQ_API_KEY';
 
 interface EnvVarSpec {
   /** Para qué sirve la variable. */
@@ -41,14 +47,14 @@ export const ENV_SPECS: Record<RequiredEnvVar, EnvVarSpec> = {
     ],
     example: '123456789:AAExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
   },
-  ANTHROPIC_API_KEY: {
-    purpose: 'categorizar y resumir mensajes con la API de Claude',
+  GROQ_API_KEY: {
+    purpose: 'categorizar y resumir mensajes con la API de Groq',
     howTo: [
-      'Entra en https://console.anthropic.com y crea una cuenta.',
-      'Ve a Settings → API keys → Create key.',
+      'Entra en https://console.groq.com y crea una cuenta (tiene plan gratuito).',
+      'Ve a API Keys → Create API Key.',
       'Copia la clave (solo se muestra una vez).',
     ],
-    example: 'sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxx',
+    example: 'gsk_xxxxxxxxxxxxxxxxxxxxxxxx',
   },
   DATABASE_URL: {
     purpose: 'persistir los mensajes en PostgreSQL mediante Prisma',
@@ -125,9 +131,9 @@ export function readPositiveInt(name: string, fallback: number): number {
 export const env = {
   DATABASE_URL: readString('DATABASE_URL'),
   TELEGRAM_BOT_TOKEN: readString('TELEGRAM_BOT_TOKEN'),
-  ANTHROPIC_API_KEY: readString('ANTHROPIC_API_KEY'),
-  ANTHROPIC_MODEL: readString('ANTHROPIC_MODEL') ?? DEFAULT_MODEL,
-  /** Fusible de coste: máximo de llamadas a la API de Anthropic por día. */
+  GROQ_API_KEY: readString('GROQ_API_KEY'),
+  GROQ_MODEL: readString('GROQ_MODEL') ?? DEFAULT_MODEL,
+  /** Fusible de coste: máximo de llamadas a la API de Groq por día. */
   MAX_MESSAGES_PER_DAY: readPositiveInt('MAX_MESSAGES_PER_DAY', DEFAULT_MAX_MESSAGES_PER_DAY),
   /** Fichero donde persiste el contador del fusible (debe ser escribible). */
   BUDGET_FILE: readString('BUDGET_FILE'),
@@ -152,6 +158,6 @@ export function hasTelegram(): boolean {
   return Boolean(env.TELEGRAM_BOT_TOKEN);
 }
 
-export function hasAnthropic(): boolean {
-  return Boolean(env.ANTHROPIC_API_KEY);
+export function hasGroq(): boolean {
+  return Boolean(env.GROQ_API_KEY);
 }

@@ -23,7 +23,7 @@ export class PrismaMessageRepository implements MessageRepository {
     }
     if (!this.clientPromise) {
       this.clientPromise = import('@prisma/client').then(
-        (mod) => new (mod as { PrismaClient: new () => never }).PrismaClient(),
+        (mod) => new (mod as unknown as { PrismaClient: new () => never }).PrismaClient(),
       );
     }
     return this.clientPromise;

@@ -1,10 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 import { MissingEnvError, env } from '../config/env.js';
 
 /** Timeout por defecto de cada petición a la API (ms). */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
-export interface AnthropicClientOptions {
+export interface GroqClientOptions {
   apiKey?: string | undefined;
   timeoutMs?: number;
   /**
@@ -16,15 +16,15 @@ export interface AnthropicClientOptions {
 }
 
 /**
- * Crea un cliente de Anthropic de forma perezosa. Solo se llama cuando se
- * necesita categorizar de verdad; si falta la API key, lanza `MissingEnvError`
- * con instrucciones concretas en vez de un fallo críptico.
+ * Crea un cliente de Groq de forma perezosa. Solo se llama cuando se necesita
+ * categorizar de verdad; si falta la API key, lanza `MissingEnvError` con
+ * instrucciones concretas en vez de un fallo críptico.
  */
-export function createAnthropicClient(options: AnthropicClientOptions = {}): Anthropic {
-  const apiKey = options.apiKey ?? env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new MissingEnvError('ANTHROPIC_API_KEY');
+export function createGroqClient(options: GroqClientOptions = {}): Groq {
+  const apiKey = options.apiKey ?? env.GROQ_API_KEY;
+  if (!apiKey) throw new MissingEnvError('GROQ_API_KEY');
 
-  return new Anthropic({
+  return new Groq({
     apiKey,
     timeout: options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
     maxRetries: options.maxRetries ?? 0,

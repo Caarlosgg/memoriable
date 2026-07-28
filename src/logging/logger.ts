@@ -96,7 +96,7 @@ export function createLogger(options: LoggerOptions = {}): Logger {
 export function errorContext(err: unknown): LogContext {
   if (err instanceof Error) {
     const context: LogContext = { errorName: err.name, errorMessage: err.message };
-    // Los errores de la SDK de Anthropic y de Telegram llevan código/estado HTTP.
+    // Los errores de la SDK de Groq y de Telegram llevan código/estado HTTP.
     const withStatus = err as Error & { status?: unknown; code?: unknown };
     if (withStatus.status !== undefined) context.errorStatus = withStatus.status;
     if (withStatus.code !== undefined) context.errorCode = withStatus.code;
