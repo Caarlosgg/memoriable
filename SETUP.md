@@ -64,10 +64,28 @@ Solo si rellenaste `DATABASE_URL`:
 
 ```bash
 npm run prisma:generate
-npm run prisma:migrate
+npm run prisma:deploy
 ```
 
 Esto crea el cliente de Prisma y la tabla `messages` en tu base de datos.
+(Usa `prisma:deploy`, no `prisma:migrate`: `deploy` aplica la migración ya
+preparada sin shadow DB ni prompts, que es lo que necesita este flujo contra
+Supabase.)
+
+**Con Supabase necesitas dos URLs.** La conexión va por el **pooler de
+Supavisor** y Prisma **no puede migrar en modo transacción** (las migraciones
+requieren una sesión completa), así que se separan:
+
+| Variable       | Uso                    | Puerto | Modo        |
+| -------------- | ---------------------- | ------ | ----------- |
+| `DATABASE_URL` | Runtime del bot        | `6543` | transacción |
+| `DIRECT_URL`   | Migraciones (`prisma`) | `5432` | sesión      |
+
+```bash
+# Mismo host (aws-0-<region>.pooler.supabase.com) y usuario postgres.<ref>
+DATABASE_URL="postgresql://postgres.<ref>:PASSWORD@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://postgres.<ref>:PASSWORD@aws-0-<region>.pooler.supabase.com:5432/postgres"
+```
 
 ## 6. Arranca el bot
 

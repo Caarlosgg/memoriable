@@ -145,7 +145,8 @@ npm run prisma:deploy
 
 | Variable               | Descripción                                              | Obligatoria para     |
 | ----------------------- | -------------------------------------------------------- | --------------------- |
-| `DATABASE_URL`          | Cadena de conexión de PostgreSQL                          | Persistencia real     |
+| `DATABASE_URL`          | Conexión PostgreSQL del runtime (pooler, 6543, transacción) | Persistencia real   |
+| `DIRECT_URL`            | Conexión directa para migraciones (pooler, 5432, sesión)  | `prisma migrate/deploy` |
 | `TELEGRAM_BOT_TOKEN`    | Token del bot de Telegram                                 | Arrancar el bot       |
 | `ANTHROPIC_API_KEY`     | API key de Claude                                         | Categorización real   |
 | `ANTHROPIC_MODEL`       | Modelo de Claude (opcional)                               | — (def. `claude-haiku-4-5`) |
@@ -160,15 +161,37 @@ repositorio solo contiene `.env.example` sin valores reales.
 
 1. Crea una cuenta en [supabase.com](https://supabase.com) (plan Free).
 2. Crea un proyecto nuevo (elige una contraseña de base de datos y guárdala).
-3. En el panel: **Project Settings → Database → Connection string → URI**.
+3. En el panel: **Project Settings → Database → Connection string** y usa el
+   **pooler de Supavisor** (no la conexión directa `db.<ref>.supabase.co`, que
+   hoy es solo IPv6 y falla en muchas redes).
 4. Copia la cadena y sustituye `[YOUR-PASSWORD]` por la contraseña del paso 2.
-5. Pégala en `.env` como `DATABASE_URL` y ejecuta:
+5. Rellena en `.env` **dos** variables y ejecuta la migración:
    ```bash
    npm run prisma:generate
    npm run prisma:deploy
    ```
    Esto aplica la migración ya preparada en `prisma/migrations/` (crea la
    tabla `messages`) sin pedir confirmaciones interactivas.
+
+#### Topología de conexión (dos URLs)
+
+Supabase se conecta a través del **pooler de Supavisor**, y Prisma necesita
+**dos** cadenas porque **no puede migrar en modo transacción** (las migraciones
+requieren una sesión completa: advisory locks y shadow DB):
+
+| Variable       | Uso                     | Puerto | Modo        |
+| -------------- | ----------------------- | ------ | ----------- |
+| `DATABASE_URL` | Runtime del bot         | `6543` | transacción |
+| `DIRECT_URL`   | Migraciones (`prisma`)  | `5432` | sesión      |
+
+```bash
+# .env — mismo host (aws-0-<region>.pooler.supabase.com), usuario postgres.<ref>
+DATABASE_URL="postgresql://postgres.<ref>:PASSWORD@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://postgres.<ref>:PASSWORD@aws-0-<region>.pooler.supabase.com:5432/postgres"
+```
+
+El modo transacción (6543) es ideal para el bot: hace conexiones puntuales por
+mensaje, no una conexión larga y persistente.
 
 ---
 

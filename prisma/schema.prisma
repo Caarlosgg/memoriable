@@ -10,7 +10,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Runtime del bot: pooler de Supavisor en modo transacción (puerto 6543).
+  // Conexiones puntuales por mensaje, ideal para PgBouncer.
+  url       = env("DATABASE_URL")
+  // Migraciones: conexión directa/sesión (puerto 5432). Prisma no puede migrar
+  // a través del pooler en modo transacción (necesita sesión completa).
+  directUrl = env("DIRECT_URL")
 }
 
 /// Un mensaje entrante ya categorizado y resumido.
