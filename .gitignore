@@ -19,3 +19,8 @@ prisma/migrations/dev.db*
 npm-debug.log*
 coverage/
 .DS_Store
+*.tsbuildinfo
+
+# Editores/IDEs
+.vscode/
+.idea/

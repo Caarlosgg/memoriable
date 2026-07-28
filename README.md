@@ -1,5 +1,23 @@
 # 🤖 Clasificador de mensajes de Telegram con Claude
 
+## ¿Qué es esto?
+
+Le hablas a un bot de Telegram — una idea, una tarea, una pregunta, un
+recordatorio — y él solo lo lee, decide de qué tipo de mensaje se trata y te
+devuelve un resumen corto. Todo queda guardado, así que nada de lo que le
+cuentes se pierde. Es como un cuaderno de notas al que le escribes por
+Telegram y que se organiza solo.
+
+Por dentro usa la IA de Anthropic (Claude) para leer y clasificar cada
+mensaje, y una base de datos (PostgreSQL) para guardarlos. No hace falta saber
+programar para usarlo — solo seguir [SETUP.md](./SETUP.md) para levantarlo en
+unos minutos. El resto de este documento es la parte técnica, para quien vaya
+a tocar o entender el código.
+
+---
+
+## Para quien va a tocar el código
+
 Bot de Telegram que **recibe mensajes**, los **categoriza** y **resume** con la
 API de Anthropic (Claude), y los **persiste** en PostgreSQL mediante Prisma.
 
@@ -106,6 +124,9 @@ pipeline **siempre** devuelve una categorización.
 ---
 
 ## 🚀 Puesta en marcha
+
+> ¿Primera vez? Sigue **[SETUP.md](./SETUP.md)** — guía paso a paso de 5
+> minutos, sin necesidad de pensar. Lo de abajo es el resumen técnico.
 
 ```bash
 # 1. Instalar dependencias
@@ -263,6 +284,9 @@ sus casos límite:
 ├── tests/                   # tests de Vitest (uno por módulo)
 ├── Dockerfile                # imagen multi-stage (ver sección Docker)
 ├── CLAUDE.md                # reglas fijas del proyecto
+├── SETUP.md                 # puesta en marcha paso a paso
+├── ROADMAP.md                # hacia dónde va el proyecto
+├── CONTRIBUTING.md          # cómo reportar bugs o contribuir código
 └── .env.example             # plantilla de variables (sin secretos)
 ```
 
@@ -311,3 +335,12 @@ activará en la fase 2 sin reestructurar el resto del sistema.
 Las reglas fijas (nunca hardcodear secretos, cada commit compila y pasa tests,
 cobertura de la lógica de negocio) están documentadas en
 [`CLAUDE.md`](./CLAUDE.md).
+
+---
+
+## 🔗 Más
+
+- **[SETUP.md](./SETUP.md)** — puesta en marcha paso a paso.
+- **[ROADMAP.md](./ROADMAP.md)** — hacia dónde va el proyecto.
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — cómo reportar bugs o contribuir código.
+- **[LICENSE](./LICENSE)** — MIT.
