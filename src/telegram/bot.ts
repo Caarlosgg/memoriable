@@ -6,6 +6,7 @@ import { InvalidMessageError } from '../pipeline/sanitize.js';
 import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
 import { resolvePipeline } from '../pipeline/factory.js';
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
+import { formatResponseCard } from './formatResponseCard.js';
 
 /** Respuestas al usuario, centralizadas para poder testearlas. */
 export const REPLIES = {
@@ -26,7 +27,7 @@ export async function handleTextMessage(
 ): Promise<string> {
   try {
     const stored = await processMessage({ tipo: 'text', contenido: text }, pipeline);
-    return `🏷️ Categoría: ${stored.categoria}\n📝 Resumen: ${stored.resumen}`;
+    return formatResponseCard(stored);
   } catch (err) {
     if (err instanceof InvalidMessageError) return REPLIES.empty;
     logger?.error('telegram.handler_failed', errorContext(err));
@@ -63,7 +64,7 @@ export function createBot(
 
   bot.on(message('text'), async (ctx) => {
     const reply = await handleTextMessage(ctx.message.text, pipeline, logger);
-    await ctx.reply(reply);
+    await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 
   // Red de seguridad: cualquier error no capturado en un handler (incluido un

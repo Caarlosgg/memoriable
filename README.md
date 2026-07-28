@@ -17,7 +17,9 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
   mensaje corto).
 - **Persistencia** en PostgreSQL con Prisma (esquema tipado y migraciones).
 - **Bot de Telegram** con Telegraf en modo *polling*, con reconexión automática
-  ante caídas y logs claros si el token es inválido.
+  ante caídas y logs claros si el token es inválido. Cada respuesta se
+  presenta como una tarjeta HTML (`formatResponseCard()`): categoría en
+  negrita con emoji temático, resumen y fecha legible.
 - **CLI de simulación** para probar el pipeline completo sin Telegram ni base de
   datos reales.
 - **Categorizador offline** (heurístico) de reserva: si no hay API key, si la

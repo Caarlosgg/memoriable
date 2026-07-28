@@ -89,8 +89,8 @@ describe('handleTextMessage', () => {
       repository,
     });
 
-    expect(reply).toContain('Categoría: tarea');
-    expect(reply).toContain('Resumen:');
+    expect(reply).toContain('<b>Tarea</b>');
+    expect(reply).toContain('🕒');
     expect(repository.all()).toHaveLength(1);
     expect(repository.all()[0]!.contenido).toBe('Comprar pan y leche');
   });
