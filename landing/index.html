@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>memoria-ia — le escribes y se organiza solo</title>
+<meta name="description" content="Le mandas un mensaje a memoria-ia por Telegram y no se te pierde: una IA lo lee, lo categoriza y lo guarda por ti." />
+<meta name="theme-color" content="#faf6ef" />
+<style>
+  :root {
+    --bg: #faf6ef;
+    --ink: #1c1b18;
+    --muted: #6b6558;
+    --line: #e4ddcf;
+    --accent: #2f5d50;
+    --accent-ink: #eef4f1;
+    --highlight: #e8a33d;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    background-image:
+      repeating-linear-gradient(
+        180deg,
+        transparent,
+        transparent 27px,
+        var(--line) 28px
+      );
+    background-attachment: local;
+  }
+
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  a { color: inherit; }
+
+  /* ---------- Hero ---------- */
+
+  .hero {
+    padding: 72px 0 56px;
+  }
+
+  .eyebrow {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+    font-weight: 700;
+  }
+
+  h1 {
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-size: clamp(2.1rem, 7vw, 3.2rem);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 0 0 22px;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .lede {
+    font-size: clamp(1.02rem, 2.6vw, 1.15rem);
+    color: var(--muted);
+    max-width: 46ch;
+    margin: 0 0 32px;
+  }
+
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 1.02rem;
+    padding: 15px 26px;
+    border-radius: 999px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.06), 0 10px 24px -12px rgba(47,93,80,0.55);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .cta:hover, .cta:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.06), 0 16px 30px -12px rgba(47,93,80,0.6);
+  }
+
+  .cta:active { transform: translateY(0); }
+
+  .cta-ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1.5px solid var(--line);
+    box-shadow: none;
+  }
+
+  .cta-ghost:hover, .cta-ghost:focus-visible {
+    border-color: var(--accent);
+    box-shadow: none;
+  }
+
+  /* ---------- Demo chat ---------- */
+
+  .demo { padding: 0 0 64px; }
+
+  .chat {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px;
+    display: grid;
+    gap: 12px;
+    box-shadow: 0 20px 40px -28px rgba(28,27,24,0.35);
+  }
+
+  .bubble {
+    max-width: 82%;
+    padding: 11px 15px;
+    border-radius: 16px;
+    font-size: 0.96rem;
+    animation: rise 0.5s ease both;
+  }
+
+  .bubble.user {
+    justify-self: end;
+    background: #f1ede3;
+    color: var(--ink);
+    border-bottom-right-radius: 4px;
+    animation-delay: 0.05s;
+  }
+
+  .bubble.bot {
+    justify-self: start;
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-bottom-left-radius: 4px;
+    display: grid;
+    gap: 4px;
+    animation-delay: 0.4s;
+  }
+
+  .bubble.bot .tag {
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .bubble.bot .meta {
+    font-size: 0.78rem;
+    opacity: 0.75;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bubble { animation: none; }
+  }
+
+  /* ---------- How it works ---------- */
+
+  .how { padding: 8px 0 64px; }
+
+  .steps {
+    display: grid;
+    gap: 28px;
+  }
+
+  .step { display: grid; gap: 6px; }
+
+  .num {
+    font-family: ui-serif, Georgia, serif;
+    font-style: italic;
+    font-size: 1.4rem;
+    color: var(--highlight);
+  }
+
+  .step h3 {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+
+  .step p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.96rem;
+  }
+
+  /* ---------- Footer ---------- */
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 44px 0 64px;
+  }
+
+  .footer-inner {
+    display: grid;
+    gap: 18px;
+    justify-items: start;
+  }
+
+  .fine {
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+
+  .fine a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* ---------- Wider screens ---------- */
+
+  @media (min-width: 640px) {
+    .hero { padding: 108px 0 72px; }
+    .steps { grid-template-columns: repeat(3, 1fr); gap: 32px; }
+    .footer-inner { grid-auto-flow: column; align-items: center; justify-content: start; }
+  }
+</style>
+</head>
+<body>
+
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">memoria-ia</p>
+      <h1>Le escribes.<br />Se organiza <em>solo</em>.</h1>
+      <p class="lede">
+        Le mandas un mensaje a memoria-ia por Telegram — una idea, una tarea,
+        un recordatorio, lo que sea — y ya está. Una IA lo lee, decide de qué
+        se trata y te devuelve un resumen al momento. Nada se pierde: queda
+        guardado y clasificado solo, para siempre.
+      </p>
+      <!-- TODO: sustituye esta URL por el enlace real de tu Google Form -->
+      <a class="cta" href="https://forms.gle/PEGA-AQUI-TU-FORMULARIO" target="_blank" rel="noopener">
+        Apúntate a la beta →
+      </a>
+    </div>
+  </header>
+
+  <section class="demo">
+    <div class="wrap">
+      <div class="chat" aria-label="Ejemplo de conversación con memoria-ia">
+        <div class="bubble user">Recuérdame comprar pan mañana</div>
+        <div class="bubble bot">
+          <span class="tag">⏰ Recordatorio</span>
+          <span>Comprar pan mañana</span>
+          <span class="meta">🕒 28/07/2026, 09:14</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="how">
+    <div class="wrap steps">
+      <div class="step">
+        <span class="num">1</span>
+        <h3>Escribe</h3>
+        <p>Cualquier cosa, por Telegram, como si le escribieras a un amigo.</p>
+      </div>
+      <div class="step">
+        <span class="num">2</span>
+        <h3>Categoriza</h3>
+        <p>La IA decide si es tarea, idea, pregunta o recordatorio.</p>
+      </div>
+      <div class="step">
+        <span class="num">3</span>
+        <h3>Se guarda</h3>
+        <p>Queda ahí, resumido y ordenado, listo para cuando lo necesites.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <!-- TODO: sustituye esta URL por el enlace real de tu Google Form -->
+      <a class="cta cta-ghost" href="https://forms.gle/PEGA-AQUI-TU-FORMULARIO" target="_blank" rel="noopener">
+        Quiero probarlo
+      </a>
+      <p class="fine">
+        Proyecto open source · <a href="https://github.com/Caarlosgg/memoria-ia">código en GitHub</a>
+      </p>
+    </div>
+  </footer>
+
+</body>
+</html>
