@@ -6,7 +6,9 @@ import { createMemoryLogger } from '../src/logging/logger.js';
 import type { Categorizer } from '../src/ai/types.js';
 import {
   REPLIES,
+  commandArgument,
   createBot,
+  handleSearchCommand,
   handleTextMessage,
   launchWithRetry,
 } from '../src/telegram/bot.js';
@@ -116,6 +118,61 @@ describe('handleTextMessage', () => {
     expect(records.find((r) => r.event === 'telegram.handler_failed')).toMatchObject({
       level: 'error',
       errorMessage: 'base de datos caída',
+    });
+  });
+});
+
+describe('commandArgument', () => {
+  it('quita el token del comando y recorta el resto', () => {
+    expect(commandArgument('/buscar factura luz')).toBe('factura luz');
+    expect(commandArgument('/buscar@mi_bot   café  ')).toBe('café');
+  });
+
+  it('devuelve cadena vacía si el comando no lleva argumento', () => {
+    expect(commandArgument('/buscar')).toBe('');
+    expect(commandArgument('/buscar   ')).toBe('');
+  });
+});
+
+describe('handleSearchCommand', () => {
+  it('pide un término si la consulta viene vacía', async () => {
+    const reply = await handleSearchCommand('   ', pipeline());
+    expect(reply).toBe(REPLIES.searchUsage);
+  });
+
+  it('devuelve las coincidencias como tarjetas', async () => {
+    const repository = new InMemoryMessageRepository();
+    await handleTextMessage('Comprar pan y leche', {
+      categorizer: new OfflineCategorizer(),
+      repository,
+    });
+
+    const reply = await handleSearchCommand('pan', { categorizer: new OfflineCategorizer(), repository });
+    expect(reply).toContain('Resultados para «pan»');
+    expect(reply).toContain('<b>Tarea</b>');
+  });
+
+  it('dice con naturalidad que no hay resultados', async () => {
+    const reply = await handleSearchCommand('inexistente', pipeline());
+    expect(reply).toContain('No he encontrado nada');
+  });
+
+  it('nunca lanza: ante un fallo del repositorio responde error y lo registra', async () => {
+    const { logger, records } = createMemoryLogger();
+    const repository = {
+      save: vi.fn(),
+      search: vi.fn().mockRejectedValue(new Error('db caída')),
+    };
+
+    const reply = await handleSearchCommand(
+      'algo',
+      { categorizer: new OfflineCategorizer(), repository, logger },
+      logger,
+    );
+
+    expect(reply).toBe(REPLIES.error);
+    expect(records.find((r) => r.event === 'telegram.search_failed')).toMatchObject({
+      level: 'error',
     });
   });
 });

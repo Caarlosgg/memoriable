@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import type { MessageRepository, NewMessage, StoredMessage } from './repository.js';
+import { DEFAULT_SEARCH_LIMIT } from './search.js';
 
 /**
  * Repositorio respaldado por Prisma/PostgreSQL.
@@ -12,8 +13,12 @@ import type { MessageRepository, NewMessage, StoredMessage } from './repository.
 export class PrismaMessageRepository implements MessageRepository {
   // Tipado laxo a propósito: el cliente generado por Prisma no existe en tiempo
   // de compilación hasta ejecutar `prisma generate`.
-  private clientPromise: Promise<{ message: { create(args: unknown): Promise<StoredMessage> } }> | null =
-    null;
+  private clientPromise: Promise<{
+    message: {
+      create(args: unknown): Promise<StoredMessage>;
+      findMany(args: unknown): Promise<StoredMessage[]>;
+    };
+  }> | null = null;
 
   private async getClient() {
     if (!env.DATABASE_URL) {
@@ -38,6 +43,24 @@ export class PrismaMessageRepository implements MessageRepository {
         categoria: record.categoria,
         resumen: record.resumen,
       },
+    });
+  }
+
+  async search(query: string, limit: number = DEFAULT_SEARCH_LIMIT): Promise<StoredMessage[]> {
+    const needle = query.trim();
+    if (needle === '') return [];
+    const client = await this.getClient();
+    // `contains` + `mode: 'insensitive'` compila a `ILIKE '%needle%'` en Postgres.
+    // Coincidencia sobre contenido O resumen, los más recientes primero.
+    return client.message.findMany({
+      where: {
+        OR: [
+          { contenido: { contains: needle, mode: 'insensitive' } },
+          { resumen: { contains: needle, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { fecha: 'desc' },
+      take: Math.max(0, limit),
     });
   }
 }

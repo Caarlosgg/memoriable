@@ -22,7 +22,7 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('es-ES', {
 });
 
 /** Escapa los caracteres especiales de Telegram HTML (contenido no controlado por nosotros). */
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 

@@ -6,14 +6,50 @@ import { InvalidMessageError } from '../pipeline/sanitize.js';
 import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
 import { resolvePipeline } from '../pipeline/factory.js';
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
-import { formatResponseCard } from './formatResponseCard.js';
+import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
+import { formatMessageList } from './formatList.js';
 
 /** Respuestas al usuario, centralizadas para poder testearlas. */
 export const REPLIES = {
   welcome: '👋 Envíame un mensaje y lo categorizo y resumo por ti.',
   empty: '🤔 No he recibido texto que analizar. Escríbeme algo y lo clasifico.',
   error: '⚠️ No he podido procesar tu mensaje. Inténtalo de nuevo en un momento.',
+  searchUsage: 'ℹ️ Escribe qué quieres buscar. Ejemplo: <code>/buscar factura luz</code>',
 } as const;
+
+/**
+ * Extrae el argumento de un comando a partir del texto completo del mensaje,
+ * quitando el propio token del comando (`/buscar`, `/buscar@mibot`). Devuelve el
+ * resto ya recortado.
+ */
+export function commandArgument(text: string): string {
+  return text.replace(/^\/\S+\s*/, '').trim();
+}
+
+/**
+ * Maneja `/buscar <texto>`: busca coincidencias de texto y las devuelve como
+ * tarjetas, las más recientes primero. **Nunca lanza**: ante un fallo interno
+ * devuelve un mensaje de error y lo registra.
+ */
+export async function handleSearchCommand(
+  query: string,
+  pipeline: Pipeline,
+  logger: Logger | undefined = pipeline.logger,
+): Promise<string> {
+  const q = query.trim();
+  if (q === '') return REPLIES.searchUsage;
+
+  try {
+    const results = await pipeline.repository.search(q);
+    return formatMessageList(results, {
+      header: `🔎 Resultados para «${escapeHtml(q)}»:`,
+      empty: `🔍 No he encontrado nada que coincida con «${escapeHtml(q)}». Prueba con otra palabra.`,
+    });
+  } catch (err) {
+    logger?.error('telegram.search_failed', errorContext(err));
+    return REPLIES.error;
+  }
+}
 
 /**
  * Lógica del handler de texto, aislada de Telegraf para poder testearla sin
@@ -60,6 +96,11 @@ export function createBot(
 
   bot.start(async (ctx) => {
     await ctx.reply(REPLIES.welcome);
+  });
+
+  bot.command('buscar', async (ctx) => {
+    const reply = await handleSearchCommand(commandArgument(ctx.message.text), pipeline, logger);
+    await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 
   bot.on(message('text'), async (ctx) => {

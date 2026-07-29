@@ -1,4 +1,5 @@
 import type { Analysis, IncomingMessage } from '../ai/types.js';
+import { searchMessages } from './search.js';
 
 /** Registro tal como queda persistido (incluye id y fecha). */
 export interface StoredMessage extends IncomingMessage, Analysis {
@@ -15,6 +16,11 @@ export type NewMessage = IncomingMessage & Analysis;
  */
 export interface MessageRepository {
   save(record: NewMessage): Promise<StoredMessage>;
+  /**
+   * Busca mensajes cuyo contenido o resumen contengan `query` (coincidencia de
+   * texto, case-insensitive), devolviendo los más recientes primero.
+   */
+  search(query: string, limit?: number): Promise<StoredMessage[]>;
 }
 
 /**
@@ -33,6 +39,10 @@ export class InMemoryMessageRepository implements MessageRepository {
     };
     this.items.push(stored);
     return stored;
+  }
+
+  async search(query: string, limit?: number): Promise<StoredMessage[]> {
+    return searchMessages(this.items, query, limit);
   }
 
   /** Devuelve una copia de todos los registros guardados (solo para inspección). */
