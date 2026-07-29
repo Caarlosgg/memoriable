@@ -36,3 +36,6 @@ export function presentCategory(categoria: string) {
     ? CATEGORY_PRESENTATION[categoria]
     : CATEGORY_PRESENTATION.otro;
 }
+
+/** Categorías "accionables": las únicas que pueden estar pendientes/hechas. */
+export const ACTIONABLE_CATEGORIES = ["tarea", "recordatorio"] as const;

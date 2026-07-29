@@ -1,7 +1,7 @@
 import "server-only";
 import type { Message } from "@prisma/client";
 import { prisma } from "./prisma";
-import { CATEGORIES, type Category } from "./categories";
+import { ACTIONABLE_CATEGORIES, CATEGORIES, type Category } from "./categories";
 
 /** Mensajes recientes que se muestran por categoría en la vista principal. */
 const RECENT_PER_CATEGORY = 12;
@@ -62,5 +62,19 @@ export async function searchMessages(query: string): Promise<Message[]> {
     },
     orderBy: { fecha: "desc" },
     take: SEARCH_LIMIT,
+  });
+}
+
+/**
+ * Pendientes: tareas y recordatorios que aún no se han marcado como hechos,
+ * los más recientes primero. Mismo criterio que /pendientes en el bot.
+ */
+export async function getPendingMessages(): Promise<Message[]> {
+  return prisma.message.findMany({
+    where: {
+      hecho: false,
+      categoria: { in: [...ACTIONABLE_CATEGORIES] },
+    },
+    orderBy: { fecha: "desc" },
   });
 }
