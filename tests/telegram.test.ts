@@ -8,6 +8,7 @@ import {
   REPLIES,
   commandArgument,
   createBot,
+  handlePendingCommand,
   handleSearchCommand,
   handleTextMessage,
   launchWithRetry,
@@ -162,6 +163,8 @@ describe('handleSearchCommand', () => {
     const repository = {
       save: vi.fn(),
       search: vi.fn().mockRejectedValue(new Error('db caída')),
+      pending: vi.fn(),
+      savedBetween: vi.fn(),
     };
 
     const reply = await handleSearchCommand(
@@ -172,6 +175,43 @@ describe('handleSearchCommand', () => {
 
     expect(reply).toBe(REPLIES.error);
     expect(records.find((r) => r.event === 'telegram.search_failed')).toMatchObject({
+      level: 'error',
+    });
+  });
+});
+
+describe('handlePendingCommand', () => {
+  it('lista las tareas/recordatorios pendientes como tarjetas', async () => {
+    const repository = new InMemoryMessageRepository();
+    const pipeline = { categorizer: new OfflineCategorizer(), repository };
+    await handleTextMessage('Comprar pan y leche', pipeline);
+
+    const reply = await handlePendingCommand(pipeline);
+    expect(reply).toContain('Tus pendientes');
+    expect(reply).toContain('<b>Tarea</b>');
+  });
+
+  it('dice con naturalidad que no hay nada pendiente', async () => {
+    const reply = await handlePendingCommand(pipeline());
+    expect(reply).toBe(REPLIES.noPending);
+  });
+
+  it('nunca lanza: ante un fallo del repositorio responde error y lo registra', async () => {
+    const { logger, records } = createMemoryLogger();
+    const repository = {
+      save: vi.fn(),
+      search: vi.fn(),
+      pending: vi.fn().mockRejectedValue(new Error('db caída')),
+      savedBetween: vi.fn(),
+    };
+
+    const reply = await handlePendingCommand(
+      { categorizer: new OfflineCategorizer(), repository, logger },
+      logger,
+    );
+
+    expect(reply).toBe(REPLIES.error);
+    expect(records.find((r) => r.event === 'telegram.pending_failed')).toMatchObject({
       level: 'error',
     });
   });

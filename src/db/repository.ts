@@ -1,9 +1,12 @@
 import type { Analysis, IncomingMessage } from '../ai/types.js';
 import { searchMessages } from './search.js';
+import { pendingMessages } from './pending.js';
 
 /** Registro tal como queda persistido (incluye id y fecha). */
 export interface StoredMessage extends IncomingMessage, Analysis {
   id: string;
+  /** ¿Marcado como hecho? Nace en `false` (pendiente). */
+  hecho: boolean;
   fecha: Date;
 }
 
@@ -21,6 +24,16 @@ export interface MessageRepository {
    * texto, case-insensitive), devolviendo los más recientes primero.
    */
   search(query: string, limit?: number): Promise<StoredMessage[]>;
+  /**
+   * Devuelve los pendientes (tareas/recordatorios sin marcar como hechos), los
+   * más recientes primero.
+   */
+  pending(limit?: number): Promise<StoredMessage[]>;
+  /**
+   * Devuelve los mensajes guardados en el rango `[from, to)` (por `fecha`), los
+   * más recientes primero. Lo usa el resumen diario para "lo de ayer".
+   */
+  savedBetween(from: Date, to: Date): Promise<StoredMessage[]>;
 }
 
 /**
@@ -35,6 +48,7 @@ export class InMemoryMessageRepository implements MessageRepository {
     const stored: StoredMessage = {
       ...record,
       id: `mem_${++this.seq}`,
+      hecho: false,
       fecha: new Date(),
     };
     this.items.push(stored);
@@ -43,6 +57,16 @@ export class InMemoryMessageRepository implements MessageRepository {
 
   async search(query: string, limit?: number): Promise<StoredMessage[]> {
     return searchMessages(this.items, query, limit);
+  }
+
+  async pending(limit?: number): Promise<StoredMessage[]> {
+    return pendingMessages(this.items, limit);
+  }
+
+  async savedBetween(from: Date, to: Date): Promise<StoredMessage[]> {
+    return this.items
+      .filter((m) => m.fecha.getTime() >= from.getTime() && m.fecha.getTime() < to.getTime())
+      .sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
   }
 
   /** Devuelve una copia de todos los registros guardados (solo para inspección). */

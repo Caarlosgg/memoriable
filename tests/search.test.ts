@@ -8,6 +8,7 @@ function msg(overrides: Partial<StoredMessage> & { id: string }): StoredMessage 
     contenido: '',
     categoria: 'nota',
     resumen: '',
+    hecho: false,
     fecha: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
   };

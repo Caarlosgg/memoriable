@@ -8,6 +8,7 @@ const base: StoredMessage = {
   contenido: 'contenido',
   categoria: 'tarea',
   resumen: 'Comprar pan',
+  hecho: false,
   fecha: new Date('2026-01-05T10:00:00.000Z'),
 };
 

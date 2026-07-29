@@ -15,6 +15,7 @@ export const REPLIES = {
   empty: '🤔 No he recibido texto que analizar. Escríbeme algo y lo clasifico.',
   error: '⚠️ No he podido procesar tu mensaje. Inténtalo de nuevo en un momento.',
   searchUsage: 'ℹ️ Escribe qué quieres buscar. Ejemplo: <code>/buscar factura luz</code>',
+  noPending: '✅ No tienes nada pendiente. ¡Todo al día!',
 } as const;
 
 /**
@@ -47,6 +48,27 @@ export async function handleSearchCommand(
     });
   } catch (err) {
     logger?.error('telegram.search_failed', errorContext(err));
+    return REPLIES.error;
+  }
+}
+
+/**
+ * Maneja `/pendientes`: lista las tareas/recordatorios sin marcar como hechos,
+ * las más recientes primero, como tarjetas. **Nunca lanza**: ante un fallo
+ * interno devuelve un mensaje de error y lo registra.
+ */
+export async function handlePendingCommand(
+  pipeline: Pipeline,
+  logger: Logger | undefined = pipeline.logger,
+): Promise<string> {
+  try {
+    const results = await pipeline.repository.pending();
+    return formatMessageList(results, {
+      header: '📋 Tus pendientes (tareas y recordatorios):',
+      empty: REPLIES.noPending,
+    });
+  } catch (err) {
+    logger?.error('telegram.pending_failed', errorContext(err));
     return REPLIES.error;
   }
 }
@@ -100,6 +122,11 @@ export function createBot(
 
   bot.command('buscar', async (ctx) => {
     const reply = await handleSearchCommand(commandArgument(ctx.message.text), pipeline, logger);
+    await ctx.reply(reply, { parse_mode: 'HTML' });
+  });
+
+  bot.command('pendientes', async (ctx) => {
+    const reply = await handlePendingCommand(pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 

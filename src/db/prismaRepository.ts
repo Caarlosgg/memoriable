@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import type { MessageRepository, NewMessage, StoredMessage } from './repository.js';
 import { DEFAULT_SEARCH_LIMIT } from './search.js';
+import { ACTIONABLE_CATEGORIES, DEFAULT_PENDING_LIMIT } from './pending.js';
 
 /**
  * Repositorio respaldado por Prisma/PostgreSQL.
@@ -61,6 +62,28 @@ export class PrismaMessageRepository implements MessageRepository {
       },
       orderBy: { fecha: 'desc' },
       take: Math.max(0, limit),
+    });
+  }
+
+  async pending(limit: number = DEFAULT_PENDING_LIMIT): Promise<StoredMessage[]> {
+    const client = await this.getClient();
+    // Pendientes = accionables (tarea/recordatorio) que aún no están hechos.
+    return client.message.findMany({
+      where: {
+        hecho: false,
+        categoria: { in: [...ACTIONABLE_CATEGORIES] },
+      },
+      orderBy: { fecha: 'desc' },
+      take: Math.max(0, limit),
+    });
+  }
+
+  async savedBetween(from: Date, to: Date): Promise<StoredMessage[]> {
+    const client = await this.getClient();
+    // Rango semiabierto [from, to): incluye el inicio, excluye el fin.
+    return client.message.findMany({
+      where: { fecha: { gte: from, lt: to } },
+      orderBy: { fecha: 'desc' },
     });
   }
 }

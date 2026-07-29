@@ -29,6 +29,9 @@ model Message {
   categoria String
   /// Resumen conciso generado por la IA.
   resumen   String
+  /// ¿Está marcado como hecho? Solo relevante para categorías accionables
+  /// (tarea/recordatorio). Al crearse siempre nace pendiente (false).
+  hecho     Boolean  @default(false)
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
@@ -40,5 +43,6 @@ model Message {
 
   @@index([categoria])
   @@index([fecha])
+  @@index([hecho])
   @@map("messages")
 }
