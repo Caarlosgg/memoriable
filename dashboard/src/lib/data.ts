@@ -39,3 +39,28 @@ export async function getCategoryGroups(): Promise<CategoryGroup[]> {
     messages: messagesByCategory[i]!,
   }));
 }
+
+/** Resultados devueltos por una búsqueda. */
+const SEARCH_LIMIT = 15;
+
+/**
+ * Busca mensajes cuyo contenido o resumen contengan `query` (coincidencia de
+ * texto, case-insensitive vía ILIKE), los más recientes primero. Mismo
+ * comportamiento que el /buscar del bot, reimplementado aquí porque el
+ * dashboard tiene su propio cliente de Prisma (ver prisma/schema.prisma).
+ */
+export async function searchMessages(query: string): Promise<Message[]> {
+  const needle = query.trim();
+  if (needle === "") return [];
+
+  return prisma.message.findMany({
+    where: {
+      OR: [
+        { contenido: { contains: needle, mode: "insensitive" } },
+        { resumen: { contains: needle, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { fecha: "desc" },
+    take: SEARCH_LIMIT,
+  });
+}
