@@ -21,6 +21,17 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
    la respuesta de la IA) tiene tests. Los tests no dependen de servicios reales
    (Telegram, PostgreSQL, API de Anthropic): se usan mocks e inyección de
    dependencias.
+4. **Cualquier comando que toque el esquema o los datos de una base de datos
+   de producción exige confirmación explícita, SIEMPRE, sin excepción.**
+   Incluye (no exhaustivo): `prisma migrate deploy`, `prisma migrate dev`,
+   `prisma db push`, `prisma db seed`, `prisma studio`, y cualquier
+   equivalente (scripts de npm que los invoquen, SQL directo contra la BD
+   real, etc.). Esto **no es negociable ni situacional**: da igual que el
+   cambio sea aditivo y no destructivo (p. ej. añadir una columna con
+   `DEFAULT`) — nunca se auto-aprueba. Se pregunta primero, siempre, pase lo
+   que pase. Los comandos de solo lectura contra la BD real (`prisma migrate
+   status`, `prisma validate`, `prisma generate`) no están sujetos a esta
+   regla.
 
 ## Principios de arquitectura
 
@@ -46,8 +57,9 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
   narrar cada sub-paso intermedio. Si no cabe en 5-6 líneas, se está
   detallando de más.
 - **Decisión autónoma.** Se decide sin pedir confirmación en decisiones de
-  diseño razonables. Solo se para ante algo que pueda sobrescribir datos
-  guardados de forma irreversible.
+  diseño razonables. Se para ante algo que pueda sobrescribir datos guardados
+  de forma irreversible, y **siempre** ante lo descrito en la regla 4
+  (esquema/datos de producción), sea o no reversible el cambio.
 
 ## Variables de entorno
 
