@@ -14,6 +14,9 @@ prisma/migrations/dev.db*
 # Contador del fusible de coste (estado local, no se versiona)
 .budget.json
 
+# Marca del último resumen diario enviado (estado local, no se versiona)
+.daily-summary.json
+
 # Logs y varios
 *.log
 npm-debug.log*

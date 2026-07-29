@@ -8,6 +8,7 @@ import { resolvePipeline } from '../pipeline/factory.js';
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
+import { startDailySummary } from '../summary/scheduler.js';
 
 /** Respuestas al usuario, centralizadas para poder testearlas. */
 export const REPLIES = {
@@ -242,8 +243,12 @@ export function startBot(
     if (outcome !== 'stopped') process.exitCode = 1;
   });
 
+  // Resumen diario proactivo (si hay TELEGRAM_CHAT_ID configurado).
+  const dailySummary = startDailySummary(bot, pipeline.repository, logger);
+
   const stop = (signal: string) => {
     logger.info('telegram.stopping', { signal });
+    dailySummary?.stop();
     bot.stop(signal);
   };
   process.once('SIGINT', () => stop('SIGINT'));

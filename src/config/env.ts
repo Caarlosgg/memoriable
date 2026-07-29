@@ -22,6 +22,9 @@ export const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 /** Fusible de coste por defecto: deliberadamente bajo. */
 export const DEFAULT_MAX_MESSAGES_PER_DAY = 50;
 
+/** Hora (0-23, hora local) por defecto del resumen diario proactivo. */
+export const DEFAULT_DAILY_SUMMARY_HOUR = 9;
+
 export type RequiredEnvVar = 'DATABASE_URL' | 'TELEGRAM_BOT_TOKEN' | 'GROQ_API_KEY';
 
 interface EnvVarSpec {
@@ -128,6 +131,24 @@ export function readPositiveInt(name: string, fallback: number): number {
   return parsed;
 }
 
+/**
+ * Lee una hora del día (entero 0-23). Fuera de rango o inválida: registra un
+ * aviso y devuelve el valor por defecto, sin romper el arranque.
+ */
+export function readHourOfDay(name: string, fallback: number): number {
+  const raw = readString(name);
+  if (raw === undefined) return fallback;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 23) {
+    configWarnings.push(
+      `${name}="${raw}" no es una hora válida (0-23); se usa el valor por defecto ${fallback}.`,
+    );
+    return fallback;
+  }
+  return parsed;
+}
+
 export const env = {
   DATABASE_URL: readString('DATABASE_URL'),
   TELEGRAM_BOT_TOKEN: readString('TELEGRAM_BOT_TOKEN'),
@@ -137,6 +158,12 @@ export const env = {
   MAX_MESSAGES_PER_DAY: readPositiveInt('MAX_MESSAGES_PER_DAY', DEFAULT_MAX_MESSAGES_PER_DAY),
   /** Fichero donde persiste el contador del fusible (debe ser escribible). */
   BUDGET_FILE: readString('BUDGET_FILE'),
+  /** Chat de Telegram al que se envía el resumen diario proactivo. */
+  TELEGRAM_CHAT_ID: readString('TELEGRAM_CHAT_ID'),
+  /** Hora local (0-23) a la que se envía el resumen diario. */
+  DAILY_SUMMARY_HOUR: readHourOfDay('DAILY_SUMMARY_HOUR', DEFAULT_DAILY_SUMMARY_HOUR),
+  /** Fichero donde persiste la marca del último resumen diario enviado. */
+  DAILY_SUMMARY_STATE_FILE: readString('DAILY_SUMMARY_STATE_FILE'),
   LOG_LEVEL: readString('LOG_LEVEL'),
 } as const;
 
