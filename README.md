@@ -34,6 +34,12 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
   por defecto: el modelo más barato que resuelve bien clasificar/resumir un
   mensaje corto).
 - **Persistencia** en PostgreSQL con Prisma (esquema tipado y migraciones).
+- **Comandos de consulta**: `/buscar <texto>` (coincidencia de texto sobre
+  contenido y resumen) y `/pendientes` (tareas y recordatorios sin hacer),
+  con el menú publicado en Telegram vía `setMyCommands`.
+- **Resumen diario proactivo** (node-cron): a la hora configurable
+  (`DAILY_SUMMARY_HOUR`) envía los pendientes y lo guardado el día anterior;
+  idempotente ante reinicios del proceso.
 - **Bot de Telegram** con Telegraf en modo *polling*, con reconexión automática
   ante caídas y logs claros si el token es inválido. Cada respuesta se
   presenta como una tarjeta HTML (`formatResponseCard()`): categoría en
@@ -152,6 +158,9 @@ npm run prisma:deploy
 | `ANTHROPIC_MODEL`       | Modelo de Claude (opcional)                               | — (def. `claude-haiku-4-5`) |
 | `MAX_MESSAGES_PER_DAY`  | Fusible de coste: máx. llamadas a Anthropic por día (opcional) | — (def. `50`)    |
 | `BUDGET_FILE`           | Fichero donde persiste el contador del fusible (opcional) | — (def. `.budget.json`) |
+| `TELEGRAM_CHAT_ID`      | Chat al que se envía el resumen diario proactivo          | Resumen diario        |
+| `DAILY_SUMMARY_HOUR`    | Hora local (0-23) del resumen diario (opcional)           | — (def. `9`)          |
+| `DAILY_SUMMARY_STATE_FILE` | Fichero donde persiste la marca del último resumen enviado (opcional) | — (def. `.daily-summary.json`) |
 | `LOG_LEVEL`             | Nivel de log: `debug`\|`info`\|`warn`\|`error` (opcional) | — (def. `info`)       |
 
 Los secretos **nunca** se hardcodean: viven en `.env` (no versionado). El
@@ -196,6 +205,26 @@ mensaje, no una conexión larga y persistente.
 ---
 
 ## 🕹️ Uso
+
+### Comandos del bot
+
+Al escribir `/` en el chat, Telegram muestra el menú (se publica al arrancar
+con `setMyCommands`, sin tocar @BotFather):
+
+| Comando        | Qué hace                                                                 |
+| -------------- | ------------------------------------------------------------------------ |
+| `/buscar <texto>` | Busca coincidencias de texto (case-insensitive) en el contenido y el resumen de tus mensajes; devuelve los más recientes como tarjetas. |
+| `/pendientes`  | Lista tus tareas y recordatorios que aún no están hechos.                |
+| `/start`       | Mensaje de bienvenida.                                                    |
+
+Además, cualquier mensaje normal se categoriza, se resume y se guarda.
+
+**Resumen diario proactivo.** Si defines `TELEGRAM_CHAT_ID`, el bot te envía
+cada día a la hora `DAILY_SUMMARY_HOUR` (por defecto las 9:00, hora local) un
+resumen con tus pendientes actuales y lo que guardaste el día anterior. Es
+idempotente: sobrevive a reinicios del proceso sin duplicar el envío del mismo
+día. Para conocer tu `TELEGRAM_CHAT_ID`, escribe al bot y míralo en los logs, o
+usa [@userinfobot](https://t.me/userinfobot).
 
 ### Simular un mensaje (sin Telegram ni base de datos)
 
