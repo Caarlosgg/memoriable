@@ -29,10 +29,10 @@ export async function proxy(request: NextRequest) {
 
 // No corre sobre: rutas de API (comprueban su propia sesión y responden 401
 // en JSON en vez de redirigir), assets de Next, ni los recursos públicos de
-// la PWA (manifest, iconos, service worker, página offline) — estos deben
-// poder pedirse sin sesión.
+// la PWA (manifest, iconos, service worker) — estos deben poder pedirse sin
+// sesión (el propio SO/navegador los pide al instalar la app).
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|manifest\\.webmanifest|icon|apple-icon|icons|sw\\.js|offline).*)",
+    "/((?!api|_next/static|_next/image|manifest\\.webmanifest|icon|apple-icon|icons|sw\\.js).*)",
   ],
 };
