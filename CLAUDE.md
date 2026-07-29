@@ -12,6 +12,10 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
 2. **Cada commit compila y pasa los tests.** Antes de commitear:
    `npm run typecheck && npm test` deben terminar en verde. No se commitea
    código que rompa el build o deje tests fallando.
+   - **Commits agrupados por hito funcional completo**, no por cada paso
+     intermedio. Si una tarea tiene 5 sub-pasos relacionados, es un commit al
+     final, no cinco. Excepción: si un cambio es arriesgado o de verdad
+     independiente, sí merece su propio commit.
 3. **Cobertura de tests para la lógica de negocio.** Toda la lógica de negocio
    (categorización/resumen, pipeline de procesamiento, repositorios, parsing de
    la respuesta de la IA) tiene tests. Los tests no dependen de servicios reales
@@ -30,6 +34,20 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
   por implementaciones en memoria / mock en los tests y en el CLI de simulación.
 - **Interfaces sobre implementaciones.** El pipeline depende de interfaces, no
   de Prisma ni de la SDK de Anthropic directamente.
+
+## Estilo de trabajo (eficiencia)
+
+- **Documentación solo cuando cambia la superficie externa.** `README.md` y
+  `SETUP.md` se tocan únicamente cuando cambia algo que afecta a cómo se
+  instala, configura o usa el proyecto desde fuera (nueva variable de entorno,
+  nuevo comando, cambio de flujo). Los cambios internos de implementación no
+  requieren tocar documentación.
+- **Resúmenes de fin de sesión breves.** Lista de qué cambió y por qué, sin
+  narrar cada sub-paso intermedio. Si no cabe en 5-6 líneas, se está
+  detallando de más.
+- **Decisión autónoma.** Se decide sin pedir confirmación en decisiones de
+  diseño razonables. Solo se para ante algo que pueda sobrescribir datos
+  guardados de forma irreversible.
 
 ## Variables de entorno
 
