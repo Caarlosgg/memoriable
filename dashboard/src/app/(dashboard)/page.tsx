@@ -1,7 +1,13 @@
-export default function Home() {
+import { Suspense } from "react";
+import { CategoriesSection } from "@/components/CategoriesSection";
+import { CategoriesSkeleton } from "@/components/CategoriesSkeleton";
+
+export default function DashboardPage() {
   return (
-    <main className="flex flex-1 items-center justify-center p-6">
-      <p className="text-slate-500">Memoria IA — dashboard en construcción.</p>
-    </main>
+    <div className="flex flex-col gap-8">
+      <Suspense fallback={<CategoriesSkeleton />}>
+        <CategoriesSection />
+      </Suspense>
+    </div>
   );
 }
