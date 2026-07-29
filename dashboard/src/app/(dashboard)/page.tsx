@@ -4,19 +4,26 @@ import { CategoriesSkeleton } from "@/components/CategoriesSkeleton";
 import { PendingSection } from "@/components/PendingSection";
 import { PendingSkeleton } from "@/components/PendingSkeleton";
 import { SearchSection } from "@/components/SearchSection";
+import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 
 export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-8">
-      <SearchSection />
+      <SectionErrorBoundary title="Buscador">
+        <SearchSection />
+      </SectionErrorBoundary>
 
-      <Suspense fallback={<PendingSkeleton />}>
-        <PendingSection />
-      </Suspense>
+      <SectionErrorBoundary title="Pendientes">
+        <Suspense fallback={<PendingSkeleton />}>
+          <PendingSection />
+        </Suspense>
+      </SectionErrorBoundary>
 
-      <Suspense fallback={<CategoriesSkeleton />}>
-        <CategoriesSection />
-      </Suspense>
+      <SectionErrorBoundary title="Categorías">
+        <Suspense fallback={<CategoriesSkeleton />}>
+          <CategoriesSection />
+        </Suspense>
+      </SectionErrorBoundary>
     </div>
   );
 }
