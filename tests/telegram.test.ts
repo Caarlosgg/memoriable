@@ -5,6 +5,7 @@ import { InMemoryMessageRepository } from '../src/db/repository.js';
 import { createMemoryLogger } from '../src/logging/logger.js';
 import type { Categorizer } from '../src/ai/types.js';
 import {
+  BOT_COMMANDS,
   REPLIES,
   commandArgument,
   createBot,
@@ -12,6 +13,7 @@ import {
   handleSearchCommand,
   handleTextMessage,
   launchWithRetry,
+  registerCommands,
 } from '../src/telegram/bot.js';
 import { describeTelegramError, isValidTokenFormat } from '../src/telegram/errors.js';
 
@@ -213,6 +215,38 @@ describe('handlePendingCommand', () => {
     expect(reply).toBe(REPLIES.error);
     expect(records.find((r) => r.event === 'telegram.pending_failed')).toMatchObject({
       level: 'error',
+    });
+  });
+});
+
+describe('registerCommands', () => {
+  it('el menú incluye al menos /buscar y /pendientes', () => {
+    const names = BOT_COMMANDS.map((c) => c.command);
+    expect(names).toContain('buscar');
+    expect(names).toContain('pendientes');
+  });
+
+  it('publica el menú vía setMyCommands y lo registra', async () => {
+    const { logger, records } = createMemoryLogger();
+    const setMyCommands = vi.fn().mockResolvedValue(true);
+
+    await registerCommands({ telegram: { setMyCommands } } as never, logger);
+
+    expect(setMyCommands).toHaveBeenCalledWith([...BOT_COMMANDS]);
+    expect(records.find((r) => r.event === 'telegram.commands_registered')).toMatchObject({
+      level: 'info',
+    });
+  });
+
+  it('nunca lanza: si la API falla, avisa pero no rompe', async () => {
+    const { logger, records } = createMemoryLogger();
+    const setMyCommands = vi.fn().mockRejectedValue(new Error('API caída'));
+
+    await expect(
+      registerCommands({ telegram: { setMyCommands } } as never, logger),
+    ).resolves.toBeUndefined();
+    expect(records.find((r) => r.event === 'telegram.commands_register_failed')).toMatchObject({
+      level: 'warn',
     });
   });
 });

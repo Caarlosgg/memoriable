@@ -29,6 +29,32 @@ export function commandArgument(text: string): string {
 }
 
 /**
+ * Menú de comandos que se publica en Telegram con `setMyCommands`, de modo que
+ * aparezcan al escribir "/" en el chat (sin tocarlos a mano en @BotFather).
+ */
+export const BOT_COMMANDS = [
+  { command: 'start', description: 'Empezar y ver cómo funciona el bot' },
+  { command: 'buscar', description: 'Buscar en tus mensajes guardados' },
+  { command: 'pendientes', description: 'Ver tus tareas y recordatorios pendientes' },
+] as const;
+
+/**
+ * Publica el menú de comandos vía la API del bot. No es crítico: si falla (p.
+ * ej. red), se registra un aviso pero el bot sigue funcionando. **Nunca lanza.**
+ */
+export async function registerCommands(
+  bot: Pick<Telegraf, 'telegram'>,
+  logger: Logger,
+): Promise<void> {
+  try {
+    await bot.telegram.setMyCommands([...BOT_COMMANDS]);
+    logger.info('telegram.commands_registered', { count: BOT_COMMANDS.length });
+  } catch (err) {
+    logger.warn('telegram.commands_register_failed', errorContext(err));
+  }
+}
+
+/**
  * Maneja `/buscar <texto>`: busca coincidencias de texto y las devuelve como
  * tarjetas, las más recientes primero. **Nunca lanza**: ante un fallo interno
  * devuelve un mensaje de error y lo registra.
@@ -242,6 +268,9 @@ export function startBot(
   void launchWithRetry(() => bot.launch(), { logger }).then((outcome) => {
     if (outcome !== 'stopped') process.exitCode = 1;
   });
+
+  // Publica el menú de comandos (/buscar, /pendientes, ...) en Telegram.
+  void registerCommands(bot, logger);
 
   // Resumen diario proactivo (si hay TELEGRAM_CHAT_ID configurado).
   const dailySummary = startDailySummary(bot, pipeline.repository, logger);
