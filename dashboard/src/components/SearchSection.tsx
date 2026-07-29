@@ -98,7 +98,7 @@ export function SearchSection() {
       )}
 
       {status === "done" && results.length === 0 && (
-        <p className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-400">
+        <p className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
           No he encontrado nada que coincida con «{query}». Prueba con otra
           palabra.
         </p>

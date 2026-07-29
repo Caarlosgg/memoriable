@@ -41,7 +41,7 @@ export function MessageCard({
         )}
       </p>
       <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-slate-400">{formatDate(message.fecha)}</p>
+        <p className="text-xs text-slate-500">{formatDate(message.fecha)}</p>
         {children}
       </div>
     </li>

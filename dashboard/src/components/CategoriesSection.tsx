@@ -44,7 +44,7 @@ function CategoryCard({ group }: { group: CategoryGroup }) {
       </h2>
 
       {group.messages.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-400">
+        <p className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
           Nada por aquí todavía.
         </p>
       ) : (
