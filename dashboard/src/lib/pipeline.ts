@@ -4,7 +4,8 @@ import { processMessage } from "./botPipeline/processMessage";
 import { GroqCategorizer, type GroqChatClient } from "./botPipeline/categorizer";
 import { OfflineCategorizer } from "./botPipeline/offlineCategorizer";
 import { ResilientCategorizer } from "./botPipeline/resilientCategorizer";
-import type { Categorizer } from "./botPipeline/types";
+import { GeminiEmbedder, NullEmbedder } from "./botPipeline/embedder";
+import type { Categorizer, Embedder } from "./botPipeline/types";
 import type { MessageRepository, NewMessage, StoredMessage } from "./botPipeline/repository";
 import { prisma } from "./prisma";
 import { isCategory, type Category } from "./categories";
@@ -40,10 +41,36 @@ function toStoredMessage(row: {
   return { ...row, categoria: toCategory(row.categoria) };
 }
 
+/** Convierte un vector a la forma que pgvector acepta casteada (`::vector`). */
+function toVectorLiteral(embedding: number[]): string {
+  return `[${embedding.join(",")}]`;
+}
+
 /** Repositorio propio del dashboard: mismas operaciones, con su propio Prisma. */
 class DashboardMessageRepository implements MessageRepository {
   async save(record: NewMessage): Promise<StoredMessage> {
-    const row = await prisma.message.create({ data: record });
+    // Insert tipado primero (siempre fiable) y luego, si hay embedding, un
+    // UPDATE aparte para la columna Unsupported — igual que en
+    // src/db/prismaRepository.ts del bot (mismo motivo: Prisma excluye los
+    // tipos Unsupported del cliente tipado, así que solo se puede escribir
+    // con SQL crudo, y separarlo evita que un fallo ahí tumbe el guardado).
+    const row = await prisma.message.create({
+      data: {
+        tipo: record.tipo,
+        contenido: record.contenido,
+        categoria: record.categoria,
+        resumen: record.resumen,
+      },
+    });
+
+    if (record.embedding && record.embedding.length > 0) {
+      try {
+        await prisma.$executeRaw`UPDATE "messages" SET "embedding" = ${toVectorLiteral(record.embedding)}::vector WHERE "id" = ${row.id}`;
+      } catch {
+        // No crítico: el mensaje ya está guardado; backfill puede rellenarlo.
+      }
+    }
+
     return toStoredMessage(row);
   }
 
@@ -81,6 +108,8 @@ class DashboardMessageRepository implements MessageRepository {
   }
 }
 
+const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
+
 /** Cae al categorizador offline si no hay GROQ_API_KEY, igual que hace el bot. */
 function resolveCategorizer(): Categorizer {
   const offline = new OfflineCategorizer();
@@ -93,13 +122,29 @@ function resolveCategorizer(): Categorizer {
 }
 
 /**
+ * Sin GEMINI_API_KEY, `NullEmbedder` hace que la captura siga guardando
+ * mensajes con normalidad, solo que sin embedding (backfill posterior).
+ * Exportada porque la búsqueda híbrida y el Asistente también la necesitan
+ * para generar el vector de la consulta/pregunta.
+ */
+export function resolveEmbedder(): Embedder {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return new NullEmbedder();
+  return new GeminiEmbedder(apiKey, { model: process.env.GEMINI_MODEL || DEFAULT_EMBEDDING_MODEL });
+}
+
+/**
  * Punto de entrada de la captura rápida: mismo pipeline que usa el bot
- * (sanea → categoriza → guarda), con el categorizador y repositorio propios
- * del dashboard inyectados.
+ * (sanea → categoriza → embebe → guarda), con el categorizador, embedder y
+ * repositorio propios del dashboard inyectados.
  */
 export async function captureMessage(contenido: string): Promise<StoredMessage> {
   return processMessage(
     { tipo: "text", contenido },
-    { categorizer: resolveCategorizer(), repository: new DashboardMessageRepository() },
+    {
+      categorizer: resolveCategorizer(),
+      embedder: resolveEmbedder(),
+      repository: new DashboardMessageRepository(),
+    },
   );
 }

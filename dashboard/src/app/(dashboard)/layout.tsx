@@ -1,5 +1,7 @@
 import { verifySession } from "@/lib/dal";
-import { logout } from "@/app/actions";
+import { Sidebar } from "@/components/nav/Sidebar";
+import { BottomTabs } from "@/components/nav/BottomTabs";
+import { MobileHeader } from "@/components/nav/MobileHeader";
 
 export default async function DashboardLayout({
   children,
@@ -11,23 +13,16 @@ export default async function DashboardLayout({
   await verifySession();
 
   return (
-    <>
-      <header className="flex items-center justify-between gap-4 border-b border-paper-line bg-paper-raised px-4 py-3 sm:px-6">
-        <h1 className="font-display text-lg font-semibold tracking-tight text-ink">
-          MemorIAble
-        </h1>
-        <form action={logout}>
-          <button
-            type="submit"
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            Salir
-          </button>
-        </form>
-      </header>
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 sm:px-6">
-        {children}
-      </main>
-    </>
+    <div className="flex min-h-screen flex-1">
+      <Sidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <MobileHeader />
+        {/* pb-20 en móvil: deja hueco para la barra de pestañas fija (BottomTabs). */}
+        <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 pb-24 sm:px-6 sm:pb-6">
+          {children}
+        </main>
+      </div>
+      <BottomTabs />
+    </div>
   );
 }

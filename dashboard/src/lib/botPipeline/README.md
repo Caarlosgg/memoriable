@@ -3,7 +3,8 @@
 Los archivos de esta carpeta son copias de la lógica pura del bot
 (`../../../../src/{ai,pipeline,db,logging}/*`): `processMessage`,
 `sanitizeContent`, `GroqCategorizer`, `OfflineCategorizer`,
-`ResilientCategorizer` y las interfaces `Categorizer`/`MessageRepository`.
+`ResilientCategorizer`, `GeminiEmbedder`/`NullEmbedder` y las interfaces
+`Categorizer`/`Embedder`/`MessageRepository`.
 
 ## Por qué una copia y no un import directo
 
@@ -25,11 +26,11 @@ del bot a `bundler` rompería `tsx`/Node en el propio bot. De ahí la copia.
 
 Si cambias alguno de estos archivos en el bot, replica el cambio aquí (y
 viceversa). Son pocos y estables: la lógica de categorización, saneado y
-orquestación del pipeline no cambia a menudo. `resolveCategorizer()` y
-`DashboardMessageRepository` en `../pipeline.ts` son las ÚNICAS piezas
-genuinamente propias del dashboard (el cliente de Groq y el Prisma son
-suyos); todo lo demás en esta carpeta debería ser un calco byte a byte de su
-homólogo en `src/`.
+orquestación del pipeline no cambia a menudo. `resolveCategorizer()`,
+`resolveEmbedder()` y `DashboardMessageRepository` en `../pipeline.ts` son
+las ÚNICAS piezas genuinamente propias del dashboard (el cliente de Groq,
+el de Gemini y el Prisma son suyos); todo lo demás en esta carpeta debería
+ser un calco byte a byte de su homólogo en `src/`.
 
 No se copió `BudgetedCategorizer`: su fusible de coste persiste en un
 fichero local pensado para un proceso de larga duración, algo sin sentido en

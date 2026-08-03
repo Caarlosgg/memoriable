@@ -9,24 +9,33 @@ Tailwind, con su propio despliegue en Vercel, independiente del bot.
 
 - **Login** por contraseña (`DASHBOARD_PASSWORD`), con cookie de sesión
   firmada.
+- **Navegación** con sidebar colapsable en desktop y barra de pestañas en
+  móvil, entre cuatro apartados: Asistente, Buscador, Categorías y
+  Pendientes (ver [Navegación](#navegación)).
+- **Asistente conversacional** (pantalla de inicio): preguntas en lenguaje
+  natural sobre tus notas guardadas, respondidas por Groq en streaming a
+  partir de lo que encuentra por similitud semántica, citando de qué notas
+  concretas sale la información — nunca inventa si no encuentra nada. Ver
+  [Asistente y búsqueda semántica](#asistente-y-búsqueda-semántica).
 - **Captura rápida**: un input que pasa por el MISMO pipeline que el bot
-  de Telegram (categoriza + resume + guarda), ver
+  de Telegram (categoriza + resume + genera su embedding + guarda), ver
   [Cómo reutiliza el pipeline del bot](#cómo-reutiliza-el-pipeline-del-bot).
 - **Vista principal por categorías**, con skeletons de carga y estados
   vacíos con mensaje útil.
-- **Buscador en tiempo real** (debounce) con highlight del término
-  encontrado.
+- **Buscador híbrido** (debounce): texto exacto primero, similitud
+  semántica como complemento, con filtro por categoría. Highlight del
+  término encontrado.
 - **Pendientes**: marca tareas/recordatorios como hechos, con contador
   visible.
 - **Instalable como PWA** (Add to Home Screen en iPhone, abre a
   pantalla completa).
 - **Cada sección tiene su propio estado de error** con botón
-  Reintentar: un fallo puntual (p. ej. la búsqueda) no rompe el resto.
+  Reintentar: un fallo puntual (p. ej. la búsqueda o el Asistente) no
+  rompe el resto.
 - **Aviso de sin conexión**, no intrusivo.
 
-No incluye (fuera de alcance, ver el README del bot →
-[ROADMAP.md](../ROADMAP.md)): búsqueda semántica, más de un usuario,
-edición de mensajes.
+No incluye (fuera de alcance, ver [ROADMAP.md](../ROADMAP.md)): más de un
+usuario, edición de mensajes ya guardados, imágenes/documentos/adjuntos.
 
 ## Cómo reutiliza los datos del bot
 
@@ -82,6 +91,60 @@ su propio cliente de Groq (`groq-sdk`, ya una dependencia del dashboard) y
 su propio repositorio (con su Prisma). Ver
 [Variables de entorno](#variables-de-entorno) para `GROQ_API_KEY`.
 
+## Navegación
+
+Sidebar colapsable en desktop (`src/components/nav/Sidebar.tsx`) que en
+móvil se convierte en una barra de pestañas fija abajo
+(`BottomTabs.tsx`) — con solo 4 destinos, una barra de pestañas se siente
+más nativa que un menú hamburguesa, que tiene más sentido con listas
+largas. La sección activa se marca con el color de acento, no solo en
+negrita. `src/components/nav/navItems.ts` es la única fuente de verdad
+de los 4 destinos, compartida por ambos componentes.
+
+El colapso del sidebar es la única animación de Framer Motion del
+dashboard (import dinámico vía `next/dynamic`, para no meterlo en el
+bundle inicial): es una transición de ancho con física de resorte que
+CSS no reproduce bien. Todo lo demás (`fade-in`, transiciones de color,
+skeletons) es CSS/Tailwind puro, y respeta `prefers-reduced-motion`.
+
+`/` redirige a `/asistente` (pantalla de inicio). Las rutas viven en
+`src/app/(dashboard)/{asistente,buscador,categorias,pendientes}/page.tsx`.
+
+## Asistente y búsqueda semántica
+
+Cada mensaje guardado (bot o captura rápida) genera un embedding con la
+API gratuita de Gemini (`gemini-embedding-001`, `GEMINI_API_KEY`) al
+guardarse — ver el porqué de las dimensiones/índice HNSW en
+`../prisma/schema.prisma`. Sin `GEMINI_API_KEY`, el mensaje se guarda
+igual, solo que sin embedding.
+
+- **Buscador** (`src/lib/hybridSearch.ts`): combina la búsqueda de texto
+  (ILIKE, la que ya había) con similitud semántica — el texto va
+  siempre primero y en su propio orden; lo semántico solo rellena huecos
+  hasta el límite, nunca sustituye una coincidencia exacta. Sin
+  `GEMINI_API_KEY` (o si Gemini falla), se queda solo con texto — no
+  rompe nada.
+- **Asistente** (`src/app/api/asistente/route.ts` +
+  `src/components/AssistantChat.tsx`): la pregunta se embebe (Gemini),
+  se buscan las notas más similares (`src/lib/vectorSearch.ts`, pgvector),
+  y esa evidencia + la pregunta se pasan a Groq (`openai/gpt-oss-120b`,
+  vía el paquete `ai` + `@ai-sdk/groq` + `@ai-sdk/react`/`useChat`) para
+  sintetizar una respuesta en streaming, citando las notas por categoría y
+  fecha (nunca por id interno). El system prompt (`src/lib/assistantContext.ts`,
+  con tests) prohíbe explícitamente inventar: sin notas relevantes, dice
+  que no encuentra nada. Las fuentes usadas viajan como metadata del
+  mensaje (`messageMetadata` de la AI SDK) y se muestran como tarjetas
+  expandibles bajo la respuesta.
+- **Fusible de coste propio** (`ASSISTANT_MAX_QUESTIONS_PER_DAY`,
+  `src/lib/assistantBudget.ts`): un contador diario en Postgres (tabla
+  `AssistantBudget`) — no en fichero como el del bot
+  (`src/cost/budget.ts`), porque el dashboard es serverless y no tiene
+  disco persistente entre invocaciones.
+
+Los mensajes guardados **antes** de configurar `GEMINI_API_KEY` no tienen
+embedding retroactivamente: `npm run backfill-embeddings` (en la raíz,
+contra el bot) los rellena en un paso aparte.
+
 ## Desarrollo local
 
 ```bash
@@ -105,8 +168,11 @@ npm run build && npm start
 | --------------------- | ------------------------------------------------- | ----------- |
 | `DATABASE_URL`        | Conexión a PostgreSQL (la misma que usa el bot)    | Sí          |
 | `DASHBOARD_PASSWORD`  | Contraseña de acceso; también firma la cookie de sesión (si rota, las sesiones activas dejan de valer) | Sí |
-| `GROQ_API_KEY`        | API key de Groq, para que la captura rápida categorice con la misma IA que el bot | No — sin ella, cae al categorizador heurístico offline |
+| `GROQ_API_KEY`        | API key de Groq: categoriza la captura rápida y sintetiza las respuestas del Asistente | No para captura (cae a offline); el Asistente no tiene alternativa sin ella |
 | `GROQ_MODEL`          | Modelo servido por Groq (opcional)                | — (def. `openai/gpt-oss-120b`) |
+| `GEMINI_API_KEY`      | API key de Gemini, para el embedding de cada mensaje y de cada pregunta al Asistente | No — sin ella, todo sigue funcionando solo con texto |
+| `GEMINI_MODEL`        | Modelo de embeddings a usar (opcional)             | — (def. `gemini-embedding-001`) |
+| `ASSISTANT_MAX_QUESTIONS_PER_DAY` | Fusible de coste propio del Asistente (opcional) | — (def. `30`) |
 
 No hace falta `DIRECT_URL` aquí: esa variable es solo para migraciones,
 y el dashboard no migra.
@@ -117,6 +183,8 @@ y el dashboard no migra.
 - `npm run build` — build de producción.
 - `npm start` — arranca el build de producción.
 - `npm run lint` — ESLint.
+- `npm test` — batería de Vitest (lógica de búsqueda híbrida y
+  construcción del contexto del Asistente; mocks, sin llamadas reales).
 
 ## Despliegue en Vercel
 
@@ -135,8 +203,11 @@ que decirle a Vercel dónde vive el proyecto de Next.js.
      (pooler de Supavisor, puerto 6543).
    - `DASHBOARD_PASSWORD` — una contraseña larga y propia de este
      dashboard (no reutilices otra).
-   - `GROQ_API_KEY` (opcional) — para que la captura rápida categorice
-     con Groq en vez de caer siempre al heurístico offline.
+   - `GROQ_API_KEY` (opcional, pero necesaria para el Asistente) — sin
+     ella la captura rápida cae al heurístico offline, y el Asistente
+     responde con un aviso de que no está configurado.
+   - `GEMINI_API_KEY` (opcional) — para que el Buscador y el Asistente
+     usen similitud semántica, no solo texto.
 4. Deploy. El `postinstall` genera el cliente de Prisma como parte del
    build; no hace falta ningún paso manual adicional.
 
@@ -159,17 +230,30 @@ dashboard/
 │   └── schema.prisma       # copia propia (ver "Cómo reutiliza los datos del bot")
 ├── src/
 │   ├── app/
-│   │   ├── (dashboard)/    # rutas protegidas: layout con verifySession() + logout
+│   │   ├── (dashboard)/
+│   │   │   ├── asistente|buscador|categorias|pendientes/page.tsx  # las 4 secciones
+│   │   │   ├── layout.tsx  # verifySession() + Sidebar/BottomTabs/MobileHeader
+│   │   │   └── page.tsx    # redirect("/asistente")
 │   │   ├── login/          # público
-│   │   ├── api/search/     # Route Handler protegido (JSON, no redirige)
+│   │   ├── api/
+│   │   │   ├── search/     # Route Handler protegido (JSON, no redirige)
+│   │   │   └── asistente/  # streaming (ai SDK), su propia comprobación de sesión
 │   │   ├── manifest.ts     # PWA
 │   │   ├── icon.tsx, apple-icon.tsx, icons/192|512/  # iconos generados
 │   │   └── layout.tsx
-│   ├── components/         # secciones de la página + límites de error
+│   ├── components/
+│   │   ├── nav/            # Sidebar, BottomTabs, MobileHeader, navItems.ts
+│   │   ├── AssistantChat.tsx
+│   │   └── ...             # el resto de secciones + límites de error
 │   ├── lib/
 │   │   ├── botPipeline/    # copia sincronizada del pipeline del bot (ver su README)
-│   │   ├── pipeline.ts     # captureMessage(): fontanería propia (Groq + Prisma del dashboard)
+│   │   ├── pipeline.ts     # captureMessage(): fontanería propia (Groq/Gemini + Prisma)
+│   │   ├── vectorSearch.ts # findSimilarMessages() (pgvector, $queryRaw)
+│   │   ├── hybridSearch.ts # mezcla texto + semántica (con tests)
+│   │   ├── assistantContext.ts  # construcción del prompt/fuentes (con tests)
+│   │   ├── assistantBudget.ts   # fusible de coste del Asistente (Postgres)
 │   │   └── ...             # datos (Prisma), sesión, categorías, etc.
 │   └── proxy.ts             # antes "middleware.ts" (Next.js 16 lo renombró)
+├── tests/                    # Vitest: hybridSearch, assistantContext
 └── public/sw.js              # cachea solo el shell estático, nunca datos
 ```

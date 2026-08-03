@@ -19,14 +19,19 @@
 // fuente de verdad para las migraciones).
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
   // Runtime del dashboard: pooler de Supavisor en modo transacción (puerto
   // 6543). El dashboard nunca migra, así que no necesita DIRECT_URL.
-  url = env("DATABASE_URL")
+  url        = env("DATABASE_URL")
+  // pgvector: la activa/migra el bot (ver ../../prisma/), el dashboard solo
+  // la declara para que `prisma generate` sepa tratar `embedding` como
+  // Unsupported en vez de como drift.
+  extensions = [vector]
 }
 
 /// Un mensaje entrante ya categorizado y resumido.
@@ -46,8 +51,23 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
+  /// Ver ../../prisma/schema.prisma para el porqué de las dimensiones y del
+  /// acceso vía $queryRaw/$executeRaw (Prisma no soporta Unsupported en el
+  /// cliente tipado).
+  embedding Unsupported("vector(768)")?
+
   @@index([categoria])
   @@index([fecha])
   @@index([hecho])
   @@map("messages")
+}
+
+/// Ver ../../prisma/schema.prisma: fusible de coste propio del Asistente,
+/// backed por Postgres porque el dashboard es serverless (sin disco
+/// persistente entre invocaciones).
+model AssistantBudget {
+  day   String @id
+  count Int    @default(0)
+
+  @@map("assistant_budget")
 }

@@ -1,7 +1,7 @@
 // Copia sincronizada de ../../../../src/pipeline/processMessage.ts — ver
 // botPipeline/README.md para el porqué de la copia.
 
-import type { Categorizer, IncomingMessage } from './types';
+import type { Categorizer, Embedder, IncomingMessage } from './types';
 import type { MessageRepository, StoredMessage } from './repository';
 import { errorContext, type Logger } from './logger';
 import { InvalidMessageError, sanitizeContent } from './sanitize';
@@ -9,6 +9,8 @@ import { InvalidMessageError, sanitizeContent } from './sanitize';
 export interface Pipeline {
   categorizer: Categorizer;
   repository: MessageRepository;
+  /** Opcional: sin él (o si falla), el mensaje se guarda igual, sin embedding. */
+  embedder?: Embedder;
   /** Opcional: si no se pasa, el pipeline no registra nada (útil en tests). */
   logger?: Logger;
 }
@@ -32,7 +34,7 @@ const noopLogger: Pick<Logger, 'info' | 'warn' | 'error'> = {
  */
 export async function processMessage(
   message: IncomingMessage,
-  { categorizer, repository, logger }: Pipeline,
+  { categorizer, repository, embedder, logger }: Pipeline,
 ): Promise<StoredMessage> {
   const log = logger ?? noopLogger;
   const startedAt = Date.now();
@@ -58,7 +60,8 @@ export async function processMessage(
 
   try {
     const analysis = await categorizer.analyze(clean);
-    const stored = await repository.save({ ...clean, ...analysis });
+    const embedding = (await embedder?.embedDocument(clean.contenido)) ?? null;
+    const stored = await repository.save({ ...clean, ...analysis, embedding });
 
     log.info('message.processed', {
       id: stored.id,

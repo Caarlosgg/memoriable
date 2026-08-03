@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { searchMessages } from "@/lib/data";
+import { isCategory } from "@/lib/categories";
 
 // Fuera del matcher de proxy.ts (las rutas de API comprueban su propia
 // sesión y responden 401 en JSON en vez de redirigir a /login).
@@ -17,6 +18,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ query: q, results: [] });
   }
 
-  const results = await searchMessages(q);
+  // "todos" (o cualquier valor que no sea una categoría real) equivale a
+  // sin filtro, en vez de devolver un 400 por un valor inesperado.
+  const categoriaParam = request.nextUrl.searchParams.get("categoria");
+  const categoria = categoriaParam && isCategory(categoriaParam) ? categoriaParam : null;
+
+  const results = await searchMessages(q, categoria);
   return NextResponse.json({ query: q, results });
 }

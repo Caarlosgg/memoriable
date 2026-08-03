@@ -39,3 +39,12 @@ export interface Analysis {
 export interface Categorizer {
   analyze(message: IncomingMessage): Promise<Analysis>;
 }
+
+/**
+ * Contrato de generación de embeddings para búsqueda semántica. Nunca
+ * lanza: `null` significa "no se pudo generar".
+ */
+export interface Embedder {
+  embedDocument(text: string): Promise<number[] | null>;
+  embedQuery(text: string): Promise<number[] | null>;
+}
