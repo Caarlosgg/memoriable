@@ -1,7 +1,7 @@
 # CLAUDE.md — Reglas del proyecto
 
 Bot de Telegram que recibe mensajes, los **categoriza** y **resume** con la API
-de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
+de Groq y los persiste en PostgreSQL vía Prisma.
 
 ## Reglas fijas (no negociables)
 
@@ -19,7 +19,7 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
 3. **Cobertura de tests para la lógica de negocio.** Toda la lógica de negocio
    (categorización/resumen, pipeline de procesamiento, repositorios, parsing de
    la respuesta de la IA) tiene tests. Los tests no dependen de servicios reales
-   (Telegram, PostgreSQL, API de Anthropic): se usan mocks e inyección de
+   (Telegram, PostgreSQL, API de Groq): se usan mocks e inyección de
    dependencias.
 4. **Cualquier comando que toque el esquema o los datos de una base de datos
    de producción exige confirmación explícita, SIEMPRE, sin excepción.**
@@ -36,7 +36,7 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
 ## Principios de arquitectura
 
 - **Desacoplamiento por variables de entorno.** Si falta una variable de
-  entorno (`DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`), el módulo
+  entorno (`DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`), el módulo
   que la necesita **no arranca**, pero el resto del sistema sigue siendo
   ejecutable y testeable. Nada de imports que fallen en carga por falta de
   secretos: la inicialización de clientes externos es **perezosa** (lazy).
@@ -44,7 +44,7 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
   (`Categorizer`, `MessageRepository`) por parámetro. Esto permite sustituirlos
   por implementaciones en memoria / mock en los tests y en el CLI de simulación.
 - **Interfaces sobre implementaciones.** El pipeline depende de interfaces, no
-  de Prisma ni de la SDK de Anthropic directamente.
+  de Prisma ni de la SDK de Groq directamente.
 
 ## Estilo de trabajo (eficiencia)
 
@@ -67,8 +67,8 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
 | -------------------- | ------------------------------------- | ---------------- |
 | `DATABASE_URL`       | Cadena de conexión PostgreSQL (Prisma) | Persistencia real |
 | `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram (Telegraf)  | Arrancar el bot  |
-| `ANTHROPIC_API_KEY`  | API key de Claude                      | Categorización real |
-| `ANTHROPIC_MODEL`    | Modelo de Claude (opcional)            | — (default `claude-opus-4-8`) |
+| `GROQ_API_KEY`       | API key de Groq                        | Categorización real |
+| `GROQ_MODEL`         | Modelo servido por Groq (opcional)     | — (default `openai/gpt-oss-120b`) |
 
 ## Comandos
 
@@ -83,4 +83,4 @@ de Anthropic (Claude) y los persiste en PostgreSQL vía Prisma.
 ## Stack
 
 TypeScript · Node.js · Telegraf (polling) · Prisma + PostgreSQL · API de
-Anthropic (Claude) · Vitest.
+Groq · Vitest.
