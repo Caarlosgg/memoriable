@@ -81,17 +81,26 @@ que decirle a Vercel dónde vive el proyecto de Next.js.
 1. En [vercel.com/new](https://vercel.com/new), importa el repositorio.
 2. En **Root Directory**, selecciona `dashboard`. Vercel detecta
    Next.js automáticamente (no hace falta tocar el build command).
-3. En **Environment Variables**, añade:
+3. **Imprescindible**: en **Root Directory**, marca la casilla
+   *"Include source files outside of the Root Directory in the Build
+   Step"*. Sin ella, el `postinstall` (`prisma generate
+   --schema=../prisma/schema.prisma`) no encuentra el schema y
+   `npm install` falla con exit code 1 — Vercel clona el repo completo,
+   pero **no** copia nada fuera de `dashboard/` al entorno de build a
+   menos que actives esta casilla explícitamente.
+4. En **Environment Variables**, añade:
    - `DATABASE_URL` — la misma cadena de conexión que usa el bot
      (pooler de Supavisor, puerto 6543).
    - `DASHBOARD_PASSWORD` — una contraseña larga y propia de este
      dashboard (no reutilices otra).
-4. Deploy. El `postinstall` genera el cliente de Prisma como parte del
+5. Deploy. El `postinstall` genera el cliente de Prisma como parte del
    build; no hace falta ningún paso manual adicional.
 
-> Aunque Root Directory esté fijado a `dashboard`, Vercel clona el
-> repositorio completo — por eso `prisma generate --schema=../prisma/schema.prisma`
-> (el `postinstall`) puede alcanzar el schema de la raíz sin problema.
+> Si el deploy fallara con `Command "npm install" exited with 1` y en
+> los logs de build aparece `Could not load \`--schema\` from provided
+> path`, es justo esto: revisa el paso 3. Puede resetearse si el
+> proyecto se desvincula/revincula del repo de GitHub (p. ej. tras
+> renombrar el repositorio).
 
 ### Instalar en el iPhone
 
