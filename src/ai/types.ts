@@ -36,3 +36,18 @@ export interface Analysis {
 export interface Categorizer {
   analyze(message: IncomingMessage): Promise<Analysis>;
 }
+
+/**
+ * Contrato de generación de embeddings para búsqueda semántica. Nunca lanza:
+ * `null` significa "no se pudo generar" (sin API key, fallo de red, etc.),
+ * y el pipeline sigue guardando el mensaje igual, sin bloquear por esto.
+ *
+ * Dos métodos en vez de uno con un parámetro de modo: la API de Gemini
+ * distingue "documento a indexar" de "consulta de búsqueda" (`taskType`) y
+ * da mejor recall si cada lado usa el suyo — nombrarlos explícitamente evita
+ * que una llamada use el modo equivocado por accidente.
+ */
+export interface Embedder {
+  embedDocument(text: string): Promise<number[] | null>;
+  embedQuery(text: string): Promise<number[] | null>;
+}

@@ -5,7 +5,10 @@
 // `npm run prisma:migrate` una vez tengas una base de datos PostgreSQL.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Necesario para declarar `extensions = [vector]` abajo. No cambia cómo se
+  // generan los modelos normales.
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 // El dashboard (Next.js, app aparte en dashboard/, con su propio
@@ -32,7 +35,11 @@ datasource db {
   url       = env("DATABASE_URL")
   // Migraciones: conexión directa/sesión (puerto 5432). Prisma no puede migrar
   // a través del pooler en modo transacción (necesita sesión completa).
-  directUrl = env("DIRECT_URL")
+  directUrl  = env("DIRECT_URL")
+  // pgvector ya viene disponible en Supabase; solo hace falta activarla
+  // (CREATE EXTENSION, ver la migración) y declararla aquí para que Prisma
+  // no la trate como drift del esquema en `migrate dev`.
+  extensions = [vector]
 }
 
 /// Un mensaje entrante ya categorizado y resumido.
@@ -52,14 +59,31 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
-  // --- FASE 2: búsqueda semántica por embeddings ---
-  // Preparado pero NO activo todavía. Requiere la extensión `pgvector` en
-  // PostgreSQL y el datasource con `extensions = [vector]`. Cuando se active:
-  //   embedding  Unsupported("vector(1536)")?
-  // (Se deja comentado para no forzar la extensión en la fase 1.)
+  /// Vector de embedding para búsqueda semántica (Fase 2), generado con
+  /// gemini-embedding-001 truncado a 768 dimensiones (Matryoshka Representation
+  /// Learning: 768 conserva calidad de recuperación suficiente para este caso
+  /// de uso y mantiene el índice HNSW barato). Nullable: null hasta que se
+  /// genera (mensajes guardados sin GEMINI_API_KEY, o pendientes de backfill).
+  /// Prisma no puede leer/escribir tipos `Unsupported` con el cliente
+  /// tipado — todo acceso a esta columna es vía $queryRaw/$executeRaw.
+  embedding Unsupported("vector(768)")?
 
   @@index([categoria])
   @@index([fecha])
   @@index([hecho])
   @@map("messages")
+}
+
+/// Fusible de coste propio del Asistente conversacional del dashboard
+/// (independiente de MAX_MESSAGES_PER_DAY, que es solo del bot). Un
+/// contador por día; el dashboard corre en Vercel (serverless, sin disco
+/// persistente entre invocaciones), así que el contador vive en Postgres
+/// en vez de en un fichero como el fusible del bot (ver src/cost/budget.ts).
+model AssistantBudget {
+  /// Día en curso, formato YYYY-MM-DD (UTC).
+  day   String @id
+  /// Preguntas consumidas ese día.
+  count Int    @default(0)
+
+  @@map("assistant_budget")
 }

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Bot de Telegram que categoriza y resume mensajes con Claude y los persiste en PostgreSQL (Prisma).",
+  "description": "Bot de Telegram que categoriza y resume mensajes con Groq y los persiste en PostgreSQL (Prisma).",
   "engines": {
     "node": ">=20"
   },
@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "simulate": "tsx src/cli/simulate.ts",
+    "backfill-embeddings": "tsx src/cli/backfillEmbeddings.ts",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "prisma:generate": "prisma generate",

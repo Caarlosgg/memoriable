@@ -20,16 +20,22 @@ comprometido hasta que tenga uso real detrás.
   login, vista por categorías, búsqueda en tiempo real, marcar pendientes
   como hechos y captura rápida (mismo pipeline de categorización que el bot).
 
-## Fase 2 — búsqueda semántica
+## Fase 2 — búsqueda semántica y Asistente — completado
 
-- Activar el campo `embedding` ya preparado (y comentado) en
-  `prisma/schema.prisma`, con la extensión [`pgvector`](https://github.com/pgvector/pgvector)
-  en PostgreSQL.
-- Generar el embedding de cada mensaje al guardarlo.
-- Un comando o comando de Telegram para buscar mensajes pasados por
-  significado ("¿qué apunté sobre el viaje a Lisboa?"), no solo por
-  categoría o fecha.
-- Se activará solo cuando haya uso real que lo justifique — no antes.
+- Embedding de cada mensaje (`gemini-embedding-001`, API gratuita de
+  Gemini) al guardarlo, tanto desde el bot como desde la captura rápida
+  del dashboard. Backfill aparte (`npm run backfill-embeddings`) para los
+  mensajes que ya existían antes de esto.
+- Índice HNSW sobre la columna `embedding` (pgvector) para que la
+  búsqueda por similitud siga siendo rápida al crecer el volumen de datos.
+- Búsqueda híbrida en el Buscador del dashboard: texto exacto (el que ya
+  había) primero, semántica solo como complemento — nunca al revés — más
+  filtro por categoría.
+- Asistente conversacional en el dashboard (pantalla de inicio): escribes
+  una pregunta en lenguaje natural, busca por similitud entre tus notas y
+  Groq sintetiza una respuesta citando de dónde sale cada cosa — con
+  fuentes expandibles bajo la respuesta y su propio fusible de coste
+  diario, independiente del del bot.
 
 ## Fase 3 — superficie más allá de Telegram
 
@@ -51,6 +57,10 @@ Ideas para cuando el proyecto tenga tracción, sin orden fijo todavía:
   cuotas de producto.
 - Multiusuario / multi-tenant — el proyecto asume un único usuario/bot por
   despliegue.
+- Imágenes, documentos o adjuntos (p. ej. fotos de documentos de
+  identidad o tarjetas): fuera de alcance por completo por ahora — antes
+  de tocar nada de esto hace falta una conversación aparte sobre cómo
+  cifrarlo bien.
 
 ---
 

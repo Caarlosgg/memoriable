@@ -8,10 +8,16 @@ export interface StoredMessage extends IncomingMessage, Analysis {
   /** ¿Marcado como hecho? Nace en `false` (pendiente). */
   hecho: boolean;
   fecha: Date;
+  /**
+   * Vector de embedding, si se generó al guardar (ver ai/embedder.ts).
+   * `undefined`/`null` es un estado válido y frecuente: sin GEMINI_API_KEY,
+   * o pendiente de backfill. No forma parte de lo que se muestra al usuario.
+   */
+  embedding?: number[] | null;
 }
 
 /** Datos necesarios para crear un registro (sin id/fecha, que los pone el store). */
-export type NewMessage = IncomingMessage & Analysis;
+export type NewMessage = IncomingMessage & Analysis & { embedding?: number[] | null };
 
 /**
  * Contrato de persistencia. El pipeline depende de esta interfaz, no de Prisma,

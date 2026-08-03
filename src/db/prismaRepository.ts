@@ -13,12 +13,17 @@ import { ACTIONABLE_CATEGORIES, DEFAULT_PENDING_LIMIT } from './pending.js';
  */
 export class PrismaMessageRepository implements MessageRepository {
   // Tipado laxo a propósito: el cliente generado por Prisma no existe en tiempo
-  // de compilación hasta ejecutar `prisma generate`.
+  // de compilación hasta ejecutar `prisma generate`. Incluye $executeRaw
+  // porque la columna `embedding` es `Unsupported("vector(768)")` — Prisma
+  // excluye los tipos Unsupported del cliente tipado por completo (ni
+  // create ni findMany los tocan), así que es la única vía para leerla o
+  // escribirla.
   private clientPromise: Promise<{
     message: {
       create(args: unknown): Promise<StoredMessage>;
       findMany(args: unknown): Promise<StoredMessage[]>;
     };
+    $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
   }> | null = null;
 
   private async getClient() {
@@ -37,7 +42,12 @@ export class PrismaMessageRepository implements MessageRepository {
 
   async save(record: NewMessage): Promise<StoredMessage> {
     const client = await this.getClient();
-    return client.message.create({
+    // Primero el insert normal (tipado, siempre fiable) y LUEGO, si hay
+    // embedding, un UPDATE aparte para la columna Unsupported. Dos viajes en
+    // vez de un INSERT crudo único: así el mensaje se guarda de forma
+    // fiable aunque el paso del embedding falle (se trata como no crítico,
+    // igual que un fallo del propio Embedder — ver ai/embedder.ts).
+    const stored = await client.message.create({
       data: {
         tipo: record.tipo,
         contenido: record.contenido,
@@ -45,6 +55,28 @@ export class PrismaMessageRepository implements MessageRepository {
         resumen: record.resumen,
       },
     });
+
+    if (record.embedding && record.embedding.length > 0) {
+      await this.setEmbedding(client, stored.id, record.embedding);
+    }
+
+    return stored;
+  }
+
+  private async setEmbedding(
+    client: Awaited<ReturnType<PrismaMessageRepository['getClient']>>,
+    id: string,
+    embedding: number[],
+  ): Promise<void> {
+    try {
+      // pgvector espera el literal como texto ('[0.1,0.2,...]') casteado a
+      // ::vector; Prisma parametriza el string y Postgres hace el cast.
+      const literal = `[${embedding.join(',')}]`;
+      await client.$executeRaw`UPDATE "messages" SET "embedding" = ${literal}::vector WHERE "id" = ${id}`;
+    } catch {
+      // No crítico: el mensaje ya está guardado: y el backfill (ver
+      // src/cli/backfillEmbeddings.ts) puede rellenarlo más adelante.
+    }
   }
 
   async search(query: string, limit: number = DEFAULT_SEARCH_LIMIT): Promise<StoredMessage[]> {

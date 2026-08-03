@@ -1,4 +1,4 @@
-import type { Categorizer, IncomingMessage } from '../ai/types.js';
+import type { Categorizer, Embedder, IncomingMessage } from '../ai/types.js';
 import type { MessageRepository, StoredMessage } from '../db/repository.js';
 import { errorContext, type Logger } from '../logging/logger.js';
 import { InvalidMessageError, sanitizeContent } from './sanitize.js';
@@ -6,6 +6,11 @@ import { InvalidMessageError, sanitizeContent } from './sanitize.js';
 export interface Pipeline {
   categorizer: Categorizer;
   repository: MessageRepository;
+  /**
+   * Opcional: sin él (o si falla), el mensaje se guarda igual, solo que sin
+   * embedding — nunca bloquea el guardado (ver ai/embedder.ts).
+   */
+  embedder?: Embedder;
   /** Opcional: si no se pasa, el pipeline no registra nada (útil en tests). */
   logger?: Logger;
 }
@@ -29,7 +34,7 @@ const noopLogger: Pick<Logger, 'info' | 'warn' | 'error'> = {
  */
 export async function processMessage(
   message: IncomingMessage,
-  { categorizer, repository, logger }: Pipeline,
+  { categorizer, repository, embedder, logger }: Pipeline,
 ): Promise<StoredMessage> {
   const log = logger ?? noopLogger;
   const startedAt = Date.now();
@@ -55,7 +60,11 @@ export async function processMessage(
 
   try {
     const analysis = await categorizer.analyze(clean);
-    const stored = await repository.save({ ...clean, ...analysis });
+    // Nunca bloquea el guardado: un fallo aquí ya vuelve `null` (ver
+    // ai/embedder.ts), y sin `embedder` inyectado (tests, simulación) el
+    // mensaje se guarda igual, solo que sin embedding.
+    const embedding = (await embedder?.embedDocument(clean.contenido)) ?? null;
+    const stored = await repository.save({ ...clean, ...analysis, embedding });
 
     log.info('message.processed', {
       id: stored.id,

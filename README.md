@@ -159,6 +159,8 @@ npm run prisma:deploy
 | `TELEGRAM_BOT_TOKEN`    | Token del bot de Telegram                                 | Arrancar el bot       |
 | `GROQ_API_KEY`          | API key de Groq                                           | Categorización real   |
 | `GROQ_MODEL`            | Modelo servido por Groq (opcional)                        | — (def. `openai/gpt-oss-120b`) |
+| `GEMINI_API_KEY`        | API key de Gemini, para el embedding de cada mensaje (opcional) | — (sin ella, se guarda sin embedding) |
+| `GEMINI_MODEL`          | Modelo de embeddings a usar (opcional)                    | — (def. `gemini-embedding-001`) |
 | `MAX_MESSAGES_PER_DAY`  | Fusible de coste: máx. llamadas a Groq por día (opcional) | — (def. `50`)    |
 | `BUDGET_FILE`           | Fichero donde persiste el contador del fusible (opcional) | — (def. `.budget.json`) |
 | `TELEGRAM_CHAT_ID`      | Chat al que se envía el resumen diario proactivo          | Resumen diario        |
@@ -306,15 +308,16 @@ sus casos límite:
 ```
 .
 ├── prisma/
-│   └── schema.prisma        # modelo Message (+ embedding preparado para fase 2)
+│   └── schema.prisma        # modelo Message (con embedding, pgvector) + AssistantBudget
 ├── src/
-│   ├── ai/                  # categorización/resumen (Groq + offline)
+│   ├── ai/                  # categorización/resumen (Groq + offline) y embeddings
 │   │   ├── groq.ts          #   cliente de Groq (perezoso)
 │   │   ├── categorizer.ts   #   GroqCategorizer + parsing
 │   │   ├── resilientCategorizer.ts  # timeout + reintentos con backoff
 │   │   ├── budgetedCategorizer.ts   # aplica el fusible de coste
 │   │   ├── offlineCategorizer.ts
-│   │   └── types.ts         #   categorías, interfaces (Categorizer, ...)
+│   │   ├── embedder.ts      #   GeminiEmbedder + NullEmbedder
+│   │   └── types.ts         #   categorías, interfaces (Categorizer, Embedder, ...)
 │   ├── config/
 │   │   └── env.ts           # lectura de variables de entorno (sin lanzar)
 │   ├── cost/
@@ -334,7 +337,8 @@ sus casos límite:
 │   │   ├── bot.ts           # bot de Telegraf (no bloquea si falta el token)
 │   │   └── errors.ts        # manejo de errores de red/API + reconexión
 │   ├── cli/
-│   │   └── simulate.ts      # `npm run simulate`
+│   │   ├── simulate.ts      # `npm run simulate`
+│   │   └── backfillEmbeddings.ts  # `npm run backfill-embeddings`
 │   └── index.ts             # entrypoint (arranca el bot)
 ├── tests/                   # tests de Vitest (uno por módulo)
 ├── dashboard/                # dashboard web (Next.js), ver sección Dashboard
@@ -383,9 +387,12 @@ Notas:
 Además del bot de Telegram, el proyecto incluye un **dashboard web** en
 [`dashboard/`](./dashboard): una app Next.js (App Router) + TypeScript +
 Tailwind para consultar, buscar y gestionar tus mensajes desde el navegador
-(o instalada como PWA en el móvil) — login por contraseña, vista por
-categorías, buscador en tiempo real, marcar pendientes como hechos y una
-captura rápida que pasa por el mismo pipeline de categorización que el bot.
+(o instalada como PWA en el móvil) — login por contraseña, navegación con
+sidebar (barra de pestañas en móvil) entre **Asistente** (pantalla de
+inicio: chat en lenguaje natural sobre tus notas, con fuentes citadas y
+streaming), **Buscador** (híbrido: texto + semántica, con filtro de
+categoría), **Categorías** (vista + captura rápida) y **Pendientes**
+(marcar como hechos).
 
 Es **un proyecto aparte, con despliegue independiente** del bot:
 
@@ -409,11 +416,27 @@ en **[`dashboard/README.md`](./dashboard/README.md)**.
 
 ---
 
-## 🔭 Fase 2 (preparada, no activa)
+## 🔭 Fase 2 — búsqueda semántica y Asistente (activa)
 
-El esquema de Prisma deja **listo y comentado** un campo `embedding` para
-búsqueda semántica con [`pgvector`](https://github.com/pgvector/pgvector). Se
-activará en la fase 2 sin reestructurar el resto del sistema.
+Cada mensaje guardado (desde el bot o desde la captura rápida del
+dashboard) genera un embedding con la API gratuita de Gemini
+(`gemini-embedding-001`, `GEMINI_API_KEY`) y lo persiste en la columna
+`embedding` (`pgvector`, índice HNSW). Sin `GEMINI_API_KEY` el mensaje se
+guarda igual, solo que sin embedding — no bloquea nada, ver
+[`src/ai/embedder.ts`](./src/ai/embedder.ts).
+
+Los mensajes guardados **antes** de activar esto no tienen embedding
+retroactivamente: `npm run backfill-embeddings` los rellena en un paso
+aparte, fuera del flujo normal de guardado.
+
+El dashboard usa estos embeddings en dos sitios — ver
+[`dashboard/README.md`](./dashboard/README.md) para el detalle de cada uno:
+
+- **Buscador**: búsqueda híbrida (texto exacto + semántica como
+  complemento) con filtro de categoría.
+- **Asistente**: pantalla de inicio del dashboard, un chat que responde
+  preguntas en lenguaje natural sobre tus notas guardadas, citando de
+  dónde sale la información.
 
 ---
 

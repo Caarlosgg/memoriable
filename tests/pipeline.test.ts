@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Categorizer } from '../src/ai/types.js';
+import type { Categorizer, Embedder } from '../src/ai/types.js';
 import { InMemoryMessageRepository } from '../src/db/repository.js';
 import { createMemoryLogger } from '../src/logging/logger.js';
 import { processMessage } from '../src/pipeline/processMessage.js';
@@ -7,6 +7,13 @@ import { InvalidMessageError, MAX_CONTENT_LENGTH } from '../src/pipeline/sanitiz
 
 function stubCategorizer(categoria = 'tarea', resumen = 'Comprar pan'): Categorizer {
   return { analyze: vi.fn().mockResolvedValue({ categoria, resumen }) } as unknown as Categorizer;
+}
+
+function stubEmbedder(vector: number[] | null = [0.1, 0.2, 0.3]): Embedder {
+  return {
+    embedDocument: vi.fn().mockResolvedValue(vector),
+    embedQuery: vi.fn().mockResolvedValue(vector),
+  };
 }
 
 describe('processMessage', () => {
@@ -116,6 +123,42 @@ describe('processMessage', () => {
       errorMessage: 'API caída',
       errorStatus: 500,
     });
+  });
+
+  it('genera y guarda el embedding cuando hay un embedder', async () => {
+    const embedder = stubEmbedder([0.4, 0.5, 0.6]);
+    const repository = new InMemoryMessageRepository();
+
+    const stored = await processMessage(
+      { tipo: 'text', contenido: 'comprar pan' },
+      { categorizer: stubCategorizer(), repository, embedder },
+    );
+
+    expect(embedder.embedDocument).toHaveBeenCalledWith('comprar pan');
+    expect(stored.embedding).toEqual([0.4, 0.5, 0.6]);
+  });
+
+  it('guarda igual, sin embedding, si el embedder no puede generarlo', async () => {
+    const embedder = stubEmbedder(null);
+    const repository = new InMemoryMessageRepository();
+
+    const stored = await processMessage(
+      { tipo: 'text', contenido: 'comprar pan' },
+      { categorizer: stubCategorizer(), repository, embedder },
+    );
+
+    expect(stored.embedding).toBeNull();
+  });
+
+  it('guarda igual, sin embedding, si no hay embedder inyectado', async () => {
+    const repository = new InMemoryMessageRepository();
+
+    const stored = await processMessage(
+      { tipo: 'text', contenido: 'comprar pan' },
+      { categorizer: stubCategorizer(), repository },
+    );
+
+    expect(stored.embedding).toBeNull();
   });
 
   it('registra el rechazo de un mensaje inválido', async () => {

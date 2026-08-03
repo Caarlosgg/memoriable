@@ -19,6 +19,15 @@ import 'dotenv/config';
  */
 export const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 
+/**
+ * Modelo de embeddings por defecto: gratuito (1500 peticiones/día sin
+ * tarjeta) y truncable por Matryoshka Representation Learning sin perder
+ * calidad de recuperación relevante — de ahí truncarlo a 768 dimensiones en
+ * vez de las 3072 por defecto (índice HNSW más barato de mantener/consultar).
+ */
+export const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
+export const DEFAULT_EMBEDDING_DIMENSIONS = 768;
+
 /** Fusible de coste por defecto: deliberadamente bajo. */
 export const DEFAULT_MAX_MESSAGES_PER_DAY = 50;
 
@@ -154,6 +163,13 @@ export const env = {
   TELEGRAM_BOT_TOKEN: readString('TELEGRAM_BOT_TOKEN'),
   GROQ_API_KEY: readString('GROQ_API_KEY'),
   GROQ_MODEL: readString('GROQ_MODEL') ?? DEFAULT_MODEL,
+  /**
+   * Opcional a propósito (sin MissingEnvError/requireEnv): si falta, el
+   * pipeline sigue guardando mensajes con normalidad, solo que sin
+   * embedding (se puede rellenar después con el script de backfill).
+   */
+  GEMINI_API_KEY: readString('GEMINI_API_KEY'),
+  GEMINI_MODEL: readString('GEMINI_MODEL') ?? DEFAULT_EMBEDDING_MODEL,
   /** Fusible de coste: máximo de llamadas a la API de Groq por día. */
   MAX_MESSAGES_PER_DAY: readPositiveInt('MAX_MESSAGES_PER_DAY', DEFAULT_MAX_MESSAGES_PER_DAY),
   /** Fichero donde persiste el contador del fusible (debe ser escribible). */
@@ -183,6 +199,10 @@ export function hasDatabase(): boolean {
 
 export function hasTelegram(): boolean {
   return Boolean(env.TELEGRAM_BOT_TOKEN);
+}
+
+export function hasGemini(): boolean {
+  return Boolean(env.GEMINI_API_KEY);
 }
 
 export function hasGroq(): boolean {

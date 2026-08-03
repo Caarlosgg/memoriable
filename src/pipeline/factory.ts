@@ -3,7 +3,8 @@ import { GroqCategorizer } from '../ai/categorizer.js';
 import { BudgetedCategorizer } from '../ai/budgetedCategorizer.js';
 import { OfflineCategorizer } from '../ai/offlineCategorizer.js';
 import { ResilientCategorizer } from '../ai/resilientCategorizer.js';
-import type { Categorizer } from '../ai/types.js';
+import { GeminiEmbedder, NullEmbedder } from '../ai/embedder.js';
+import type { Categorizer, Embedder } from '../ai/types.js';
 import { env, hasGroq, hasDatabase } from '../config/env.js';
 import { DailyBudget, type BudgetGuard } from '../cost/budget.js';
 import { DEFAULT_BUDGET_FILE, FileBudgetStore } from '../cost/fileBudgetStore.js';
@@ -54,6 +55,27 @@ export function resolveCategorizer(logger: Logger = rootLogger): Categorizer {
 }
 
 /**
+ * Elige el generador de embeddings según el entorno. Sin GEMINI_API_KEY,
+ * `NullEmbedder` hace que el pipeline siga guardando mensajes con
+ * normalidad, solo que sin embedding (backfill posterior).
+ */
+export function resolveEmbedder(logger: Logger = rootLogger): Embedder {
+  const apiKey = env.GEMINI_API_KEY;
+  if (!apiKey) {
+    logger.warn('embedding.disabled', {
+      reason: 'GEMINI_API_KEY no definida',
+      action: 'los mensajes se guardan sin embedding',
+    });
+    return new NullEmbedder();
+  }
+
+  return new GeminiEmbedder(apiKey, {
+    model: env.GEMINI_MODEL,
+    onWarning: (message) => logger.warn('embedding.failed', { message }),
+  });
+}
+
+/**
  * Elige el repositorio según el entorno: Prisma/PostgreSQL si hay `DATABASE_URL`,
  * en memoria en caso contrario.
  */
@@ -73,6 +95,7 @@ export function resolvePipeline(logger: Logger = rootLogger): Pipeline {
   return {
     categorizer: resolveCategorizer(logger),
     repository: resolveRepository(logger),
+    embedder: resolveEmbedder(logger),
     logger,
   };
 }
