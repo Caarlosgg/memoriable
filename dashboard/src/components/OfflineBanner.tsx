@@ -33,7 +33,7 @@ export function OfflineBanner() {
   return (
     <div role="status" aria-live="polite">
       {!isOnline && (
-        <p className="fade-in border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm font-medium text-amber-800">
+        <p className="fade-in border-b border-highlight-soft bg-highlight-soft px-4 py-2 text-center text-sm font-medium text-highlight-strong">
           Sin conexión. Lo que ves puede no estar actualizado.
         </p>
       )}

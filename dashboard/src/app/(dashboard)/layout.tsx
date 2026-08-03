@@ -12,18 +12,22 @@ export default async function DashboardLayout({
 
   return (
     <>
-      <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
-        <h1 className="text-base font-semibold text-slate-900">Memoria IA</h1>
+      <header className="flex items-center justify-between gap-4 border-b border-paper-line bg-paper-raised px-4 py-3 sm:px-6">
+        <h1 className="font-display text-lg font-semibold tracking-tight text-ink">
+          MemorIAble
+        </h1>
         <form action={logout}>
           <button
             type="submit"
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="rounded-full px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Salir
           </button>
         </form>
       </header>
-      <main className="flex-1 px-4 py-6 sm:px-6">{children}</main>
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 sm:px-6">
+        {children}
+      </main>
     </>
   );
 }

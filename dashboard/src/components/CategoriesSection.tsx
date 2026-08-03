@@ -8,8 +8,8 @@ export async function CategoriesSection() {
 
   if (!hasAnyMessages) {
     return (
-      <div className="fade-in rounded-xl border border-dashed border-slate-300 p-8 text-center">
-        <p className="text-slate-500">
+      <div className="fade-in rounded-xl border border-dashed border-paper-line bg-paper-raised/60 p-8 text-center">
+        <p className="text-muted">
           Todavía no hay ningún mensaje guardado. Escríbele algo al bot de
           Telegram y aparecerá aquí, categorizado y resumido.
         </p>
@@ -34,17 +34,22 @@ function CategoryCard({ group }: { group: CategoryGroup }) {
     <section aria-labelledby={headingId} className="fade-in flex flex-col gap-3">
       <h2
         id={headingId}
-        className="flex items-center gap-2 text-sm font-semibold text-slate-700"
+        className="flex items-center gap-2 font-display text-base font-semibold text-ink"
       >
-        <span aria-hidden>{emoji}</span>
+        <span
+          aria-hidden
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-sm"
+        >
+          {emoji}
+        </span>
         {label}
-        <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+        <span className="ml-auto rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-muted">
           {group.total}
         </span>
       </h2>
 
       {group.messages.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+        <p className="rounded-lg border border-dashed border-paper-line p-4 text-sm text-muted">
           Nada por aquí todavía.
         </p>
       ) : (

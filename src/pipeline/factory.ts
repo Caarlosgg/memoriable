@@ -42,7 +42,7 @@ export function resolveCategorizer(logger: Logger = rootLogger): Categorizer {
     return offline;
   }
 
-  const groq = new GroqCategorizer(createGroqClient());
+  const groq = new GroqCategorizer(createGroqClient(), env.GROQ_MODEL);
   const resilient = new ResilientCategorizer(groq, offline, { logger });
   const budgeted = new BudgetedCategorizer(resilient, offline, resolveBudget(logger), { logger });
 

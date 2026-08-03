@@ -13,7 +13,7 @@ export function Highlight({ text, query }: { text: string; query: string }) {
     <>
       {parts.map((part, i) =>
         part.toLowerCase() === needle.toLowerCase() ? (
-          <mark key={i} className="rounded-sm bg-amber-200 text-inherit">
+          <mark key={i} className="rounded-sm bg-highlight/40 text-inherit">
             {part}
           </mark>
         ) : (

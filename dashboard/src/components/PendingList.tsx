@@ -28,20 +28,23 @@ export function PendingList({
   }
 
   return (
-    <section aria-labelledby="pendientes-heading" className="flex flex-col gap-3">
+    <section
+      aria-labelledby="pendientes-heading"
+      className="flex flex-col gap-3 rounded-2xl border border-highlight-soft bg-highlight-soft/40 p-4"
+    >
       <h2
         id="pendientes-heading"
-        className="flex items-center gap-2 text-sm font-semibold text-slate-700"
+        className="flex items-center gap-2 text-sm font-semibold text-highlight-strong"
       >
         <span aria-hidden>📋</span>
         Pendientes
-        <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+        <span className="ml-auto rounded-full bg-highlight/20 px-2 py-0.5 text-xs font-medium text-highlight-strong">
           {messages.length}
         </span>
       </h2>
 
       {messages.length === 0 ? (
-        <p className="fade-in rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+        <p className="fade-in rounded-lg border border-dashed border-paper-line bg-paper-raised p-4 text-sm text-muted">
           No tienes nada pendiente. ¡Bien!
         </p>
       ) : (
@@ -49,23 +52,22 @@ export function PendingList({
           {messages.map((message) => {
             const completing = completingId === message.id;
             return (
-              <li
+              <MessageCard
                 key={message.id}
+                message={message}
                 className={`transition-all duration-300 ease-out ${
                   completing ? "scale-95 opacity-0" : "scale-100 opacity-100"
                 }`}
               >
-                <MessageCard message={message}>
-                  <button
-                    type="button"
-                    onClick={() => handleDone(message.id)}
-                    disabled={isPending && completing}
-                    className="rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Marcar como hecho
-                  </button>
-                </MessageCard>
-              </li>
+                <button
+                  type="button"
+                  onClick={() => handleDone(message.id)}
+                  disabled={isPending && completing}
+                  className="rounded-full bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent-strong transition-colors hover:bg-accent hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Marcar como hecho
+                </button>
+              </MessageCard>
             );
           })}
         </ul>

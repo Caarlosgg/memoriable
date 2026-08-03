@@ -1,3 +1,6 @@
+// Copia sincronizada de ../../../../src/ai/categorizer.ts — ver
+// botPipeline/README.md para el porqué de la copia.
+
 import {
   CATEGORIES,
   type Analysis,
@@ -5,15 +8,11 @@ import {
   type Category,
   type IncomingMessage,
   isCategory,
-} from './types.js';
+} from './types';
 
 /**
- * Interfaz mínima del cliente de Groq que usa el categorizador. Se define aquí
- * (en vez de depender del tipo completo de la SDK) para que los tests puedan
- * inyectar un mock trivial sin construir un cliente real. El cliente real de
- * Groq es estructuralmente compatible.
- *
- * La API de Groq es compatible con la de OpenAI (`chat.completions.create`).
+ * Interfaz mínima del cliente de Groq que usa el categorizador. El cliente
+ * real de Groq es estructuralmente compatible.
  */
 export interface GroqChatClient {
   chat: {
@@ -65,10 +64,7 @@ export function parseAnalysis(raw: string, fallbackContenido: string): Analysis 
 /**
  * Categorizador que usa la API de Groq. No conoce Telegram, la base de
  * datos, ni variables de entorno: solo transforma un mensaje en un análisis
- * dado un cliente y un modelo ya resueltos por quien lo construye (el
- * `model` no tiene valor por defecto a propósito — mantiene este archivo
- * sin depender de `config/env.ts`, para que se pueda reutilizar tal cual
- * desde otra app, como hace el dashboard).
+ * dado un cliente y un modelo ya resueltos por quien lo construye.
  */
 export class GroqCategorizer implements Categorizer {
   constructor(

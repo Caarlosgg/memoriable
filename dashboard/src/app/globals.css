@@ -1,28 +1,83 @@
 @import "tailwindcss";
 
+/*
+ * Identidad visual compartida con landing/index.html: fondo cálido de
+ * "papel", tinta casi negra, acento verde bosque, resalte ámbar. No son los
+ * colores por defecto de Tailwind — es la paleta propia del producto
+ * ("memoria/notas personales"), la misma en la landing y en el dashboard.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --paper: #faf6ef;
+  --paper-raised: #ffffff;
+  --paper-line: #e4ddcf;
+  --ink: #1c1b18;
+  --muted: #6b6558;
+  --accent: #2f5d50;
+  --accent-strong: #234a3f;
+  --accent-ink: #eef4f1;
+  --accent-soft: #e6ede9;
+  --highlight: #e8a33d;
+  --highlight-strong: #c9821f;
+  --highlight-soft: #fbead0;
+  --danger: #b3261e;
+  --danger-soft: #fbeceb;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #17160f;
+    --paper-raised: #201f18;
+    --paper-line: #33312a;
+    --ink: #f3efe6;
+    --muted: #a99f8d;
+    --accent: #6faf9d;
+    --accent-strong: #8bc4b3;
+    --accent-ink: #0d1e1a;
+    --accent-soft: #223330;
+    --highlight: #f0b86a;
+    --highlight-strong: #f6cf95;
+    --highlight-soft: #3a2c17;
+    --danger: #e6857e;
+    --danger-soft: #3a1e1c;
   }
 }
 
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-line: var(--paper-line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-highlight: var(--highlight);
+  --color-highlight-strong: var(--highlight-strong);
+  --color-highlight-soft: var(--highlight-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-inter);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent,
+    transparent 27px,
+    var(--paper-line) 28px
+  );
+  background-attachment: local;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    background-image: none;
+  }
 }
 
 /* Transición suave de entrada, usada al aparecer o refrescarse contenido
@@ -39,11 +94,40 @@ body {
 }
 
 .fade-in {
-  animation: fade-in-up 0.25s ease-out both;
+  animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .fade-in {
+    animation: none;
+  }
+}
+
+/* Shimmer de los skeletons: una franja de brillo que recorre el bloque,
+   más perceptible que un `animate-pulse` plano y coherente con --paper-line. */
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  border-radius: 0.75rem;
+  background: linear-gradient(
+    100deg,
+    var(--paper-line) 30%,
+    color-mix(in srgb, var(--paper-line) 50%, var(--paper-raised)) 50%,
+    var(--paper-line) 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
     animation: none;
   }
 }

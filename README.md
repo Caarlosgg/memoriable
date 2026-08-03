@@ -384,7 +384,8 @@ Además del bot de Telegram, el proyecto incluye un **dashboard web** en
 [`dashboard/`](./dashboard): una app Next.js (App Router) + TypeScript +
 Tailwind para consultar, buscar y gestionar tus mensajes desde el navegador
 (o instalada como PWA en el móvil) — login por contraseña, vista por
-categorías, buscador en tiempo real y marcar pendientes como hechos.
+categorías, buscador en tiempo real, marcar pendientes como hechos y una
+captura rápida que pasa por el mismo pipeline de categorización que el bot.
 
 Es **un proyecto aparte, con despliegue independiente** del bot:
 
@@ -394,6 +395,10 @@ Es **un proyecto aparte, con despliegue independiente** del bot:
   `dashboard/prisma/schema.prisma` (no como generador del schema
   compartido — ver el porqué en `dashboard/README.md`), pero **nunca
   ejecuta migraciones** — eso lo sigue haciendo solo el bot.
+- **Mismo pipeline de categorización**, reutilizado como copia sincronizada
+  en `dashboard/src/lib/botPipeline/` (no como import directo — Turbopack no
+  puede resolver los imports del bot a través del límite entre los dos
+  proyectos; el porqué exacto está documentado ahí).
 - Se despliega en **Vercel**, fijando `Root Directory` a `dashboard`, con
   sus propias variables de entorno (`DATABASE_URL` — la misma cadena que usa
   el bot — y `DASHBOARD_PASSWORD`). El bot puede seguir corriendo donde

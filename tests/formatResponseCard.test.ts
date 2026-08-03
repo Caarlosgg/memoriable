@@ -45,4 +45,9 @@ describe('formatResponseCard', () => {
     const card = formatResponseCard({ categoria: 'inventada' as never, resumen: 'x', fecha });
     expect(card).toContain('<b>Sin categorizar</b>');
   });
+
+  it('no lanza y usa un texto de reserva si la fecha es inválida', () => {
+    const card = formatResponseCard({ categoria: 'nota', resumen: 'x', fecha: new Date('esto-no-es-una-fecha') });
+    expect(card).toContain('🕒 fecha desconocida');
+  });
 });

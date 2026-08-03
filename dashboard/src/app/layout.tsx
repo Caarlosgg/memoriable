@@ -1,27 +1,32 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Inter } from "next/font/google";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Tipografía con carácter propio (no la fuente de sistema por defecto):
+// Fraunces para titulares (serif cálida, misma familia visual que la
+// landing) e Inter para el resto de la interfaz. next/font las autohospeda
+// en el build: sin llamadas a un CDN en tiempo de ejecución.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  style: ["normal", "italic"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Memoria IA · Dashboard",
+  title: "MemorIAble · Dashboard",
   description: "Tus mensajes, categorizados y resumidos, en un vistazo.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Memoria IA",
+    title: "MemorIAble",
   },
   other: {
     // Next.js 16 solo emite el tag moderno "mobile-web-app-capable".
@@ -33,7 +38,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#4f46e5",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#faf6ef" },
+    { media: "(prefers-color-scheme: dark)", color: "#17160f" },
+  ],
 };
 
 export default function RootLayout({
@@ -44,9 +52,9 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${inter.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
+      <body className="min-h-full flex flex-col bg-paper text-ink">
         <OfflineBanner />
         {children}
         <ServiceWorkerRegister />

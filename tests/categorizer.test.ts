@@ -60,7 +60,7 @@ describe('GroqCategorizer', () => {
         },
       },
     };
-    const categorizer = new GroqCategorizer(client);
+    const categorizer = new GroqCategorizer(client, 'openai/gpt-oss-120b');
     await expect(categorizer.analyze({ tipo: 'text', contenido: 'x' })).rejects.toThrow(
       /ningún bloque de texto/,
     );
@@ -70,7 +70,7 @@ describe('GroqCategorizer', () => {
     const client: GroqChatClient = {
       chat: { completions: { create: vi.fn().mockResolvedValue({ choices: [] }) } },
     };
-    const categorizer = new GroqCategorizer(client);
+    const categorizer = new GroqCategorizer(client, 'openai/gpt-oss-120b');
     await expect(categorizer.analyze({ tipo: 'text', contenido: 'x' })).rejects.toThrow(
       /ningún bloque de texto/,
     );

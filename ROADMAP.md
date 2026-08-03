@@ -17,8 +17,8 @@ comprometido hasta que tenga uso real detrás.
 - Tests de la lógica de negocio con mocks (sin depender de servicios reales).
 - Dockerfile listo para correr de forma persistente.
 - Dashboard web (Next.js) en `dashboard/`, con despliegue propio en Vercel:
-  login, vista por categorías, búsqueda en tiempo real y marcar pendientes
-  como hechos.
+  login, vista por categorías, búsqueda en tiempo real, marcar pendientes
+  como hechos y captura rápida (mismo pipeline de categorización que el bot).
 
 ## Fase 2 — búsqueda semántica
 
@@ -35,8 +35,9 @@ comprometido hasta que tenga uso real detrás.
 
 Ideas para cuando el proyecto tenga tracción, sin orden fijo todavía:
 
-- Edición de mensajes desde el dashboard (hoy es de solo consulta salvo
-  marcar pendientes como hechos).
+- Edición de mensajes ya guardados desde el dashboard (hoy se pueden crear
+  con la captura rápida y marcar pendientes como hechos, pero no editar
+  contenido/categoría de un mensaje existente).
 - Botones inline en Telegram (recategorizar, marcar como hecho, archivar)
   — hoy las respuestas son deliberadamente mensajes simples.
 - Categorías configurables por el usuario en vez de la lista fija actual.

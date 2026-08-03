@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { CaptureForm } from "@/components/CaptureForm";
 import { CategoriesSection } from "@/components/CategoriesSection";
 import { CategoriesSkeleton } from "@/components/CategoriesSkeleton";
 import { PendingSection } from "@/components/PendingSection";
@@ -8,7 +9,11 @@ import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 
 export default function DashboardPage() {
   return (
-    <div className="flex flex-col gap-8">
+    <>
+      <SectionErrorBoundary title="Anotar">
+        <CaptureForm />
+      </SectionErrorBoundary>
+
       <SectionErrorBoundary title="Buscador">
         <SearchSection />
       </SectionErrorBoundary>
@@ -24,6 +29,6 @@ export default function DashboardPage() {
           <CategoriesSection />
         </Suspense>
       </SectionErrorBoundary>
-    </div>
+    </>
   );
 }

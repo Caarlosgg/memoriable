@@ -9,6 +9,9 @@ Tailwind, con su propio despliegue en Vercel, independiente del bot.
 
 - **Login** por contraseña (`DASHBOARD_PASSWORD`), con cookie de sesión
   firmada.
+- **Captura rápida**: un input que pasa por el MISMO pipeline que el bot
+  de Telegram (categoriza + resume + guarda), ver
+  [Cómo reutiliza el pipeline del bot](#cómo-reutiliza-el-pipeline-del-bot).
 - **Vista principal por categorías**, con skeletons de carga y estados
   vacíos con mensaje útil.
 - **Buscador en tiempo real** (debounce) con highlight del término
@@ -61,6 +64,24 @@ El dashboard **nunca ejecuta migraciones**: eso lo sigue haciendo solo
 el bot (`npm run prisma:deploy` en la raíz). Aquí solo se lee y se
 actualiza el campo `hecho`.
 
+## Cómo reutiliza el pipeline del bot
+
+La captura rápida (`src/components/CaptureForm.tsx` → server action
+`capture` → `src/lib/pipeline.ts`) corre el mismo `processMessage` que usa
+el bot: saneado → categorización (Groq, con reserva heurística offline) →
+guardado. La lógica en sí vive en `src/lib/botPipeline/`, una copia
+sincronizada de `../src/{ai,pipeline,db,logging}/*` — **no** un import
+directo del bot. El porqué (choque entre el `moduleResolution: "nodenext"`
+del bot y el `"bundler"` de Next.js/Turbopack, que hace que Turbopack no
+pueda resolver los imports con sufijo `.js` del bot) y qué archivos hay que
+mantener sincronizados si cambia el modelo o la categorización están en
+[`src/lib/botPipeline/README.md`](./src/lib/botPipeline/README.md).
+
+Lo único propio del dashboard en `src/lib/pipeline.ts` es la fontanería:
+su propio cliente de Groq (`groq-sdk`, ya una dependencia del dashboard) y
+su propio repositorio (con su Prisma). Ver
+[Variables de entorno](#variables-de-entorno) para `GROQ_API_KEY`.
+
 ## Desarrollo local
 
 ```bash
@@ -84,6 +105,8 @@ npm run build && npm start
 | --------------------- | ------------------------------------------------- | ----------- |
 | `DATABASE_URL`        | Conexión a PostgreSQL (la misma que usa el bot)    | Sí          |
 | `DASHBOARD_PASSWORD`  | Contraseña de acceso; también firma la cookie de sesión (si rota, las sesiones activas dejan de valer) | Sí |
+| `GROQ_API_KEY`        | API key de Groq, para que la captura rápida categorice con la misma IA que el bot | No — sin ella, cae al categorizador heurístico offline |
+| `GROQ_MODEL`          | Modelo servido por Groq (opcional)                | — (def. `openai/gpt-oss-120b`) |
 
 No hace falta `DIRECT_URL` aquí: esa variable es solo para migraciones,
 y el dashboard no migra.
@@ -112,6 +135,8 @@ que decirle a Vercel dónde vive el proyecto de Next.js.
      (pooler de Supavisor, puerto 6543).
    - `DASHBOARD_PASSWORD` — una contraseña larga y propia de este
      dashboard (no reutilices otra).
+   - `GROQ_API_KEY` (opcional) — para que la captura rápida categorice
+     con Groq en vez de caer siempre al heurístico offline.
 4. Deploy. El `postinstall` genera el cliente de Prisma como parte del
    build; no hace falta ningún paso manual adicional.
 
@@ -141,7 +166,10 @@ dashboard/
 │   │   ├── icon.tsx, apple-icon.tsx, icons/192|512/  # iconos generados
 │   │   └── layout.tsx
 │   ├── components/         # secciones de la página + límites de error
-│   ├── lib/                 # datos (Prisma), sesión, categorías, etc.
+│   ├── lib/
+│   │   ├── botPipeline/    # copia sincronizada del pipeline del bot (ver su README)
+│   │   ├── pipeline.ts     # captureMessage(): fontanería propia (Groq + Prisma del dashboard)
+│   │   └── ...             # datos (Prisma), sesión, categorías, etc.
 │   └── proxy.ts             # antes "middleware.ts" (Next.js 16 lo renombró)
 └── public/sw.js              # cachea solo el shell estático, nunca datos
 ```

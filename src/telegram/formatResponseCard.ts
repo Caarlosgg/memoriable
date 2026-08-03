@@ -36,9 +36,15 @@ export interface ResponseCardData extends Analysis {
  * resumen debajo y fecha legible. Punto único de presentación para no repetir
  * este formato en cada handler.
  */
+/** Nunca lanza: una fecha corrupta no debe tumbar la respuesta al usuario. */
+function formatFecha(fecha: Date): string {
+  if (Number.isNaN(fecha.getTime())) return 'fecha desconocida';
+  return DATE_FORMATTER.format(fecha);
+}
+
 export function formatResponseCard({ categoria, resumen, fecha }: ResponseCardData): string {
   const { emoji, label } = CATEGORY_PRESENTATION[categoria] ?? CATEGORY_PRESENTATION.otro;
   const resumenLimpio = escapeHtml(resumen.trim()) || '(sin resumen)';
 
-  return [`${emoji} <b>${label}</b>`, resumenLimpio, `🕒 ${DATE_FORMATTER.format(fecha)}`].join('\n');
+  return [`${emoji} <b>${label}</b>`, resumenLimpio, `🕒 ${formatFecha(fecha)}`].join('\n');
 }

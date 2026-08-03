@@ -17,16 +17,16 @@ function SectionErrorFallback(
   return (
     <div
       role="alert"
-      className="fade-in rounded-xl border border-red-200 bg-red-50 p-4"
+      className="fade-in rounded-xl border border-danger/30 bg-danger-soft p-4"
     >
-      <p className="text-sm font-medium text-red-800">
+      <p className="text-sm font-medium text-danger">
         {props.title}: no se ha podido cargar.
       </p>
-      <p className="mt-1 text-xs text-red-600">{error.message}</p>
+      <p className="mt-1 text-xs text-danger/80">{error.message}</p>
       <button
         type="button"
         onClick={() => unstable_retry()}
-        className="mt-3 rounded-md bg-red-100 px-3 py-1.5 text-sm font-medium text-red-800 transition-colors hover:bg-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+        className="mt-3 rounded-full bg-danger/10 px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
       >
         Reintentar
       </button>

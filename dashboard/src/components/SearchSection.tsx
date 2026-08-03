@@ -62,8 +62,14 @@ export function SearchSection() {
   const results = fetchState.results;
 
   return (
-    <section aria-labelledby="buscar-heading" className="flex flex-col gap-3">
-      <h2 id="buscar-heading" className="text-sm font-semibold text-slate-700">
+    <section
+      aria-labelledby="buscar-heading"
+      className="fade-in flex flex-col gap-3 rounded-2xl border border-paper-line bg-paper-raised p-4 shadow-sm"
+    >
+      <h2
+        id="buscar-heading"
+        className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent"
+      >
         🔎 Buscar
       </h2>
 
@@ -73,24 +79,24 @@ export function SearchSection() {
         onChange={(e) => setInput(e.target.value)}
         placeholder="Buscar en tus mensajes…"
         aria-label="Buscar en tus mensajes"
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-base text-slate-900 outline-none transition-colors focus-visible:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500"
+        className="w-full rounded-lg border border-paper-line bg-paper px-4 py-2.5 text-base text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
       />
 
       {status === "loading" && (
         <ul className="flex flex-col gap-3" aria-hidden="true">
           {Array.from({ length: 2 }).map((_, i) => (
-            <li key={i} className="h-20 animate-pulse rounded-xl bg-slate-100" />
+            <li key={i} className="skeleton h-20" />
           ))}
         </ul>
       )}
 
       {status === "error" && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
           <p>No se ha podido completar la búsqueda.</p>
           <button
             type="button"
             onClick={() => setAttempt((n) => n + 1)}
-            className="mt-2 rounded-md bg-red-100 px-3 py-1.5 text-sm font-medium text-red-800 transition-colors hover:bg-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            className="mt-2 rounded-full bg-danger/10 px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
           >
             Reintentar
           </button>
@@ -98,7 +104,7 @@ export function SearchSection() {
       )}
 
       {status === "done" && results.length === 0 && (
-        <p className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+        <p className="rounded-lg border border-dashed border-paper-line p-4 text-sm text-muted">
           No he encontrado nada que coincida con «{query}». Prueba con otra
           palabra.
         </p>

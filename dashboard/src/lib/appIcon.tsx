@@ -13,9 +13,9 @@ export function AppIconMark({ fontSize }: { fontSize: number }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#4f46e5",
-        color: "white",
-        fontFamily: "sans-serif",
+        background: "#2f5d50",
+        color: "#eef4f1",
+        fontFamily: "serif",
         fontWeight: 700,
         fontSize,
       }}
