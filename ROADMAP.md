@@ -6,8 +6,9 @@ comprometido hasta que tenga uso real detrás.
 
 ## Ahora (fase 1) — completado
 
-- Categorización y resumen de mensajes con Claude, con fusible de coste y
-  caída a un categorizador offline si falla la API o no hay clave.
+- Categorización y resumen de mensajes con Groq (`openai/gpt-oss-120b`), con
+  fusible de coste y caída a un categorizador offline si falla la API o no
+  hay clave.
 - Persistencia en PostgreSQL vía Prisma.
 - Bot de Telegram robusto (reconexión, validación de token, tarjetas
   formateadas en HTML).
@@ -15,6 +16,9 @@ comprometido hasta que tenga uso real detrás.
   validación de entorno accionable.
 - Tests de la lógica de negocio con mocks (sin depender de servicios reales).
 - Dockerfile listo para correr de forma persistente.
+- Dashboard web (Next.js) en `dashboard/`, con despliegue propio en Vercel:
+  login, vista por categorías, búsqueda en tiempo real y marcar pendientes
+  como hechos.
 
 ## Fase 2 — búsqueda semántica
 
@@ -31,8 +35,8 @@ comprometido hasta que tenga uso real detrás.
 
 Ideas para cuando el proyecto tenga tracción, sin orden fijo todavía:
 
-- Un dashboard web de solo lectura para explorar y buscar mensajes
-  guardados (complementa a Telegram, no lo sustituye).
+- Edición de mensajes desde el dashboard (hoy es de solo consulta salvo
+  marcar pendientes como hechos).
 - Botones inline en Telegram (recategorizar, marcar como hecho, archivar)
   — hoy las respuestas son deliberadamente mensajes simples.
 - Categorías configurables por el usuario en vez de la lista fija actual.

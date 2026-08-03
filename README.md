@@ -1,4 +1,4 @@
-# 🤖 Clasificador de mensajes de Telegram con Claude
+# 🤖 Clasificador de mensajes de Telegram con IA
 
 ## ¿Qué es esto?
 
@@ -8,8 +8,10 @@ devuelve un resumen corto. Todo queda guardado, así que nada de lo que le
 cuentes se pierde. Es como un cuaderno de notas al que le escribes por
 Telegram y que se organiza solo.
 
-Por dentro usa la IA de Anthropic (Claude) para leer y clasificar cada
-mensaje, y una base de datos (PostgreSQL) para guardarlos. No hace falta saber
+Por dentro usa la IA de Groq (el modelo abierto `openai/gpt-oss-120b`) para
+leer y clasificar cada mensaje, y una base de datos (PostgreSQL) para
+guardarlos. Además tiene un dashboard web (`dashboard/`) para consultar y
+gestionar tus mensajes desde el navegador. No hace falta saber
 programar para usarlo — solo seguir [SETUP.md](./SETUP.md) para levantarlo en
 unos minutos. El resto de este documento es la parte técnica, para quien vaya
 a tocar o entender el código.
@@ -19,10 +21,11 @@ a tocar o entender el código.
 ## Para quien va a tocar el código
 
 Bot de Telegram que **recibe mensajes**, los **categoriza** y **resume** con la
-API de Anthropic (Claude), y los **persiste** en PostgreSQL mediante Prisma.
+API de Groq (`openai/gpt-oss-120b`), y los **persiste** en PostgreSQL mediante
+Prisma.
 
 Está diseñado para ser **modular y desacoplado**: si falta alguna variable de
-entorno (token de Telegram, cadena de base de datos o API key de Anthropic), ese
+entorno (token de Telegram, cadena de base de datos o API key de Groq), ese
 módulo concreto no arranca, pero **el resto del sistema se sigue pudiendo
 ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo.
 
@@ -30,9 +33,9 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
 
 ## ✨ Características
 
-- **Categorización + resumen** de cada mensaje vía Claude (`claude-haiku-4-5`
-  por defecto: el modelo más barato que resuelve bien clasificar/resumir un
-  mensaje corto).
+- **Categorización + resumen** de cada mensaje vía Groq (`openai/gpt-oss-120b`
+  por defecto: modelo abierto de OpenAI servido por Groq, barato y muy rápido,
+  sobrado para clasificar/resumir un mensaje corto).
 - **Persistencia** en PostgreSQL con Prisma (esquema tipado y migraciones).
 - **Comandos de consulta**: `/buscar <texto>` (coincidencia de texto sobre
   contenido y resumen) y `/pendientes` (tareas y recordatorios sin hacer),
@@ -47,7 +50,7 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
 - **CLI de simulación** para probar el pipeline completo sin Telegram ni base de
   datos reales.
 - **Categorizador offline** (heurístico) de reserva: si no hay API key, si la
-  API de Anthropic falla o se agota el fusible de coste, el pipeline sigue
+  API de Groq falla o se agota el fusible de coste, el pipeline sigue
   funcionando sin salir a la red.
 - **Resiliencia ante fallos de la API**: timeout, reintentos con backoff
   exponencial ante errores transitorios (rate limits, 5xx) y caída automática
@@ -64,7 +67,7 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
 - **Tests con Vitest** y mocks; la lógica de negocio está cubierta, incluyendo
   los casos límite anteriores.
 - **Desacoplamiento por inyección de dependencias**: la lógica no conoce
-  Telegram, Prisma ni la SDK de Anthropic directamente.
+  Telegram, Prisma ni la SDK de Groq directamente.
 - **Dockerfile multi-stage** listo para correr de forma persistente (ver
   [Docker](#-docker)).
 
@@ -88,7 +91,7 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
               ┌────────────────────┐  ┌────────────────────┐
               │  Categorizer       │  │ MessageRepository  │
               ├────────────────────┤  ├────────────────────┤
-              │ AnthropicCategorizer│  │ PrismaRepository   │  ← servicios reales
+              │ GroqCategorizer    │  │ PrismaRepository   │  ← servicios reales
               │ OfflineCategorizer │  │ InMemoryRepository │  ← para tests/simular
               └────────────────────┘  └────────────────────┘
 ```
@@ -99,7 +102,7 @@ entorno:
 
 | Variable presente        | Implementación usada          |
 | ------------------------ | ----------------------------- |
-| `ANTHROPIC_API_KEY`      | `AnthropicCategorizer` (Claude), envuelto en fusible + resiliencia |
+| `GROQ_API_KEY`           | `GroqCategorizer` (Groq), envuelto en fusible + resiliencia |
 | *(sin API key)*          | `OfflineCategorizer` (heurístico) |
 | `DATABASE_URL`           | `PrismaMessageRepository`     |
 | *(sin `DATABASE_URL`)*   | `InMemoryMessageRepository`   |
@@ -110,7 +113,7 @@ Cuando hay API key, el categorizador queda envuelto en capas de protección
 ```
 BudgetedCategorizer   → corta el gasto si se agota MAX_MESSAGES_PER_DAY
   └─ ResilientCategorizer → timeout + reintentos con backoff exponencial
-       └─ AnthropicCategorizer → llamada real a Claude
+       └─ GroqCategorizer → llamada real a Groq
 ```
 
 Ambas capas caen al `OfflineCategorizer` ante cualquier fallo, así que el
@@ -123,7 +126,7 @@ pipeline **siempre** devuelve una categorización.
 - **Node.js ≥ 20** (ver `.nvmrc`).
 - Para persistencia real: una base de datos **PostgreSQL**.
 - Para el bot: un **token de Telegram** (de [@BotFather](https://t.me/BotFather)).
-- Para categorización real: una **API key de Anthropic**.
+- Para categorización real: una **API key de Groq**.
 
 > Nada de esto es necesario para ejecutar los tests o la simulación offline.
 
@@ -154,9 +157,9 @@ npm run prisma:deploy
 | `DATABASE_URL`          | Conexión PostgreSQL del runtime (pooler, 6543, transacción) | Persistencia real   |
 | `DIRECT_URL`            | Conexión directa para migraciones (pooler, 5432, sesión)  | `prisma migrate/deploy` |
 | `TELEGRAM_BOT_TOKEN`    | Token del bot de Telegram                                 | Arrancar el bot       |
-| `ANTHROPIC_API_KEY`     | API key de Claude                                         | Categorización real   |
-| `ANTHROPIC_MODEL`       | Modelo de Claude (opcional)                               | — (def. `claude-haiku-4-5`) |
-| `MAX_MESSAGES_PER_DAY`  | Fusible de coste: máx. llamadas a Anthropic por día (opcional) | — (def. `50`)    |
+| `GROQ_API_KEY`          | API key de Groq                                           | Categorización real   |
+| `GROQ_MODEL`            | Modelo servido por Groq (opcional)                        | — (def. `openai/gpt-oss-120b`) |
+| `MAX_MESSAGES_PER_DAY`  | Fusible de coste: máx. llamadas a Groq por día (opcional) | — (def. `50`)    |
 | `BUDGET_FILE`           | Fichero donde persiste el contador del fusible (opcional) | — (def. `.budget.json`) |
 | `TELEGRAM_CHAT_ID`      | Chat al que se envía el resumen diario proactivo          | Resumen diario        |
 | `DAILY_SUMMARY_HOUR`    | Hora local (0-23) del resumen diario (opcional)           | — (def. `9`)          |
@@ -236,7 +239,7 @@ Salida de ejemplo:
 
 ```
 📨 Mensaje entrante: "Recuérdame comprar pan mañana"
-🧪 Sin ANTHROPIC_API_KEY: usando categorizador heurístico offline.
+🧪 Sin GROQ_API_KEY: usando categorizador heurístico offline.
 
 ✅ Resultado del pipeline:
    id:        mem_1
@@ -246,7 +249,7 @@ Salida de ejemplo:
    fecha:     2026-07-27T21:29:30.227Z
 ```
 
-Si defines `ANTHROPIC_API_KEY`, la simulación usa Claude en su lugar.
+Si defines `GROQ_API_KEY`, la simulación usa Groq en su lugar.
 
 ### Arrancar el bot
 
@@ -259,7 +262,7 @@ se cae.
 
 ### Probar con todo conectado
 
-Cuando ya tengas las tres claves (`TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`,
+Cuando ya tengas las tres claves (`TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`,
 `DATABASE_URL`) en tu `.env`:
 
 ```bash
@@ -267,8 +270,8 @@ npm run prisma:generate && npm run prisma:deploy   # crea la tabla si no existe
 npm start
 ```
 
-Escríbele al bot por Telegram: cada mensaje se categoriza con Claude
-(`claude-haiku-4-5` por defecto) y se guarda en PostgreSQL. Los logs
+Escríbele al bot por Telegram: cada mensaje se categoriza con Groq
+(`openai/gpt-oss-120b` por defecto) y se guarda en PostgreSQL. Los logs
 estructurados (JSON por línea, en stdout) muestran cada mensaje procesado, con
 `model` y `maxMessagesPerDay` al arrancar. Si algo falla (red, rate limit,
 fusible de coste agotado), el bot sigue respondiendo con el categorizador
@@ -290,7 +293,7 @@ dependencias. Cubren la lógica de negocio (categorización, parsing de la
 respuesta de la IA, pipeline, repositorios, selección de implementaciones) y
 sus casos límite:
 
-- Fallo de la API de Anthropic (errores 4xx/5xx, rate limits, timeouts).
+- Fallo de la API de Groq (errores 4xx/5xx, rate limits, timeouts).
 - Fusible de coste agotado (`MAX_MESSAGES_PER_DAY`) y su persistencia en disco.
 - Mensajes vacíos o inválidos (rechazados antes de gastar una llamada a la IA).
 - Mensajes gigantes (truncado sin partir caracteres multibyte/emoji).
@@ -305,9 +308,9 @@ sus casos límite:
 ├── prisma/
 │   └── schema.prisma        # modelo Message (+ embedding preparado para fase 2)
 ├── src/
-│   ├── ai/                  # categorización/resumen (Claude + offline)
-│   │   ├── anthropic.ts     #   cliente de Anthropic (perezoso)
-│   │   ├── categorizer.ts   #   AnthropicCategorizer + parsing
+│   ├── ai/                  # categorización/resumen (Groq + offline)
+│   │   ├── groq.ts          #   cliente de Groq (perezoso)
+│   │   ├── categorizer.ts   #   GroqCategorizer + parsing
 │   │   ├── resilientCategorizer.ts  # timeout + reintentos con backoff
 │   │   ├── budgetedCategorizer.ts   # aplica el fusible de coste
 │   │   ├── offlineCategorizer.ts
@@ -334,6 +337,7 @@ sus casos límite:
 │   │   └── simulate.ts      # `npm run simulate`
 │   └── index.ts             # entrypoint (arranca el bot)
 ├── tests/                   # tests de Vitest (uno por módulo)
+├── dashboard/                # dashboard web (Next.js), ver sección Dashboard
 ├── Dockerfile                # imagen multi-stage (ver sección Docker)
 ├── CLAUDE.md                # reglas fijas del proyecto
 ├── SETUP.md                 # puesta en marcha paso a paso
@@ -369,8 +373,33 @@ Notas:
 - El volumen `/data` guarda el contador del fusible de coste
   (`BUDGET_FILE=/data/budget.json` dentro del contenedor), para que sobreviva
   a reinicios del contenedor.
-- Las tres claves (`TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `DATABASE_URL`)
+- Las tres claves (`TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, `DATABASE_URL`)
   se pasan por `--env-file .env`; nunca se hornean en la imagen.
+
+---
+
+## 📊 Dashboard web
+
+Además del bot de Telegram, el proyecto incluye un **dashboard web** en
+[`dashboard/`](./dashboard): una app Next.js (App Router) + TypeScript +
+Tailwind para consultar, buscar y gestionar tus mensajes desde el navegador
+(o instalada como PWA en el móvil) — login por contraseña, vista por
+categorías, buscador en tiempo real y marcar pendientes como hechos.
+
+Es **un proyecto aparte, con despliegue independiente** del bot:
+
+- Vive en su propio directorio (`dashboard/`), con su propio `package.json`
+  y `node_modules` — no comparte proceso ni *runtime* con el bot.
+- **Reutiliza el mismo esquema de datos** (`prisma/schema.prisma`, en la
+  raíz) mediante un segundo generador de Prisma, pero **nunca ejecuta
+  migraciones** — eso lo sigue haciendo solo el bot.
+- Se despliega en **Vercel**, fijando `Root Directory` a `dashboard`, con
+  sus propias variables de entorno (`DATABASE_URL` — la misma cadena que usa
+  el bot — y `DASHBOARD_PASSWORD`). El bot puede seguir corriendo donde
+  corresponda (Docker, un servidor propio) sin relación con este despliegue.
+
+Detalles de desarrollo local, variables de entorno y despliegue paso a paso
+en **[`dashboard/README.md`](./dashboard/README.md)**.
 
 ---
 
@@ -393,6 +422,7 @@ cobertura de la lógica de negocio) están documentadas en
 ## 🔗 Más
 
 - **[SETUP.md](./SETUP.md)** — puesta en marcha paso a paso.
+- **[dashboard/README.md](./dashboard/README.md)** — dashboard web: desarrollo local y despliegue en Vercel.
 - **[ROADMAP.md](./ROADMAP.md)** — hacia dónde va el proyecto.
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — cómo reportar bugs o contribuir código.
 - **[LICENSE](./LICENSE)** — MIT.
