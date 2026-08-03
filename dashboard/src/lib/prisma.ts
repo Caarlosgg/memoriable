@@ -1,8 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 
-// Cliente generado a partir del schema compartido en ../prisma/schema.prisma
-// (generador `dashboardClient`, ver comentario allí). Mismo modelo y
-// migraciones que el bot; esta app solo lee/actualiza, nunca migra.
+// Cliente generado a partir de dashboard/prisma/schema.prisma (copia propia
+// del schema del bot, ver comentario allí sobre por qué no se comparte).
+// Mismo modelo que el bot; esta app solo lee/actualiza, nunca migra.
 //
 // Singleton en globalThis para no agotar el pool de conexiones con cada
 // recarga en caliente de `next dev` (patrón recomendado por Prisma con

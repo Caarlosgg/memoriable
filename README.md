@@ -390,9 +390,10 @@ Es **un proyecto aparte, con despliegue independiente** del bot:
 
 - Vive en su propio directorio (`dashboard/`), con su propio `package.json`
   y `node_modules` — no comparte proceso ni *runtime* con el bot.
-- **Reutiliza el mismo esquema de datos** (`prisma/schema.prisma`, en la
-  raíz) mediante un segundo generador de Prisma, pero **nunca ejecuta
-  migraciones** — eso lo sigue haciendo solo el bot.
+- **Mismo modelo de datos**, mantenido como copia propia en
+  `dashboard/prisma/schema.prisma` (no como generador del schema
+  compartido — ver el porqué en `dashboard/README.md`), pero **nunca
+  ejecuta migraciones** — eso lo sigue haciendo solo el bot.
 - Se despliega en **Vercel**, fijando `Root Directory` a `dashboard`, con
   sus propias variables de entorno (`DATABASE_URL` — la misma cadena que usa
   el bot — y `DASHBOARD_PASSWORD`). El bot puede seguir corriendo donde

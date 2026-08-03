@@ -1,0 +1,53 @@
+// Copia propia del schema del bot (../../prisma/schema.prisma), MISMO
+// modelo y datasource. No es un "segundo generador" del schema
+// compartido: es una copia física, a propósito.
+//
+// Motivo: Prisma resuelve `@prisma/client`/`prisma` recorriendo los
+// directorios ANCESTROS del propio schema.prisma, nunca directorios
+// hermanos. Si este generator viviera en el schema de la raíz (como antes),
+// necesitaría encontrar node_modules en la raíz del repo — y en Vercel, con
+// Root Directory=dashboard, el `npm install` de la raíz nunca se ejecuta.
+// Sin esa copia, Prisma intentaba auto-instalarse a mitad del build
+// (`npm i prisma@... -D --silent`) y esa instalación anidada fallaba.
+//
+// Con el schema aquí dentro, la resolución sube desde dashboard/prisma/
+// hasta dashboard/node_modules — que sí existe siempre, tanto en local como
+// en Vercel — sin necesitar auto-instalar nada ni depender de la raíz.
+//
+// Si cambias el modelo `Message` o el datasource, replica el cambio en
+// ../../prisma/schema.prisma (el schema real del bot, que sigue siendo la
+// fuente de verdad para las migraciones).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Runtime del dashboard: pooler de Supavisor en modo transacción (puerto
+  // 6543). El dashboard nunca migra, así que no necesita DIRECT_URL.
+  url = env("DATABASE_URL")
+}
+
+/// Un mensaje entrante ya categorizado y resumido.
+model Message {
+  id        String   @id @default(cuid())
+  /// Tipo de mensaje (p.ej. "text").
+  tipo      String
+  /// Contenido original del mensaje.
+  contenido String
+  /// Categoría asignada por la IA (tarea, idea, pregunta, ...).
+  categoria String
+  /// Resumen conciso generado por la IA.
+  resumen   String
+  /// ¿Está marcado como hecho? Solo relevante para categorías accionables
+  /// (tarea/recordatorio). Al crearse siempre nace pendiente (false).
+  hecho     Boolean  @default(false)
+  /// Fecha de recepción/procesamiento.
+  fecha     DateTime @default(now())
+
+  @@index([categoria])
+  @@index([fecha])
+  @@index([hecho])
+  @@map("messages")
+}

@@ -8,14 +8,22 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Cliente propio para el dashboard (Next.js, app aparte en dashboard/, con su
-// propio node_modules). Mismo esquema y migraciones, sin duplicar el modelo:
-// un segundo generador es la forma soportada por Prisma de reusar un schema
-// entre dos apps que no comparten node_modules (no hay workspaces npm aquí).
-generator dashboardClient {
-  provider = "prisma-client-js"
-  output   = "../dashboard/node_modules/.prisma/client"
-}
+// El dashboard (Next.js, app aparte en dashboard/, con su propio
+// node_modules) mantiene su PROPIA copia de este schema en
+// dashboard/prisma/schema.prisma, con el mismo modelo y datasource.
+//
+// Antes había un segundo generador aquí mismo (`output` apuntando a
+// dashboard/node_modules/.prisma/client) para evitar duplicar el modelo.
+// Se descartó: Prisma resuelve `@prisma/client`/`prisma` recorriendo los
+// directorios ANCESTROS del propio schema.prisma, nunca directorios
+// hermanos — así que ese generador necesitaba encontrar `node_modules` en
+// la raíz del repo. En Vercel, con Root Directory=dashboard, el
+// `npm install` de la raíz nunca se ejecuta (no existe ese node_modules),
+// así que Prisma intentaba auto-instalarse (`npm i prisma@... -D --silent`)
+// en mitad del build — y esa instalación anidada fallaba de forma opaca.
+//
+// Si cambias el modelo `Message` o el datasource, replica el cambio en
+// dashboard/prisma/schema.prisma.
 
 datasource db {
   provider = "postgresql"
