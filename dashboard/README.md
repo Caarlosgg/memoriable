@@ -140,10 +140,41 @@ igual, solo que sin embedding.
   `AssistantBudget`) — no en fichero como el del bot
   (`src/cost/budget.ts`), porque el dashboard es serverless y no tiene
   disco persistente entre invocaciones.
+- **Historial reciente** (tabla `AssistantExchange`,
+  `src/lib/assistantHistory.ts`): cada pregunta+respuesta se guarda al
+  terminar el streaming (`onFinish` en la ruta). La página `/asistente`
+  carga los últimos 7 días agrupados por día
+  (`src/lib/groupExchangesByDay.ts`, con tests) y los muestra en un
+  panel desplegable (`AssistantHistoryPanel`); al hacer click en uno se
+  vuelve a cargar en el chat. Se purga solo — ver más abajo.
 
 Los mensajes guardados **antes** de configurar `GEMINI_API_KEY` no tienen
 embedding retroactivamente: `npm run backfill-embeddings` (en la raíz,
 contra el bot) los rellena en un paso aparte.
+
+### Purga del historial (Vercel Cron Job)
+
+El historial del Asistente no se gestiona a mano: `dashboard/vercel.json`
+declara un Cron Job que llama semanalmente a
+`GET /api/cron/purge-assistant-history`, que borra los intercambios de
+más de 7 días (`purgeOldExchanges()` en `assistantHistory.ts`):
+
+```json
+{
+  "crons": [{ "path": "/api/cron/purge-assistant-history", "schedule": "0 3 * * 0" }]
+}
+```
+
+`0 3 * * 0` es cron estándar: cada domingo a las 03:00 UTC. Vercel lee
+este fichero automáticamente en cada deploy — no hace falta configurar
+nada en el panel salvo, opcionalmente, `CRON_SECRET` (ver tabla de
+variables de entorno más abajo): si está definida, la ruta exige la
+cabecera `Authorization: Bearer <CRON_SECRET>` que Vercel añade solo a
+las llamadas que él mismo dispara, así una petición externa a esa URL
+no puede disparar la purga. Los Cron Jobs de Vercel están disponibles
+también en el plan Hobby (con la limitación de una ejecución diaria por
+cron, que aquí no aplica al ser semanal). Se pueden ver las ejecuciones
+en el panel del proyecto, pestaña **Cron Jobs**.
 
 ## Desarrollo local
 
@@ -173,6 +204,7 @@ npm run build && npm start
 | `GEMINI_API_KEY`      | API key de Gemini, para el embedding de cada mensaje y de cada pregunta al Asistente | No — sin ella, todo sigue funcionando solo con texto |
 | `GEMINI_MODEL`        | Modelo de embeddings a usar (opcional)             | — (def. `gemini-embedding-001`) |
 | `ASSISTANT_MAX_QUESTIONS_PER_DAY` | Fusible de coste propio del Asistente (opcional) | — (def. `30`) |
+| `CRON_SECRET`         | Protege `/api/cron/purge-assistant-history` de llamadas externas (opcional, recomendada en producción) | No |
 
 No hace falta `DIRECT_URL` aquí: esa variable es solo para migraciones,
 y el dashboard no migra.
@@ -208,8 +240,15 @@ que decirle a Vercel dónde vive el proyecto de Next.js.
      responde con un aviso de que no está configurado.
    - `GEMINI_API_KEY` (opcional) — para que el Buscador y el Asistente
      usen similitud semántica, no solo texto.
+   - `CRON_SECRET` (opcional, recomendada) — un valor aleatorio propio;
+     protege la purga semanal del historial del Asistente (ver
+     "Asistente y búsqueda semántica" más arriba). Vercel se encarga de
+     enviarlo solo en sus propias llamadas al cron, así que basta con
+     definirla aquí, sin tocar nada más.
 4. Deploy. El `postinstall` genera el cliente de Prisma como parte del
-   build; no hace falta ningún paso manual adicional.
+   build; no hace falta ningún paso manual adicional. El Cron Job de
+   `vercel.json` (purga semanal del historial del Asistente) se activa
+   solo con el deploy — visible en la pestaña **Cron Jobs** del proyecto.
 
 ### Instalar en el iPhone
 
@@ -237,13 +276,16 @@ dashboard/
 │   │   ├── login/          # público
 │   │   ├── api/
 │   │   │   ├── search/     # Route Handler protegido (JSON, no redirige)
-│   │   │   └── asistente/  # streaming (ai SDK), su propia comprobación de sesión
+│   │   │   ├── asistente/  # streaming (ai SDK), su propia comprobación de sesión
+│   │   │   └── cron/purge-assistant-history/  # Vercel Cron Job (ver vercel.json)
 │   │   ├── manifest.ts     # PWA
 │   │   ├── icon.tsx, apple-icon.tsx, icons/192|512/  # iconos generados
 │   │   └── layout.tsx
 │   ├── components/
 │   │   ├── nav/            # Sidebar, BottomTabs, MobileHeader, navItems.ts
 │   │   ├── AssistantChat.tsx
+│   │   ├── AssistantMarkdown.tsx      # render de las respuestas (react-markdown)
+│   │   ├── AssistantHistoryPanel.tsx  # historial reciente, agrupado por día
 │   │   └── ...             # el resto de secciones + límites de error
 │   ├── lib/
 │   │   ├── botPipeline/    # copia sincronizada del pipeline del bot (ver su README)
@@ -252,8 +294,11 @@ dashboard/
 │   │   ├── hybridSearch.ts # mezcla texto + semántica (con tests)
 │   │   ├── assistantContext.ts  # construcción del prompt/fuentes (con tests)
 │   │   ├── assistantBudget.ts   # fusible de coste del Asistente (Postgres)
+│   │   ├── assistantHistory.ts  # guardar/leer/purgar AssistantExchange (Prisma)
+│   │   ├── groupExchangesByDay.ts  # agrupación pura del historial (con tests)
 │   │   └── ...             # datos (Prisma), sesión, categorías, etc.
 │   └── proxy.ts             # antes "middleware.ts" (Next.js 16 lo renombró)
-├── tests/                    # Vitest: hybridSearch, assistantContext
+├── tests/                    # Vitest: hybridSearch, assistantContext, groupExchangesByDay
+├── vercel.json               # Cron Job: purga semanal del historial del Asistente
 └── public/sw.js              # cachea solo el shell estático, nunca datos
 ```

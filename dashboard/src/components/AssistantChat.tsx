@@ -5,8 +5,25 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import type { AssistantSource } from "@/lib/assistantContext";
+import type { ExchangeDayGroup, ExchangeLike } from "@/lib/groupExchangesByDay";
+import { AssistantMarkdown } from "./AssistantMarkdown";
+import { AssistantHistoryPanel } from "./AssistantHistoryPanel";
 
 type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }>;
+
+/**
+ * Reconstruye un intercambio guardado como el par de mensajes que
+ * `useChat` espera. No lleva `metadata.sources`: el historial solo guarda
+ * pregunta+respuesta en texto, no qué notas se usaron — al recuperarlo no
+ * se muestra el desplegable de fuentes (aceptable: es una respuesta ya
+ * dada, no hace falta poder re-explorar sus fuentes).
+ */
+function exchangeToMessages(exchange: ExchangeLike): AssistantMessage[] {
+  return [
+    { id: `${exchange.id}-q`, role: "user", parts: [{ type: "text", text: exchange.pregunta }] },
+    { id: `${exchange.id}-a`, role: "assistant", parts: [{ type: "text", text: exchange.respuesta }] },
+  ];
+}
 
 const SUGGESTED_QUESTIONS = [
   "¿Qué tengo pendiente?",
@@ -22,9 +39,9 @@ function textOf(message: AssistantMessage): string {
     .join("");
 }
 
-export function AssistantChat() {
+export function AssistantChat({ initialHistory = [] }: { initialHistory?: ExchangeDayGroup[] }) {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status, error, clearError } = useChat<AssistantMessage>({
+  const { messages, sendMessage, setMessages, status, error, clearError } = useChat<AssistantMessage>({
     transport: new DefaultChatTransport({ api: "/api/asistente" }),
   });
 
@@ -43,6 +60,14 @@ export function AssistantChat() {
       <h2 id="asistente-heading" className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent">
         💬 Asistente
       </h2>
+
+      <AssistantHistoryPanel
+        groups={initialHistory}
+        onSelect={(exchange) => {
+          clearError();
+          setMessages(exchangeToMessages(exchange));
+        }}
+      />
 
       {messages.length === 0 && (
         <div className="fade-in flex flex-col gap-3 rounded-2xl border border-dashed border-paper-line bg-paper-raised/60 p-6 text-center">
@@ -80,7 +105,7 @@ export function AssistantChat() {
                 ) : (
                   <div className="flex max-w-[85%] flex-col gap-2">
                     <div className="fade-in rounded-2xl rounded-bl-sm border border-paper-line bg-paper-raised px-4 py-2.5 text-sm text-ink">
-                      {text || (isBusy ? "…" : "")}
+                      {text ? <AssistantMarkdown text={text} /> : isBusy ? "…" : ""}
                     </div>
                     {sources.length > 0 && (
                       <details className="text-xs text-muted">

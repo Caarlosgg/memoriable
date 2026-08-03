@@ -71,8 +71,21 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("CONTEXTO DE PRUEBA");
   });
 
-  it("pide citar por categoría/fecha, no por ids internos", () => {
+  it("pide citar por categoría/fecha, no por id interno", () => {
     const prompt = buildSystemPrompt("x");
-    expect(prompt.toLowerCase()).toContain("ids internos");
+    expect(prompt.toLowerCase()).toContain("id interno");
+  });
+
+  it("pide redirigir con amabilidad las preguntas que no son sobre las notas del usuario", () => {
+    // Normaliza espacios/saltos de línea: el prompt es un template literal
+    // multilínea, así que una frase puede partirse en el código fuente.
+    const prompt = buildSystemPrompt("x").toLowerCase().replace(/\s+/g, " ");
+    expect(prompt).toContain("solo puedo ayudarte con lo que has guardado");
+    expect(prompt).toContain("redirige con amabilidad");
+  });
+
+  it("prohíbe explícitamente la fórmula mecánica 'Categoría (fecha): contenido'", () => {
+    const prompt = buildSystemPrompt("x");
+    expect(prompt).toContain("Categoría (fecha): contenido");
   });
 });

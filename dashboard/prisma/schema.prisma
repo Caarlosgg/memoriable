@@ -71,3 +71,15 @@ model AssistantBudget {
 
   @@map("assistant_budget")
 }
+
+/// Ver ../../prisma/schema.prisma: historial de intercambios con el
+/// Asistente, purgado solo por un Cron Job semanal de Vercel.
+model AssistantExchange {
+  id        String   @id @default(cuid())
+  pregunta  String
+  respuesta String
+  fecha     DateTime @default(now())
+
+  @@index([fecha])
+  @@map("assistant_exchanges")
+}

@@ -87,3 +87,17 @@ model AssistantBudget {
 
   @@map("assistant_budget")
 }
+
+/// Historial de intercambios con el Asistente (pregunta + respuesta ya
+/// generada, texto plano). Se purga solo: un Cron Job semanal de Vercel
+/// (ver dashboard/vercel.json) borra lo de más de 7 días, así que esta
+/// tabla nunca crece sin límite ni hace falta gestionarla a mano.
+model AssistantExchange {
+  id        String   @id @default(cuid())
+  pregunta  String
+  respuesta String
+  fecha     DateTime @default(now())
+
+  @@index([fecha])
+  @@map("assistant_exchanges")
+}

@@ -7,6 +7,7 @@ import { resolveEmbedder } from "@/lib/pipeline";
 import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import { toAssistantSources, buildContextBlock, buildSystemPrompt, type AssistantSource } from "@/lib/assistantContext";
+import { saveExchange } from "@/lib/assistantHistory";
 
 export const maxDuration = 30;
 
@@ -73,6 +74,24 @@ export async function POST(req: Request) {
     model: groq("openai/gpt-oss-120b"),
     system: buildSystemPrompt(buildContextBlock(sources)),
     messages: await convertToModelMessages(messages),
+    // Mismo criterio que el categorizador del bot (src/ai/categorizer.ts):
+    // clasificar/responder sobre un puñado de notas cortas no necesita
+    // cadena de razonamiento larga. 'low' da respuestas más directas y
+    // rápidas; 'hidden' evita que el razonamiento se mezcle con el texto
+    // visible de la respuesta.
+    providerOptions: {
+      groq: { reasoningEffort: "low", reasoningFormat: "hidden" },
+    },
+    // No crítico: si guardar el historial falla, no debe tirar la
+    // respuesta que el usuario ya está viendo — solo se registra el aviso.
+    onFinish: async ({ text }) => {
+      if (!question || !text) return;
+      try {
+        await saveExchange(question, text);
+      } catch (err) {
+        console.error("No se pudo guardar el intercambio en el historial:", err);
+      }
+    },
   });
 
   return createUIMessageStreamResponse({
@@ -82,6 +101,9 @@ export async function POST(req: Request) {
       // de streamear (búsqueda determinista previa), así que basta con
       // devolver el mismo valor fijo en ambos casos.
       messageMetadata: () => ({ sources }),
+      // No hay reasoning que mostrar (reasoningFormat: "hidden" arriba);
+      // desactivarlo explícitamente evita mandar un part de más al cliente.
+      sendReasoning: false,
       // Evita que se filtren detalles internos del error (p. ej. de Groq)
       // al cliente; el mensaje genérico es suficiente para que la UI lo
       // muestre sin crashear.
