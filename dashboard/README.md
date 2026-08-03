@@ -1,6 +1,6 @@
-# 📊 Dashboard — memoria-ia
+# 📊 Dashboard — MemorIAble
 
-Dashboard web del bot de Telegram [memoria-ia](../README.md): consulta,
+Dashboard web del bot de Telegram [MemorIAble](../README.md): consulta,
 busca y gestiona tus mensajes categorizados desde el navegador (o
 instalado como app en el móvil). Next.js (App Router) + TypeScript +
 Tailwind, con su propio despliegue en Vercel, independiente del bot.

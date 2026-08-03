@@ -3,8 +3,8 @@
 # Imagen del bot, pensada para correr de forma persistente fuera del portátil.
 # No se despliega nada aquí: queda lista para construir y ejecutar.
 #
-#   docker build -t telegram-claude-classifier .
-#   docker run --init --env-file .env -v bot_data:/data telegram-claude-classifier
+#   docker build -t memoriable .
+#   docker run --init --env-file .env -v bot_data:/data memoriable
 #
 # Nota: el bot usa polling, no expone ningún puerto.
 

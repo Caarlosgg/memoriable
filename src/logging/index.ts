@@ -10,7 +10,7 @@ export * from './logger.js';
  */
 export const logger: Logger = createLogger({
   level: normalizeLevel(env.LOG_LEVEL),
-  base: { service: 'telegram-claude-classifier' },
+  base: { service: 'memoriable' },
 });
 
 /** Emite por el logger los avisos de configuración acumulados al arrancar. */

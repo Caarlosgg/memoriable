@@ -4,7 +4,7 @@
 // lleva datos de la base de datos incrustados— NUNCA se cachean: se piden
 // siempre en fresco, tal como pide el dashboard.
 
-const SHELL_CACHE = "memoria-ia-shell-v1";
+const SHELL_CACHE = "memoriable-shell-v1";
 const SHELL_ASSETS = ["/manifest.webmanifest", "/icons/192", "/icons/512"];
 
 self.addEventListener("install", (event) => {

@@ -1,4 +1,4 @@
-# 🤖 Clasificador de mensajes de Telegram con IA
+# 🤖 MemorIAble — Clasificador de mensajes de Telegram con IA
 
 ## ¿Qué es esto?
 
@@ -356,12 +356,12 @@ portátil (una VM, un servidor casero, etc.). El `Dockerfile` está listo, pero
 decidas:
 
 ```bash
-docker build -t telegram-claude-classifier .
+docker build -t memoriable .
 
 docker run --init \
   --env-file .env \
   -v bot_data:/data \
-  telegram-claude-classifier
+  memoriable
 ```
 
 Notas:

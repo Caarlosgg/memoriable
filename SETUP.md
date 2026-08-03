@@ -6,8 +6,8 @@ final funcionando.
 ## 1. Clona el repositorio
 
 ```bash
-git clone https://github.com/Caarlosgg/memoria-ia.git
-cd memoria-ia
+git clone https://github.com/Caarlosgg/memoriable.git
+cd memoriable
 ```
 
 ## 2. Instala las dependencias
