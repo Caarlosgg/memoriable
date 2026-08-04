@@ -1,4 +1,5 @@
 import type { Message } from "@prisma/client";
+import type { StoredMessage } from "./botPipeline/repository";
 import { presentCategory } from "./categories";
 import { formatDate } from "./format";
 
@@ -13,20 +14,25 @@ export interface AssistantSource {
   fecha: string;
 }
 
+/** Convierte un mensaje ya guardado (Prisma o del pipeline) a fuente presentable. Pura. */
+export function toAssistantSource(
+  m: Pick<Message | StoredMessage, "id" | "categoria" | "resumen" | "contenido" | "fecha">,
+): AssistantSource {
+  const { emoji, label } = presentCategory(m.categoria);
+  return {
+    id: m.id,
+    categoria: m.categoria,
+    label,
+    emoji,
+    resumen: m.resumen,
+    contenido: m.contenido,
+    fecha: formatDate(m.fecha),
+  };
+}
+
 /** Convierte mensajes (resultado de la búsqueda semántica) a fuentes presentables. Pura. */
 export function toAssistantSources(messages: Message[]): AssistantSource[] {
-  return messages.map((m) => {
-    const { emoji, label } = presentCategory(m.categoria);
-    return {
-      id: m.id,
-      categoria: m.categoria,
-      label,
-      emoji,
-      resumen: m.resumen,
-      contenido: m.contenido,
-      fecha: formatDate(m.fecha),
-    };
-  });
+  return messages.map(toAssistantSource);
 }
 
 /**
@@ -76,7 +82,18 @@ Reglas estrictas:
   mejor la respuesta, pero sin que la respuesta se convierta en un
   volcado de datos: la prioridad es sonar a persona, no a informe.
 - Ve al grano: unas pocas frases bastan salvo que pidan más detalle. No
-  divagues ni pienses en voz alta.`;
+  divagues ni pienses en voz alta.
+
+Herramientas:
+- Tienes la herramienta \`crearNota\` para guardar notas, tareas o
+  recordatorios nuevos, con el mismo pipeline que la captura rápida del
+  dashboard. Cuando el usuario pida crear, apuntar, anotar o recordar
+  algo, LLÁMALA directamente en el mismo turno — nunca respondas "no
+  puedo crear cosas" ni "¿quieres que lo haga?" primero. Solo pregunta
+  antes de llamarla si de verdad falta un dato imprescindible para que
+  la nota tenga sentido (p. ej. piden un recordatorio pero no dicen de
+  qué). Después de llamarla, confirma en un par de frases lo que
+  guardaste, con naturalidad.`;
 
 /** System prompt completo (reglas + contexto). Pura. */
 export function buildSystemPrompt(contextBlock: string): string {

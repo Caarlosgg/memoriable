@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import type { UIMessage } from "ai";
+import type { UIMessage, InferUITools, UIDataTypes } from "ai";
 import type { AssistantSource } from "@/lib/assistantContext";
+import type { assistantTools } from "@/lib/assistantTools";
 import type { ExchangeDayGroup, ExchangeLike } from "@/lib/groupExchangesByDay";
 import { AssistantMarkdown } from "./AssistantMarkdown";
 import { AssistantHistoryPanel } from "./AssistantHistoryPanel";
 
-type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }>;
+type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }, UIDataTypes, InferUITools<typeof assistantTools>>;
 
 /**
  * Reconstruye un intercambio guardado como el par de mensajes que
@@ -37,6 +38,37 @@ function textOf(message: AssistantMessage): string {
     .filter((p): p is { type: "text"; text: string; state?: "streaming" | "done" } => p.type === "text")
     .map((p) => p.text)
     .join("");
+}
+
+type CrearNotaPart = Extract<AssistantMessage["parts"][number], { type: "tool-crearNota" }>;
+
+function isCrearNotaPart(part: AssistantMessage["parts"][number]): part is CrearNotaPart {
+  return part.type === "tool-crearNota";
+}
+
+/** Tarjetas de confirmación de lo que el Asistente ha creado en este mensaje. */
+function CrearNotaResult({ part }: { part: CrearNotaPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        No se ha podido guardar: {part.errorText || "error desconocido"}.
+      </div>
+    );
+  }
+
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Guardando…</div>;
+  }
+
+  const s = part.output;
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
+      <p className="font-medium text-ink">
+        ✅ {s.emoji} {s.label} guardada
+      </p>
+      <p className="mt-0.5 line-clamp-2 text-muted">{s.resumen}</p>
+    </div>
+  );
 }
 
 export function AssistantChat({ initialHistory = [] }: { initialHistory?: ExchangeDayGroup[] }) {
@@ -95,6 +127,7 @@ export function AssistantChat({ initialHistory = [] }: { initialHistory?: Exchan
           {messages.map((message) => {
             const sources = message.metadata?.sources ?? [];
             const text = textOf(message);
+            const crearNotaParts = message.parts.filter(isCrearNotaPart);
 
             return (
               <li key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
@@ -104,9 +137,14 @@ export function AssistantChat({ initialHistory = [] }: { initialHistory?: Exchan
                   </div>
                 ) : (
                   <div className="flex max-w-[85%] flex-col gap-2">
-                    <div className="fade-in rounded-2xl rounded-bl-sm border border-paper-line bg-paper-raised px-4 py-2.5 text-sm text-ink">
-                      {text ? <AssistantMarkdown text={text} /> : isBusy ? "…" : ""}
-                    </div>
+                    {crearNotaParts.map((part) => (
+                      <CrearNotaResult key={part.toolCallId} part={part} />
+                    ))}
+                    {(text || isBusy || crearNotaParts.length === 0) && (
+                      <div className="fade-in rounded-2xl rounded-bl-sm border border-paper-line bg-paper-raised px-4 py-2.5 text-sm text-ink">
+                        {text ? <AssistantMarkdown text={text} /> : isBusy ? "…" : ""}
+                      </div>
+                    )}
                     {sources.length > 0 && (
                       <details className="text-xs text-muted">
                         <summary className="cursor-pointer select-none font-medium text-accent hover:text-accent-strong">

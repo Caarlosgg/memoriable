@@ -1,20 +1,23 @@
 import { groq } from "@ai-sdk/groq";
-import { streamText, convertToModelMessages, createUIMessageStreamResponse, toUIMessageStream } from "ai";
-import type { ToolSet, UIMessage } from "ai";
+import { streamText, convertToModelMessages, createUIMessageStreamResponse, toUIMessageStream, stepCountIs } from "ai";
+import type { ToolSet, UIMessage, InferUITools, UIDataTypes } from "ai";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { resolveEmbedder } from "@/lib/pipeline";
 import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import { toAssistantSources, buildContextBlock, buildSystemPrompt, type AssistantSource } from "@/lib/assistantContext";
+import { assistantTools } from "@/lib/assistantTools";
 import { saveExchange } from "@/lib/assistantHistory";
 
 export const maxDuration = 30;
 
 const DEFAULT_MAX_QUESTIONS_PER_DAY = 30;
 const SOURCES_PER_ANSWER = 5;
+/** Turnos de herramienta que se dejan encadenar antes de forzar la respuesta final. */
+const MAX_TOOL_STEPS = 4;
 
-type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }>;
+type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }, UIDataTypes, InferUITools<typeof assistantTools>>;
 
 // Texto plano, no JSON: `useChat` usa el cuerpo de una respuesta no-2xx tal
 // cual como `error.message` (no lo interpreta como stream de UI), así que
@@ -74,6 +77,11 @@ export async function POST(req: Request) {
     model: groq("openai/gpt-oss-120b"),
     system: buildSystemPrompt(buildContextBlock(sources)),
     messages: await convertToModelMessages(messages),
+    tools: assistantTools,
+    // Permite encadenar la llamada a `crearNota` con la respuesta de texto
+    // que la confirma, en el mismo turno (si no, el SDK se pararía justo
+    // después de ejecutar la tool sin generar el mensaje final).
+    stopWhen: stepCountIs(MAX_TOOL_STEPS),
     // Mismo criterio que el categorizador del bot (src/ai/categorizer.ts):
     // clasificar/responder sobre un puñado de notas cortas no necesita
     // cadena de razonamiento larga. 'low' da respuestas más directas y
