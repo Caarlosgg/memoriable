@@ -1,33 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage, InferUITools, UIDataTypes } from "ai";
 import { MessageCircle, Send, CircleCheck } from "lucide-react";
 import type { AssistantSource } from "@/lib/assistantContext";
 import type { AssistantTools } from "@/lib/assistantTools";
-import type { ExchangeDayGroup, ExchangeLike } from "@/lib/groupExchangesByDay";
+import type { AssistantExchangeRecord, ConversationSummary } from "@/lib/assistantHistory";
 import { presentCategory } from "@/lib/categories";
+import { titleFromQuestion } from "@/lib/conversationTitle";
+import { loadConversation } from "@/app/(dashboard)/asistente/actions";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { AssistantMarkdown } from "./AssistantMarkdown";
-import { AssistantHistoryPanel } from "./AssistantHistoryPanel";
+import { ConversationSidebar } from "./ConversationSidebar";
 
-type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }, UIDataTypes, InferUITools<AssistantTools>>;
+type AssistantMessage = UIMessage<
+  { sources?: AssistantSource[]; conversationId?: string },
+  UIDataTypes,
+  InferUITools<AssistantTools>
+>;
 
 /**
- * Reconstruye un intercambio guardado como el par de mensajes que
- * `useChat` espera. No lleva `metadata.sources`: el historial solo guarda
- * pregunta+respuesta en texto, no qué notas se usaron — al recuperarlo no
- * se muestra el desplegable de fuentes (aceptable: es una respuesta ya
- * dada, no hace falta poder re-explorar sus fuentes).
+ * Reconstruye los intercambios guardados de una conversación como la
+ * secuencia de mensajes que `useChat` espera, en orden. No lleva
+ * `metadata.sources`: el historial solo guarda pregunta+respuesta en
+ * texto, no qué notas se usaron — al recuperarlo no se muestra el
+ * desplegable de fuentes (aceptable: son respuestas ya dadas).
  */
-function exchangeToMessages(exchange: ExchangeLike): AssistantMessage[] {
-  return [
-    { id: `${exchange.id}-q`, role: "user", parts: [{ type: "text", text: exchange.pregunta }] },
-    { id: `${exchange.id}-a`, role: "assistant", parts: [{ type: "text", text: exchange.respuesta }] },
-  ];
+function exchangesToMessages(exchanges: AssistantExchangeRecord[]): AssistantMessage[] {
+  return exchanges.flatMap((exchange) => [
+    { id: `${exchange.id}-q`, role: "user" as const, parts: [{ type: "text" as const, text: exchange.pregunta }] },
+    { id: `${exchange.id}-a`, role: "assistant" as const, parts: [{ type: "text" as const, text: exchange.respuesta }] },
+  ]);
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -77,10 +83,30 @@ function CrearNotaResult({ part }: { part: CrearNotaPart }) {
   );
 }
 
-export function AssistantChat({ initialHistory = [] }: { initialHistory?: ExchangeDayGroup[] }) {
+export function AssistantChat({ initialConversations = [] }: { initialConversations?: ConversationSummary[] }) {
   const [input, setInput] = useState("");
+  const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID());
+  const [conversations, setConversations] = useState<ConversationSummary[]>(initialConversations);
+  // La pregunta que se acaba de mandar: se usa para titular la conversación
+  // localmente en cuanto la respuesta termina, sin esperar a recargar.
+  const pendingQuestionRef = useRef("");
+
   const { messages, sendMessage, setMessages, status, error, clearError } = useChat<AssistantMessage>({
-    transport: new DefaultChatTransport({ api: "/api/asistente" }),
+    transport: new DefaultChatTransport({ api: "/api/asistente", body: { conversationId } }),
+    onFinish: ({ message }) => {
+      const savedId = message.metadata?.conversationId ?? conversationId;
+      const question = pendingQuestionRef.current;
+      if (!question) return;
+
+      setConversations((prev) => {
+        const rest = prev.filter((c) => c.id !== savedId);
+        const existing = prev.find((c) => c.id === savedId);
+        return [
+          { id: savedId, titulo: existing?.titulo ?? titleFromQuestion(question), updatedAt: new Date() },
+          ...rest,
+        ];
+      });
+    },
   });
 
   const isBusy = status === "submitted" || status === "streaming";
@@ -89,8 +115,23 @@ export function AssistantChat({ initialHistory = [] }: { initialHistory?: Exchan
     const trimmed = text.trim();
     if (trimmed === "" || isBusy) return;
     clearError();
+    pendingQuestionRef.current = trimmed;
     sendMessage({ text: trimmed });
     setInput("");
+  }
+
+  function handleNewConversation() {
+    setConversationId(crypto.randomUUID());
+    setMessages([]);
+    clearError();
+  }
+
+  async function handleSelectConversation(id: string) {
+    if (id === conversationId) return;
+    clearError();
+    const exchanges = await loadConversation(id);
+    setConversationId(id);
+    setMessages(exchangesToMessages(exchanges));
   }
 
   return (
@@ -102,12 +143,11 @@ export function AssistantChat({ initialHistory = [] }: { initialHistory?: Exchan
         <MessageCircle aria-hidden size={14} /> Asistente
       </h2>
 
-      <AssistantHistoryPanel
-        groups={initialHistory}
-        onSelect={(exchange) => {
-          clearError();
-          setMessages(exchangeToMessages(exchange));
-        }}
+      <ConversationSidebar
+        conversations={conversations}
+        activeId={conversationId}
+        onSelect={handleSelectConversation}
+        onNew={handleNewConversation}
       />
 
       {messages.length === 0 && (

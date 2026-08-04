@@ -45,8 +45,9 @@ model User {
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
-  messages  Message[]
-  exchanges AssistantExchange[]
+  messages      Message[]
+  exchanges     AssistantExchange[]
+  conversations Conversation[]
 
   @@map("users")
 }
@@ -112,6 +113,22 @@ model AssistantBudget {
   @@map("assistant_budget")
 }
 
+/// Ver ../../prisma/schema.prisma: conversación del Asistente (Fase 5).
+model Conversation {
+  id        String   @id @default(cuid())
+  titulo    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  exchanges AssistantExchange[]
+
+  @@index([userId])
+  @@map("conversations")
+}
+
 /// Ver ../../prisma/schema.prisma: historial de intercambios con el
 /// Asistente, purgado solo por un Cron Job semanal de Vercel.
 model AssistantExchange {
@@ -123,7 +140,11 @@ model AssistantExchange {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+
   @@index([fecha])
   @@index([userId])
+  @@index([conversationId])
   @@map("assistant_exchanges")
 }

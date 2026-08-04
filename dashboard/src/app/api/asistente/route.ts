@@ -8,7 +8,7 @@ import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import { toAssistantSources, buildContextBlock, buildSystemPrompt, type AssistantSource } from "@/lib/assistantContext";
 import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
-import { saveExchange } from "@/lib/assistantHistory";
+import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
 
 export const maxDuration = 30;
 
@@ -17,7 +17,11 @@ const SOURCES_PER_ANSWER = 5;
 /** Turnos de herramienta que se dejan encadenar antes de forzar la respuesta final. */
 const MAX_TOOL_STEPS = 4;
 
-type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }, UIDataTypes, InferUITools<AssistantTools>>;
+type AssistantMessage = UIMessage<
+  { sources?: AssistantSource[]; conversationId?: string },
+  UIDataTypes,
+  InferUITools<AssistantTools>
+>;
 
 // Texto plano, no JSON: `useChat` usa el cuerpo de una respuesta no-2xx tal
 // cual como `error.message` (no lo interpreta como stream de UI), así que
@@ -58,8 +62,17 @@ export async function POST(req: Request) {
     return errorResponse("Se alcanzó el límite de preguntas al Asistente por hoy. Vuelve mañana.", 429);
   }
 
-  const { messages }: { messages: AssistantMessage[] } = await req.json();
+  const { messages, conversationId: requestedConversationId }: { messages: AssistantMessage[]; conversationId: string } =
+    await req.json();
   const question = lastUserQuestion(messages);
+
+  // El cliente genera el id al empezar un chat nuevo (una conversación es
+  // "suya" desde el primer mensaje); aquí solo se confirma que existe y que
+  // de verdad pertenece a este usuario (ver ensureConversation) antes de
+  // guardar nada en ella.
+  const conversationId = question
+    ? await ensureConversation(userId, requestedConversationId, question)
+    : requestedConversationId;
 
   // Nunca bloquea la respuesta: sin GEMINI_API_KEY (o si Gemini falla),
   // embedQuery devuelve null y el Asistente responde igual, solo que sin
@@ -96,7 +109,7 @@ export async function POST(req: Request) {
     onFinish: async ({ text }) => {
       if (!question || !text) return;
       try {
-        await saveExchange(userId, question, text);
+        await saveExchange(userId, conversationId, question, text);
       } catch (err) {
         console.error("No se pudo guardar el intercambio en el historial:", err);
       }
@@ -106,10 +119,10 @@ export async function POST(req: Request) {
   return createUIMessageStreamResponse({
     stream: toUIMessageStream<ToolSet, AssistantMessage>({
       stream: result.stream,
-      // Se llama en 'start' y 'finish'; las fuentes ya están decididas antes
-      // de streamear (búsqueda determinista previa), así que basta con
-      // devolver el mismo valor fijo en ambos casos.
-      messageMetadata: () => ({ sources }),
+      // Se llama en 'start' y 'finish'; las fuentes y el id de conversación
+      // ya están decididos antes de streamear, así que basta con devolver
+      // el mismo valor fijo en ambos casos.
+      messageMetadata: () => ({ sources, conversationId }),
       // No hay reasoning que mostrar (reasoningFormat: "hidden" arriba);
       // desactivarlo explícitamente evita mandar un part de más al cliente.
       sendReasoning: false,

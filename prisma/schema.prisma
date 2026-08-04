@@ -60,8 +60,9 @@ model User {
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
-  messages  Message[]
-  exchanges AssistantExchange[]
+  messages      Message[]
+  exchanges     AssistantExchange[]
+  conversations Conversation[]
 
   @@map("users")
 }
@@ -144,6 +145,27 @@ model AssistantBudget {
   @@map("assistant_budget")
 }
 
+/// Conversación del Asistente (Fase 5): agrupa varios intercambios en un
+/// mismo hilo navegable, como el historial de Claude — no pregunta-
+/// respuesta suelta. `titulo` se autogenera a partir de la primera
+/// pregunta. Se purga junto con sus intercambios (ver AssistantExchange):
+/// una conversación sin intercambios (todos purgados por antigüedad) se
+/// borra en el mismo Cron Job, para no dejar hilos vacíos en la lista.
+model Conversation {
+  id        String   @id @default(cuid())
+  titulo    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  exchanges AssistantExchange[]
+
+  @@index([userId])
+  @@map("conversations")
+}
+
 /// Historial de intercambios con el Asistente (pregunta + respuesta ya
 /// generada, texto plano). Se purga solo: un Cron Job semanal de Vercel
 /// (ver dashboard/vercel.json) borra lo de más de 7 días, así que esta
@@ -158,7 +180,14 @@ model AssistantExchange {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
+  /// Hilo al que pertenece (Fase 5). Nullable: los intercambios de antes de
+  /// la Fase 5 no pertenecen a ninguna conversación agrupada — se quedan
+  /// fuera de la lista de conversaciones, no se les inventa un hilo.
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+
   @@index([fecha])
   @@index([userId])
+  @@index([conversationId])
   @@map("assistant_exchanges")
 }
