@@ -51,6 +51,20 @@ model User {
   @@map("users")
 }
 
+/// Ver ../../prisma/schema.prisma: estado en el tablero kanban (Fase 3).
+enum EstadoTarea {
+  POR_HACER
+  EN_PROGRESO
+  HECHO
+}
+
+/// Ver ../../prisma/schema.prisma: prioridad en el tablero kanban (Fase 3).
+enum Prioridad {
+  BAJA
+  MEDIA
+  ALTA
+}
+
 /// Un mensaje entrante ya categorizado y resumido.
 model Message {
   id        String   @id @default(cuid())
@@ -62,9 +76,12 @@ model Message {
   categoria String
   /// Resumen conciso generado por la IA.
   resumen   String
-  /// ¿Está marcado como hecho? Solo relevante para categorías accionables
-  /// (tarea/recordatorio). Al crearse siempre nace pendiente (false).
-  hecho     Boolean  @default(false)
+  /// ¿Está marcado como hecho? Se mantiene sincronizado con `estado`.
+  hecho     Boolean     @default(false)
+  /// Estado en el tablero kanban (Fase 3). Nace en POR_HACER.
+  estado    EstadoTarea @default(POR_HACER)
+  /// Prioridad en el tablero kanban (Fase 3). Nace en MEDIA.
+  prioridad Prioridad   @default(MEDIA)
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
@@ -81,6 +98,7 @@ model Message {
   @@index([fecha])
   @@index([hecho])
   @@index([userId])
+  @@index([estado])
   @@map("messages")
 }
 

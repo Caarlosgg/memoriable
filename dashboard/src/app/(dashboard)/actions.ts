@@ -1,22 +1,35 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { EstadoTarea, Prioridad } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 
 /**
- * Marca un mensaje como hecho. Recibe solo el id (no el objeto completo): el
- * cliente le dice al servidor QUÉ cambiar, nunca CÓMO deben quedar los datos.
+ * Mueve una tarjeta del tablero a otra columna. `hecho` se mantiene
+ * sincronizado con `estado` (hecho = estado === HECHO): el bot y el resumen
+ * diario siguen leyendo `hecho` tal cual, sin saber nada del tablero.
+ *
+ * `updateMany` con userId en el where (no `update` por id solo): si el id
+ * pertenece a otro usuario, esto no actualiza nada en vez de tocar una nota
+ * ajena — la comprobación de dueño va en la propia query.
  */
-export async function markDone(id: string): Promise<void> {
+export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise<void> {
   const userId = await verifySession();
-  // `updateMany` con userId en el where (no `update` por id solo): si el id
-  // pertenece a otro usuario, esto no actualiza nada en vez de tocar una
-  // nota ajena — la comprobación de dueño va en la propia query.
-  await prisma.message.updateMany({ where: { id, userId }, data: { hecho: true } });
-  revalidatePath("/");
+  await prisma.message.updateMany({
+    where: { id, userId },
+    data: { estado, hecho: estado === "HECHO" },
+  });
+  revalidatePath("/pendientes");
+}
+
+/** Cambia la prioridad de una tarjeta del tablero. Mismo criterio de dueño que arriba. */
+export async function updateTaskPriority(id: string, prioridad: Prioridad): Promise<void> {
+  const userId = await verifySession();
+  await prisma.message.updateMany({ where: { id, userId }, data: { prioridad } });
+  revalidatePath("/pendientes");
 }
 
 export interface CaptureState {

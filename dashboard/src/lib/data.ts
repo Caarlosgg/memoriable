@@ -2,6 +2,7 @@ import "server-only";
 import type { Message } from "@prisma/client";
 import { prisma } from "./prisma";
 import { ACTIONABLE_CATEGORIES, CATEGORIES, type Category } from "./categories";
+import { ESTADOS_TABLERO } from "./kanban";
 import { hybridSearch } from "./hybridSearch";
 import { findSimilarMessages } from "./vectorSearch";
 import { resolveEmbedder } from "./pipeline";
@@ -92,17 +93,25 @@ export async function searchMessages(
   });
 }
 
+export interface BoardColumn {
+  estado: Message["estado"];
+  messages: Message[];
+}
+
 /**
- * Pendientes: tareas y recordatorios que aún no se han marcado como hechos,
- * los más recientes primero. Mismo criterio que /pendientes en el bot.
+ * Tablero kanban (Fase 3): tareas y recordatorios agrupados por estado, los
+ * más recientes primero dentro de cada columna. Mismo alcance que el viejo
+ * "Pendientes" (categorías accionables) — solo que ahora también se ven las
+ * ya hechas, en su propia columna, en vez de desaparecer sin más.
  */
-export async function getPendingMessages(userId: string): Promise<Message[]> {
-  return prisma.message.findMany({
-    where: {
-      userId,
-      hecho: false,
-      categoria: { in: [...ACTIONABLE_CATEGORIES] },
-    },
+export async function getBoardGroups(userId: string): Promise<BoardColumn[]> {
+  const messages = await prisma.message.findMany({
+    where: { userId, categoria: { in: [...ACTIONABLE_CATEGORIES] } },
     orderBy: { fecha: "desc" },
   });
+
+  return ESTADOS_TABLERO.map((estado) => ({
+    estado,
+    messages: messages.filter((m) => m.estado === estado),
+  }));
 }

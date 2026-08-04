@@ -11,6 +11,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/asistente", label: "Asistente", Icon: MessageCircle },
   { href: "/buscador", label: "Buscador", Icon: Search },
   { href: "/categorias", label: "Categorías", Icon: LayoutGrid },
-  { href: "/pendientes", label: "Pendientes", Icon: ListTodo },
+  { href: "/pendientes", label: "Tablero", Icon: ListTodo },
   { href: "/cuenta", label: "Cuenta", Icon: User },
 ];

@@ -8,29 +8,17 @@ export function MessageCard({
   message,
   showCategory = true,
   highlightQuery,
-  children,
-  className = "",
 }: {
   message: Pick<Message, "contenido" | "categoria" | "resumen" | "fecha">;
   showCategory?: boolean;
   /** Si se pasa, resalta las coincidencias de este término en el texto. */
   highlightQuery?: string;
-  /** Slot opcional para acciones (p. ej. "marcar como hecho"). */
-  children?: React.ReactNode;
-  /**
-   * Clases extra para el <li> raíz (p. ej. la transición de salida de
-   * PendingList). No envuelvas este componente en tu propio <li>: ya es uno,
-   * y anidar <li> dentro de <li> es HTML inválido (rompe la hidratación).
-   */
-  className?: string;
 }) {
   const { Icon, label, color } = presentCategory(message.categoria);
   const resumen = message.resumen || "(sin resumen)";
 
   return (
-    <li
-      className={`fade-in group rounded-xl border border-paper-line bg-paper-raised p-4 shadow-sm transition-shadow hover:shadow-md ${className}`}
-    >
+    <li className="fade-in group rounded-xl border border-paper-line bg-paper-raised p-4 shadow-sm transition-shadow hover:shadow-md">
       {showCategory && (
         <p className={`mb-1.5 flex items-center gap-1.5 text-xs font-semibold ${color}`}>
           <Icon aria-hidden size={14} /> {label}
@@ -50,11 +38,10 @@ export function MessageCard({
           message.contenido
         )}
       </p>
-      <div className="mt-3 flex items-center justify-between gap-3 border-t border-paper-line pt-2.5">
+      <div className="mt-3 flex items-center gap-3 border-t border-paper-line pt-2.5">
         <p className="flex items-center gap-1 text-xs text-muted">
           <Clock aria-hidden size={12} /> {formatDate(message.fecha)}
         </p>
-        {children}
       </div>
     </li>
   );

@@ -66,6 +66,23 @@ model User {
   @@map("users")
 }
 
+/// Estado de una tarea/recordatorio en el tablero kanban (Fase 3). Solo
+/// relevante para categorías accionables (tarea/recordatorio) — el resto
+/// de categorías no aparecen en el tablero y se quedan en POR_HACER sin
+/// que nadie lo vea ni lo use.
+enum EstadoTarea {
+  POR_HACER
+  EN_PROGRESO
+  HECHO
+}
+
+/// Prioridad de una tarea/recordatorio (Fase 3).
+enum Prioridad {
+  BAJA
+  MEDIA
+  ALTA
+}
+
 /// Un mensaje entrante ya categorizado y resumido.
 model Message {
   id        String   @id @default(cuid())
@@ -79,7 +96,14 @@ model Message {
   resumen   String
   /// ¿Está marcado como hecho? Solo relevante para categorías accionables
   /// (tarea/recordatorio). Al crearse siempre nace pendiente (false).
+  /// Se mantiene sincronizado con `estado` (hecho = estado == HECHO): el
+  /// bot y el resumen diario lo siguen usando tal cual, sin saber nada del
+  /// tablero kanban del dashboard.
   hecho     Boolean  @default(false)
+  /// Estado en el tablero kanban (Fase 3). Nace en POR_HACER.
+  estado    EstadoTarea @default(POR_HACER)
+  /// Prioridad en el tablero kanban (Fase 3). Nace en MEDIA.
+  prioridad Prioridad   @default(MEDIA)
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
@@ -102,6 +126,7 @@ model Message {
   @@index([fecha])
   @@index([hecho])
   @@index([userId])
+  @@index([estado])
   @@map("messages")
 }
 
