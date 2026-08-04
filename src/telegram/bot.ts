@@ -180,6 +180,16 @@ export function createBot(
   const bot = new Telegraf(token, { handlerTimeout: 60_000 });
 
   bot.start(async (ctx) => {
+    // Enlace de vínculo directo desde el dashboard (t.me/<bot>?start=<código>):
+    // Telegram abre el chat y manda "/start <código>" solo, sin que el
+    // usuario tenga que escribir /vincular a mano. `startPayload` es lo que
+    // venga tras "/start " (deprecado por `ctx.payload` en Telegraf, pero
+    // sigue funcionando y no requiere subir de versión para este caso).
+    if (ctx.startPayload) {
+      const reply = await handleLinkCommand(ctx.startPayload, ctx.chat.id, linkTelegramChat, logger);
+      await ctx.reply(reply, { parse_mode: 'HTML' });
+      return;
+    }
     await ctx.reply(REPLIES.welcome);
   });
 

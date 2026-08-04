@@ -202,6 +202,7 @@ npm run build && npm start
 | --------------------- | ------------------------------------------------- | ----------- |
 | `DATABASE_URL`        | Conexión a PostgreSQL (la misma que usa el bot)    | Sí          |
 | `SESSION_SECRET`      | Firma la cookie de sesión (si rota, las sesiones activas dejan de valer). No es la contraseña de nadie: cada usuario tiene la suya, con hash, en la base de datos | Sí |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | Usuario del bot (sin @); habilita el botón "Abrir Telegram y vincular" en Cuenta en vez del `/vincular <código>` manual | No |
 | `GROQ_API_KEY`        | API key de Groq: categoriza la captura rápida y sintetiza las respuestas del Asistente | No para captura (cae a offline); el Asistente no tiene alternativa sin ella |
 | `GROQ_MODEL`          | Modelo servido por Groq (opcional)                | — (def. `openai/gpt-oss-120b`) |
 | `GEMINI_API_KEY`      | API key de Gemini, para el embedding de cada mensaje y de cada pregunta al Asistente | No — sin ella, todo sigue funcionando solo con texto |
