@@ -182,4 +182,34 @@ describe('processMessage', () => {
 
     expect(records.find((r) => r.event === 'message.rejected')).toMatchObject({ reason: 'empty' });
   });
+
+  it('avisa a onAnalysis del análisis completo sin cambiar si se guarda (Fase 6)', async () => {
+    const categorizer: Categorizer = {
+      analyze: vi.fn().mockResolvedValue({
+        categoria: 'recordatorio',
+        resumen: 'Llamar al médico',
+        confianza: 0.4,
+        preguntaAclaratoria: '¿Para qué día lo recuerdo?',
+      }),
+    };
+    const repository = new InMemoryMessageRepository();
+    const onAnalysis = vi.fn();
+
+    const stored = await processMessage(
+      { tipo: 'text', contenido: 'llamar al médico' },
+      'u1',
+      { categorizer, repository },
+      onAnalysis,
+    );
+
+    expect(onAnalysis).toHaveBeenCalledWith({
+      categoria: 'recordatorio',
+      resumen: 'Llamar al médico',
+      confianza: 0.4,
+      preguntaAclaratoria: '¿Para qué día lo recuerdo?',
+    });
+    // El guardado nunca depende de onAnalysis: sucede igual, siempre.
+    expect(stored.categoria).toBe('recordatorio');
+    expect(repository.all()).toHaveLength(1);
+  });
 });

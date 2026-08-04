@@ -1,7 +1,7 @@
 // Copia sincronizada de ../../../../src/pipeline/processMessage.ts — ver
 // botPipeline/README.md para el porqué de la copia.
 
-import type { Categorizer, Embedder, IncomingMessage } from './types';
+import type { Analysis, Categorizer, Embedder, IncomingMessage } from './types';
 import type { MessageRepository, StoredMessage } from './repository';
 import { errorContext, type Logger } from './logger';
 import { InvalidMessageError, sanitizeContent } from './sanitize';
@@ -36,6 +36,8 @@ export async function processMessage(
   message: IncomingMessage,
   userId: string,
   { categorizer, repository, embedder, logger }: Pipeline,
+  /** Ver ../../../../src/pipeline/processMessage.ts. No lo usa el dashboard. */
+  onAnalysis?: (analysis: Analysis) => void,
 ): Promise<StoredMessage> {
   const log = logger ?? noopLogger;
   const startedAt = Date.now();
@@ -61,6 +63,7 @@ export async function processMessage(
 
   try {
     const analysis = await categorizer.analyze(clean);
+    onAnalysis?.(analysis);
     const embedding = (await embedder?.embedDocument(clean.contenido)) ?? null;
     const stored = await repository.save(userId, { ...clean, ...analysis, embedding });
 

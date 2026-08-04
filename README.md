@@ -36,6 +36,10 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
 - **Categorización + resumen** de cada mensaje vía Groq (`openai/gpt-oss-120b`
   por defecto: modelo abierto de OpenAI servido por Groq, barato y muy rápido,
   sobrado para clasificar/resumir un mensaje corto).
+- **Proactivo con tareas/recordatorios** (Fase 6): si falta un dato importante
+  (sobre todo la fecha) el bot lo guarda igual con la mejor categoría posible
+  y, aparte, pregunta lo que falta ("¿Para qué día lo recuerdo?") — nunca dejas
+  el mensaje a medias, y nunca se pierde por no contestar a la pregunta.
 - **Persistencia** en PostgreSQL con Prisma (esquema tipado y migraciones).
 - **Multiusuario** (Fase 2): cada chat de Telegram se vincula a una cuenta
   del dashboard (`/vincular <código>`, generado desde "Cuenta" en el

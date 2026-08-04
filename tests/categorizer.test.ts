@@ -32,6 +32,41 @@ describe('parseAnalysis', () => {
   it('lanza si el texto no es JSON válido', () => {
     expect(() => parseAnalysis('esto no es json', 'orig')).toThrow(/no es un JSON válido/);
   });
+
+  it('recoge la confianza si viene como número válido, acotada a [0,1]', () => {
+    expect(parseAnalysis('{"categoria":"tarea","resumen":"x","confianza":0.7}', 'orig').confianza).toBe(0.7);
+    expect(parseAnalysis('{"categoria":"tarea","resumen":"x","confianza":5}', 'orig').confianza).toBe(1);
+    expect(parseAnalysis('{"categoria":"tarea","resumen":"x","confianza":-2}', 'orig').confianza).toBe(0);
+  });
+
+  it('ignora una confianza que no es un número', () => {
+    expect(parseAnalysis('{"categoria":"tarea","resumen":"x","confianza":"alta"}', 'orig').confianza).toBeUndefined();
+  });
+
+  it('recoge la pregunta aclaratoria para tarea/recordatorio', () => {
+    const out = parseAnalysis(
+      '{"categoria":"recordatorio","resumen":"Llamar al médico","pregunta_aclaratoria":"¿Para qué día?"}',
+      'orig',
+    );
+    expect(out.preguntaAclaratoria).toBe('¿Para qué día?');
+  });
+
+  it('ignora la pregunta aclaratoria si la categoría no es accionable', () => {
+    const out = parseAnalysis(
+      '{"categoria":"nota","resumen":"x","pregunta_aclaratoria":"¿Cuándo?"}',
+      'orig',
+    );
+    expect(out.preguntaAclaratoria).toBeUndefined();
+  });
+
+  it('ignora una pregunta aclaratoria vacía o que no es texto', () => {
+    expect(
+      parseAnalysis('{"categoria":"tarea","resumen":"x","pregunta_aclaratoria":"   "}', 'orig').preguntaAclaratoria,
+    ).toBeUndefined();
+    expect(
+      parseAnalysis('{"categoria":"tarea","resumen":"x","pregunta_aclaratoria":42}', 'orig').preguntaAclaratoria,
+    ).toBeUndefined();
+  });
 });
 
 describe('GroqCategorizer', () => {

@@ -90,19 +90,20 @@ describe('createBot', () => {
 describe('handleTextMessage', () => {
   it('categoriza, persiste y devuelve la respuesta formateada', async () => {
     const repository = new InMemoryMessageRepository();
-    const reply = await handleTextMessage('Comprar pan y leche', 'u1', {
+    const { reply, followUp } = await handleTextMessage('Comprar pan y leche', 'u1', {
       categorizer: new OfflineCategorizer(),
       repository,
     });
 
     expect(reply).toContain('<b>Tarea</b>');
     expect(reply).toContain('🕒');
+    expect(followUp).toBeUndefined();
     expect(repository.all()).toHaveLength(1);
     expect(repository.all()[0]!.contenido).toBe('Comprar pan y leche');
   });
 
   it('responde con un mensaje amable si el texto está vacío', async () => {
-    const reply = await handleTextMessage('   ', 'u1', pipeline());
+    const { reply } = await handleTextMessage('   ', 'u1', pipeline());
     expect(reply).toBe(REPLIES.empty);
   });
 
@@ -112,7 +113,7 @@ describe('handleTextMessage', () => {
       analyze: vi.fn().mockRejectedValue(new Error('base de datos caída')),
     };
 
-    const reply = await handleTextMessage(
+    const { reply } = await handleTextMessage(
       'hola',
       'u1',
       { categorizer, repository: new InMemoryMessageRepository(), logger },
@@ -124,6 +125,25 @@ describe('handleTextMessage', () => {
       level: 'error',
       errorMessage: 'base de datos caída',
     });
+  });
+
+  it('manda una pregunta de seguimiento aparte cuando el categorizador la pide', async () => {
+    const repository = new InMemoryMessageRepository();
+    const categorizer: Categorizer = {
+      analyze: vi.fn().mockResolvedValue({
+        categoria: 'recordatorio',
+        resumen: 'Llamar al médico',
+        confianza: 0.4,
+        preguntaAclaratoria: '¿Para qué día lo recuerdo?',
+      }),
+    };
+
+    const { reply, followUp } = await handleTextMessage('Llamar al médico', 'u1', { categorizer, repository });
+
+    expect(reply).toContain('Llamar al médico');
+    expect(followUp).toBe('¿Para qué día lo recuerdo?');
+    // Nunca bloquea el guardado: se guarda igual, con la mejor categoría posible.
+    expect(repository.all()).toHaveLength(1);
   });
 });
 

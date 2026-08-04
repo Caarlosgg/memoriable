@@ -1,4 +1,4 @@
-import type { Categorizer, Embedder, IncomingMessage } from '../ai/types.js';
+import type { Analysis, Categorizer, Embedder, IncomingMessage } from '../ai/types.js';
 import type { MessageRepository, StoredMessage } from '../db/repository.js';
 import { errorContext, type Logger } from '../logging/logger.js';
 import { InvalidMessageError, sanitizeContent } from './sanitize.js';
@@ -36,6 +36,15 @@ export async function processMessage(
   message: IncomingMessage,
   userId: string,
   { categorizer, repository, embedder, logger }: Pipeline,
+  /**
+   * Se llama justo después de categorizar, con el análisis completo
+   * (incluida `confianza`/`preguntaAclaratoria`, que no sobreviven al
+   * guardado — Prisma solo devuelve columnas reales). Nunca cambia si se
+   * guarda o no: guardar SIEMPRE sucede, pase lo que pase aquí — es solo
+   * para que un llamante (p. ej. el bot de Telegram) pueda reaccionar a la
+   * señal sin duplicar la llamada a la IA. Opcional: nadie más lo usa.
+   */
+  onAnalysis?: (analysis: Analysis) => void,
 ): Promise<StoredMessage> {
   const log = logger ?? noopLogger;
   const startedAt = Date.now();
@@ -61,6 +70,7 @@ export async function processMessage(
 
   try {
     const analysis = await categorizer.analyze(clean);
+    onAnalysis?.(analysis);
     // Nunca bloquea el guardado: un fallo aquí ya vuelve `null` (ver
     // ai/embedder.ts), y sin `embedder` inyectado (tests, simulación) el
     // mensaje se guarda igual, solo que sin embedding.

@@ -27,6 +27,24 @@ export interface IncomingMessage {
 export interface Analysis {
   categoria: Category;
   resumen: string;
+  /**
+   * Qué tan segura está la IA de la categoría elegida (0-1). Opcional: solo
+   * lo rellena el categorizador real (Groq) — el offline no tiene forma de
+   * medirlo, así que lo omite (se trata como confianza alta por defecto).
+   * No se persiste en BD (no hay columna para esto en Message): es una
+   * señal transitoria para que el bot decida si hace falta preguntar algo
+   * más, no un dato de negocio.
+   */
+  confianza?: number;
+  /**
+   * Si la IA cree que falta un dato importante para que la nota tenga
+   * sentido del todo (p. ej. un recordatorio sin fecha), una pregunta
+   * corta para pedirlo — el bot la manda como aviso aparte, DESPUÉS de
+   * guardar (nunca bloquea el guardado: perder el mensaje del usuario
+   * porque nunca contestó a la aclaración sería peor que guardarlo con la
+   * mejor categoría posible y preguntar por si acaso).
+   */
+  preguntaAclaratoria?: string;
 }
 
 /**

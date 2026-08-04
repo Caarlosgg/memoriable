@@ -26,10 +26,12 @@ export interface IncomingMessage {
   contenido: string;
 }
 
-/** Resultado del análisis por IA. */
+/** Resultado del análisis por IA. Ver ../../../../src/ai/types.ts (copia sincronizada). */
 export interface Analysis {
   categoria: Category;
   resumen: string;
+  confianza?: number;
+  preguntaAclaratoria?: string;
 }
 
 /**

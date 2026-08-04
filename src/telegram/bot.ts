@@ -109,6 +109,19 @@ export async function handlePendingCommand(
   }
 }
 
+export interface TextMessageResult {
+  /** Confirmación normal (tarjeta con categoría/resumen), siempre presente. */
+  reply: string;
+  /**
+   * Pregunta de seguimiento (Fase 6), cuando el categorizador cree que
+   * falta un dato importante (p. ej. la fecha de un recordatorio). NUNCA
+   * sustituye ni retrasa la confirmación de arriba — el mensaje ya está
+   * guardado con la mejor categoría posible pase lo que pase; esto es solo
+   * un aviso aparte, a mayores.
+   */
+  followUp?: string;
+}
+
 /**
  * Lógica del handler de texto, aislada de Telegraf para poder testearla sin
  * salir a la red. **Nunca lanza**: siempre devuelve el texto que hay que
@@ -119,14 +132,17 @@ export async function handleTextMessage(
   userId: string,
   pipeline: Pipeline,
   logger: Logger | undefined = pipeline.logger,
-): Promise<string> {
+): Promise<TextMessageResult> {
   try {
-    const stored = await processMessage({ tipo: 'text', contenido: text }, userId, pipeline);
-    return formatResponseCard(stored);
+    let followUp: string | undefined;
+    const stored = await processMessage({ tipo: 'text', contenido: text }, userId, pipeline, (analysis) => {
+      followUp = analysis.preguntaAclaratoria;
+    });
+    return { reply: formatResponseCard(stored), followUp };
   } catch (err) {
-    if (err instanceof InvalidMessageError) return REPLIES.empty;
+    if (err instanceof InvalidMessageError) return { reply: REPLIES.empty };
     logger?.error('telegram.handler_failed', errorContext(err));
-    return REPLIES.error;
+    return { reply: REPLIES.error };
   }
 }
 
@@ -215,8 +231,10 @@ export function createBot(
   bot.on(message('text'), async (ctx) => {
     const userId = await resolveChatOwner(ctx.chat.id);
     if (!userId) return void ctx.reply(REPLIES.notLinked, { parse_mode: 'HTML' });
-    const reply = await handleTextMessage(ctx.message.text, userId, pipeline, logger);
+    const { reply, followUp } = await handleTextMessage(ctx.message.text, userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
+    // Aparte, nunca en vez de la confirmación de arriba (ver TextMessageResult).
+    if (followUp) await ctx.reply(followUp);
   });
 
   // Red de seguridad: cualquier error no capturado en un handler (incluido un
