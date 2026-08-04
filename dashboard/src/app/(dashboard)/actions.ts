@@ -11,8 +11,11 @@ import type { StoredMessage } from "@/lib/botPipeline/repository";
  * cliente le dice al servidor QUÉ cambiar, nunca CÓMO deben quedar los datos.
  */
 export async function markDone(id: string): Promise<void> {
-  await verifySession();
-  await prisma.message.update({ where: { id }, data: { hecho: true } });
+  const userId = await verifySession();
+  // `updateMany` con userId en el where (no `update` por id solo): si el id
+  // pertenece a otro usuario, esto no actualiza nada en vez de tocar una
+  // nota ajena — la comprobación de dueño va en la propia query.
+  await prisma.message.updateMany({ where: { id, userId }, data: { hecho: true } });
   revalidatePath("/");
 }
 
@@ -26,13 +29,13 @@ export interface CaptureState {
  * (categoriza + resume + guarda), ver src/lib/pipeline.ts.
  */
 export async function capture(_prev: CaptureState, formData: FormData): Promise<CaptureState> {
-  await verifySession();
+  const userId = await verifySession();
 
   const contenido = String(formData.get("contenido") ?? "").trim();
   if (contenido === "") return { error: "Escribe algo antes de guardar." };
 
   try {
-    const saved = await captureMessage(contenido);
+    const saved = await captureMessage(userId, contenido);
     revalidatePath("/");
     return { saved };
   } catch (err) {

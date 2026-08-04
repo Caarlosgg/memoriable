@@ -1,15 +1,15 @@
 import "server-only";
 
 /**
- * Contraseña de acceso al dashboard. También se usa como clave para firmar
- * la cookie de sesión: si la contraseña cambia, las sesiones ya emitidas
- * dejan de ser válidas, que es el comportamiento deseado al rotarla.
+ * Clave para firmar la cookie de sesión (JWT). No es la contraseña de
+ * nadie — solo protege la firma. Si cambia, todas las sesiones ya emitidas
+ * dejan de ser válidas (comportamiento deseado al rotarla).
  */
-export function requireDashboardPassword(): string {
-  const value = process.env.DASHBOARD_PASSWORD;
+export function requireSessionSecret(): string {
+  const value = process.env.SESSION_SECRET;
   if (!value) {
     throw new Error(
-      "DASHBOARD_PASSWORD no está definida: configúrala para poder entrar al dashboard.",
+      "SESSION_SECRET no está definida: configúrala (cualquier cadena larga y aleatoria) para poder entrar al dashboard.",
     );
   }
   return value;

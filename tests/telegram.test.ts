@@ -9,6 +9,7 @@ import {
   REPLIES,
   commandArgument,
   createBot,
+  handleLinkCommand,
   handlePendingCommand,
   handleSearchCommand,
   handleTextMessage,
@@ -89,7 +90,7 @@ describe('createBot', () => {
 describe('handleTextMessage', () => {
   it('categoriza, persiste y devuelve la respuesta formateada', async () => {
     const repository = new InMemoryMessageRepository();
-    const reply = await handleTextMessage('Comprar pan y leche', {
+    const reply = await handleTextMessage('Comprar pan y leche', 'u1', {
       categorizer: new OfflineCategorizer(),
       repository,
     });
@@ -101,7 +102,7 @@ describe('handleTextMessage', () => {
   });
 
   it('responde con un mensaje amable si el texto está vacío', async () => {
-    const reply = await handleTextMessage('   ', pipeline());
+    const reply = await handleTextMessage('   ', 'u1', pipeline());
     expect(reply).toBe(REPLIES.empty);
   });
 
@@ -113,6 +114,7 @@ describe('handleTextMessage', () => {
 
     const reply = await handleTextMessage(
       'hola',
+      'u1',
       { categorizer, repository: new InMemoryMessageRepository(), logger },
       logger,
     );
@@ -139,24 +141,24 @@ describe('commandArgument', () => {
 
 describe('handleSearchCommand', () => {
   it('pide un término si la consulta viene vacía', async () => {
-    const reply = await handleSearchCommand('   ', pipeline());
+    const reply = await handleSearchCommand('   ', 'u1', pipeline());
     expect(reply).toBe(REPLIES.searchUsage);
   });
 
   it('devuelve las coincidencias como tarjetas', async () => {
     const repository = new InMemoryMessageRepository();
-    await handleTextMessage('Comprar pan y leche', {
+    await handleTextMessage('Comprar pan y leche', 'u1', {
       categorizer: new OfflineCategorizer(),
       repository,
     });
 
-    const reply = await handleSearchCommand('pan', { categorizer: new OfflineCategorizer(), repository });
+    const reply = await handleSearchCommand('pan', 'u1', { categorizer: new OfflineCategorizer(), repository });
     expect(reply).toContain('Resultados para «pan»');
     expect(reply).toContain('<b>Tarea</b>');
   });
 
   it('dice con naturalidad que no hay resultados', async () => {
-    const reply = await handleSearchCommand('inexistente', pipeline());
+    const reply = await handleSearchCommand('inexistente', 'u1', pipeline());
     expect(reply).toContain('No he encontrado nada');
   });
 
@@ -171,6 +173,7 @@ describe('handleSearchCommand', () => {
 
     const reply = await handleSearchCommand(
       'algo',
+      'u1',
       { categorizer: new OfflineCategorizer(), repository, logger },
       logger,
     );
@@ -186,15 +189,15 @@ describe('handlePendingCommand', () => {
   it('lista las tareas/recordatorios pendientes como tarjetas', async () => {
     const repository = new InMemoryMessageRepository();
     const pipeline = { categorizer: new OfflineCategorizer(), repository };
-    await handleTextMessage('Comprar pan y leche', pipeline);
+    await handleTextMessage('Comprar pan y leche', 'u1', pipeline);
 
-    const reply = await handlePendingCommand(pipeline);
+    const reply = await handlePendingCommand('u1', pipeline);
     expect(reply).toContain('Tus pendientes');
     expect(reply).toContain('<b>Tarea</b>');
   });
 
   it('dice con naturalidad que no hay nada pendiente', async () => {
-    const reply = await handlePendingCommand(pipeline());
+    const reply = await handlePendingCommand('u1', pipeline());
     expect(reply).toBe(REPLIES.noPending);
   });
 
@@ -208,6 +211,7 @@ describe('handlePendingCommand', () => {
     };
 
     const reply = await handlePendingCommand(
+      'u1',
       { categorizer: new OfflineCategorizer(), repository, logger },
       logger,
     );
@@ -216,6 +220,38 @@ describe('handlePendingCommand', () => {
     expect(records.find((r) => r.event === 'telegram.pending_failed')).toMatchObject({
       level: 'error',
     });
+  });
+});
+
+describe('handleLinkCommand', () => {
+  it('pide el código si viene vacío', async () => {
+    const linkChat = vi.fn();
+    const reply = await handleLinkCommand('   ', 123, linkChat);
+    expect(reply).toBe(REPLIES.linkUsage);
+    expect(linkChat).not.toHaveBeenCalled();
+  });
+
+  it('confirma cuando el código es válido', async () => {
+    const linkChat = vi.fn().mockResolvedValue('linked');
+    const reply = await handleLinkCommand('123456', 987, linkChat);
+    expect(reply).toBe(REPLIES.linkSuccess);
+    expect(linkChat).toHaveBeenCalledWith('123456', 987);
+  });
+
+  it('avisa con naturalidad si el código no es válido o caducó', async () => {
+    const linkChat = vi.fn().mockResolvedValue('invalid_or_expired');
+    const reply = await handleLinkCommand('000000', 987, linkChat);
+    expect(reply).toBe(REPLIES.linkInvalid);
+  });
+
+  it('nunca lanza: ante un fallo interno responde error y lo registra', async () => {
+    const { logger, records } = createMemoryLogger();
+    const linkChat = vi.fn().mockRejectedValue(new Error('db caída'));
+
+    const reply = await handleLinkCommand('123456', 987, linkChat, logger);
+
+    expect(reply).toBe(REPLIES.error);
+    expect(records.find((r) => r.event === 'telegram.link_failed')).toMatchObject({ level: 'error' });
   });
 });
 

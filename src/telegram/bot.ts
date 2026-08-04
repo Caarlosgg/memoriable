@@ -5,6 +5,7 @@ import { errorContext, logger as rootLogger, type Logger } from '../logging/inde
 import { InvalidMessageError } from '../pipeline/sanitize.js';
 import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
 import { resolvePipeline } from '../pipeline/factory.js';
+import { resolveChatOwner, linkTelegramChat } from '../db/users.js';
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
@@ -17,6 +18,11 @@ export const REPLIES = {
   error: '⚠️ No he podido procesar tu mensaje. Inténtalo de nuevo en un momento.',
   searchUsage: 'ℹ️ Escribe qué quieres buscar. Ejemplo: <code>/buscar factura luz</code>',
   noPending: '✅ No tienes nada pendiente. ¡Todo al día!',
+  notLinked:
+    '🔗 Todavía no he vinculado este chat a ninguna cuenta. Entra al dashboard, ve a "Cuenta" y mándame el código con <code>/vincular 123456</code>.',
+  linkUsage: 'ℹ️ Escribe el código que te da el dashboard. Ejemplo: <code>/vincular 123456</code>',
+  linkSuccess: '✅ ¡Chat vinculado! A partir de ahora, lo que me mandes se guarda en tu cuenta.',
+  linkInvalid: '⚠️ Ese código no es válido o ha caducado. Genera uno nuevo desde "Cuenta" en el dashboard.',
 } as const;
 
 /**
@@ -34,6 +40,7 @@ export function commandArgument(text: string): string {
  */
 export const BOT_COMMANDS = [
   { command: 'start', description: 'Empezar y ver cómo funciona el bot' },
+  { command: 'vincular', description: 'Vincular este chat a tu cuenta del dashboard' },
   { command: 'buscar', description: 'Buscar en tus mensajes guardados' },
   { command: 'pendientes', description: 'Ver tus tareas y recordatorios pendientes' },
 ] as const;
@@ -61,6 +68,7 @@ export async function registerCommands(
  */
 export async function handleSearchCommand(
   query: string,
+  userId: string,
   pipeline: Pipeline,
   logger: Logger | undefined = pipeline.logger,
 ): Promise<string> {
@@ -68,7 +76,7 @@ export async function handleSearchCommand(
   if (q === '') return REPLIES.searchUsage;
 
   try {
-    const results = await pipeline.repository.search(q);
+    const results = await pipeline.repository.search(userId, q);
     return formatMessageList(results, {
       header: `🔎 Resultados para «${escapeHtml(q)}»:`,
       empty: `🔍 No he encontrado nada que coincida con «${escapeHtml(q)}». Prueba con otra palabra.`,
@@ -85,11 +93,12 @@ export async function handleSearchCommand(
  * interno devuelve un mensaje de error y lo registra.
  */
 export async function handlePendingCommand(
+  userId: string,
   pipeline: Pipeline,
   logger: Logger | undefined = pipeline.logger,
 ): Promise<string> {
   try {
-    const results = await pipeline.repository.pending();
+    const results = await pipeline.repository.pending(userId);
     return formatMessageList(results, {
       header: '📋 Tus pendientes (tareas y recordatorios):',
       empty: REPLIES.noPending,
@@ -107,15 +116,42 @@ export async function handlePendingCommand(
  */
 export async function handleTextMessage(
   text: string,
+  userId: string,
   pipeline: Pipeline,
   logger: Logger | undefined = pipeline.logger,
 ): Promise<string> {
   try {
-    const stored = await processMessage({ tipo: 'text', contenido: text }, pipeline);
+    const stored = await processMessage({ tipo: 'text', contenido: text }, userId, pipeline);
     return formatResponseCard(stored);
   } catch (err) {
     if (err instanceof InvalidMessageError) return REPLIES.empty;
     logger?.error('telegram.handler_failed', errorContext(err));
+    return REPLIES.error;
+  }
+}
+
+/**
+ * Maneja `/vincular <código>`: consume el código de un solo uso generado
+ * desde el dashboard (sección "Cuenta") y liga este chat a esa cuenta.
+ * **Nunca lanza**: ante un fallo interno devuelve un mensaje de error y lo
+ * registra.
+ */
+export async function handleLinkCommand(
+  code: string,
+  chatId: number,
+  linkChat: typeof linkTelegramChat = linkTelegramChat,
+  logger?: Logger,
+): Promise<string> {
+  const trimmed = code.trim();
+  if (trimmed === '') return REPLIES.linkUsage;
+
+  try {
+    const result = await linkChat(trimmed, chatId);
+    if (result === 'linked') return REPLIES.linkSuccess;
+    if (result === 'no_database') return REPLIES.error;
+    return REPLIES.linkInvalid;
+  } catch (err) {
+    logger?.error('telegram.link_failed', errorContext(err));
     return REPLIES.error;
   }
 }
@@ -147,18 +183,29 @@ export function createBot(
     await ctx.reply(REPLIES.welcome);
   });
 
+  bot.command('vincular', async (ctx) => {
+    const reply = await handleLinkCommand(commandArgument(ctx.message.text), ctx.chat.id, linkTelegramChat, logger);
+    await ctx.reply(reply, { parse_mode: 'HTML' });
+  });
+
   bot.command('buscar', async (ctx) => {
-    const reply = await handleSearchCommand(commandArgument(ctx.message.text), pipeline, logger);
+    const userId = await resolveChatOwner(ctx.chat.id);
+    if (!userId) return void ctx.reply(REPLIES.notLinked, { parse_mode: 'HTML' });
+    const reply = await handleSearchCommand(commandArgument(ctx.message.text), userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 
   bot.command('pendientes', async (ctx) => {
-    const reply = await handlePendingCommand(pipeline, logger);
+    const userId = await resolveChatOwner(ctx.chat.id);
+    if (!userId) return void ctx.reply(REPLIES.notLinked, { parse_mode: 'HTML' });
+    const reply = await handlePendingCommand(userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 
   bot.on(message('text'), async (ctx) => {
-    const reply = await handleTextMessage(ctx.message.text, pipeline, logger);
+    const userId = await resolveChatOwner(ctx.chat.id);
+    if (!userId) return void ctx.reply(REPLIES.notLinked, { parse_mode: 'HTML' });
+    const reply = await handleTextMessage(ctx.message.text, userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 

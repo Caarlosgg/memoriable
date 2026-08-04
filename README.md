@@ -37,6 +37,10 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
   por defecto: modelo abierto de OpenAI servido por Groq, barato y muy rápido,
   sobrado para clasificar/resumir un mensaje corto).
 - **Persistencia** en PostgreSQL con Prisma (esquema tipado y migraciones).
+- **Multiusuario** (Fase 2): cada chat de Telegram se vincula a una cuenta
+  del dashboard (`/vincular <código>`, generado desde "Cuenta" en el
+  dashboard) — un chat sin vincular no guarda ni consulta nada, hasta que
+  se vincula.
 - **Comandos de consulta**: `/buscar <texto>` (coincidencia de texto sobre
   contenido y resumen) y `/pendientes` (tareas y recordatorios sin hacer),
   con el menú publicado en Telegram vía `setMyCommands`.
@@ -218,11 +222,13 @@ con `setMyCommands`, sin tocar @BotFather):
 
 | Comando        | Qué hace                                                                 |
 | -------------- | ------------------------------------------------------------------------ |
+| `/vincular <código>` | Vincula este chat a una cuenta del dashboard (el código se genera en "Cuenta"). Sin vincular, el bot no guarda ni consulta nada. |
 | `/buscar <texto>` | Busca coincidencias de texto (case-insensitive) en el contenido y el resumen de tus mensajes; devuelve los más recientes como tarjetas. |
 | `/pendientes`  | Lista tus tareas y recordatorios que aún no están hechos.                |
 | `/start`       | Mensaje de bienvenida.                                                    |
 
-Además, cualquier mensaje normal se categoriza, se resume y se guarda.
+Además, cualquier mensaje normal se categoriza, se resume y se guarda — siempre
+que el chat ya esté vinculado a una cuenta (ver `/vincular` arriba).
 
 **Resumen diario proactivo.** Si defines `TELEGRAM_CHAT_ID`, el bot te envía
 cada día a la hora `DAILY_SUMMARY_HOUR` (por defecto las 9:00, hora local) un
@@ -408,8 +414,11 @@ Es **un proyecto aparte, con despliegue independiente** del bot:
   proyectos; el porqué exacto está documentado ahí).
 - Se despliega en **Vercel**, fijando `Root Directory` a `dashboard`, con
   sus propias variables de entorno (`DATABASE_URL` — la misma cadena que usa
-  el bot — y `DASHBOARD_PASSWORD`). El bot puede seguir corriendo donde
-  corresponda (Docker, un servidor propio) sin relación con este despliegue.
+  el bot — y `SESSION_SECRET`). Multiusuario (Fase 2): cada persona crea su
+  propia cuenta desde `/registro` y ve solo sus notas; vincula el chat de
+  Telegram desde "Cuenta" en el dashboard con `/vincular <código>`. El bot
+  puede seguir corriendo donde corresponda (Docker, un servidor propio) sin
+  relación con este despliegue.
 
 Detalles de desarrollo local, variables de entorno y despliegue paso a paso
 en **[`dashboard/README.md`](./dashboard/README.md)**.

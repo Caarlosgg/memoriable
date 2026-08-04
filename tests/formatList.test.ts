@@ -10,6 +10,7 @@ const base: StoredMessage = {
   resumen: 'Comprar pan',
   hecho: false,
   fecha: new Date('2026-01-05T10:00:00.000Z'),
+  userId: 'u1',
 };
 
 describe('formatMessageList', () => {

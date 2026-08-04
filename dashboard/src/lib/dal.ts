@@ -5,13 +5,14 @@ import { readSessionCookie, verifySessionToken } from "./session";
 
 /**
  * Comprobación de sesión "segura" (no solo la optimista de `proxy.ts`):
- * vuelve a verificar la firma del token en el servidor. `redirect()` a
- * /login si no hay sesión válida. Memoizada por render con `cache()` para no
- * repetir la verificación si varios componentes la invocan en la misma
- * petición.
+ * vuelve a verificar la firma del token en el servidor y devuelve el id del
+ * usuario autenticado. `redirect()` a /login si no hay sesión válida.
+ * Memoizada por render con `cache()` para no repetir la verificación si
+ * varios componentes la invocan en la misma petición.
  */
-export const verifySession = cache(async (): Promise<void> => {
+export const verifySession = cache(async (): Promise<string> => {
   const token = await readSessionCookie();
-  const ok = await verifySessionToken(token);
-  if (!ok) redirect("/login");
+  const userId = await verifySessionToken(token);
+  if (!userId) redirect("/login");
+  return userId;
 });

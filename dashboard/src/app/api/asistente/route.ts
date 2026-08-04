@@ -7,7 +7,7 @@ import { resolveEmbedder } from "@/lib/pipeline";
 import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import { toAssistantSources, buildContextBlock, buildSystemPrompt, type AssistantSource } from "@/lib/assistantContext";
-import { assistantTools } from "@/lib/assistantTools";
+import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
 import { saveExchange } from "@/lib/assistantHistory";
 
 export const maxDuration = 30;
@@ -17,7 +17,7 @@ const SOURCES_PER_ANSWER = 5;
 /** Turnos de herramienta que se dejan encadenar antes de forzar la respuesta final. */
 const MAX_TOOL_STEPS = 4;
 
-type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }, UIDataTypes, InferUITools<typeof assistantTools>>;
+type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }, UIDataTypes, InferUITools<AssistantTools>>;
 
 // Texto plano, no JSON: `useChat` usa el cuerpo de una respuesta no-2xx tal
 // cual como `error.message` (no lo interpreta como stream de UI), así que
@@ -41,7 +41,8 @@ function lastUserQuestion(messages: UIMessage[]): string {
 // sesión y responden 401 en JSON en vez de redirigir a /login).
 export async function POST(req: Request) {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  if (!(await verifySessionToken(token))) {
+  const userId = await verifySessionToken(token);
+  if (!userId) {
     return errorResponse("No autenticado", 401);
   }
 
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
   if (question) {
     const queryEmbedding = await resolveEmbedder().embedQuery(question);
     if (queryEmbedding) {
-      const similar = await findSimilarMessages(queryEmbedding, { limit: SOURCES_PER_ANSWER });
+      const similar = await findSimilarMessages(userId, queryEmbedding, { limit: SOURCES_PER_ANSWER });
       sources = toAssistantSources(similar);
     }
   }
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
     model: groq("openai/gpt-oss-120b"),
     system: buildSystemPrompt(buildContextBlock(sources)),
     messages: await convertToModelMessages(messages),
-    tools: assistantTools,
+    tools: createAssistantTools(userId),
     // Permite encadenar la llamada a `crearNota` con la respuesta de texto
     // que la confirma, en el mismo turno (si no, el SDK se pararía justo
     // después de ejecutar la tool sin generar el mensaje final).
@@ -95,7 +96,7 @@ export async function POST(req: Request) {
     onFinish: async ({ text }) => {
       if (!question || !text) return;
       try {
-        await saveExchange(question, text);
+        await saveExchange(userId, question, text);
       } catch (err) {
         console.error("No se pudo guardar el intercambio en el historial:", err);
       }

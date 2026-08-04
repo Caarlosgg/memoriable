@@ -16,6 +16,7 @@
     "@ai-sdk/react": "^4.0.51",
     "@prisma/client": "6.19.3",
     "ai": "^7.0.48",
+    "bcryptjs": "^3.0.3",
     "framer-motion": "^12.43.0",
     "groq-sdk": "^1.4.0",
     "jose": "^6.2.4",

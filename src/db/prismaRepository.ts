@@ -40,7 +40,7 @@ export class PrismaMessageRepository implements MessageRepository {
     return this.clientPromise;
   }
 
-  async save(record: NewMessage): Promise<StoredMessage> {
+  async save(userId: string, record: NewMessage): Promise<StoredMessage> {
     const client = await this.getClient();
     // Primero el insert normal (tipado, siempre fiable) y LUEGO, si hay
     // embedding, un UPDATE aparte para la columna Unsupported. Dos viajes en
@@ -53,6 +53,7 @@ export class PrismaMessageRepository implements MessageRepository {
         contenido: record.contenido,
         categoria: record.categoria,
         resumen: record.resumen,
+        userId,
       },
     });
 
@@ -79,7 +80,7 @@ export class PrismaMessageRepository implements MessageRepository {
     }
   }
 
-  async search(query: string, limit: number = DEFAULT_SEARCH_LIMIT): Promise<StoredMessage[]> {
+  async search(userId: string, query: string, limit: number = DEFAULT_SEARCH_LIMIT): Promise<StoredMessage[]> {
     const needle = query.trim();
     if (needle === '') return [];
     const client = await this.getClient();
@@ -87,6 +88,7 @@ export class PrismaMessageRepository implements MessageRepository {
     // Coincidencia sobre contenido O resumen, los más recientes primero.
     return client.message.findMany({
       where: {
+        userId,
         OR: [
           { contenido: { contains: needle, mode: 'insensitive' } },
           { resumen: { contains: needle, mode: 'insensitive' } },
@@ -97,11 +99,12 @@ export class PrismaMessageRepository implements MessageRepository {
     });
   }
 
-  async pending(limit: number = DEFAULT_PENDING_LIMIT): Promise<StoredMessage[]> {
+  async pending(userId: string, limit: number = DEFAULT_PENDING_LIMIT): Promise<StoredMessage[]> {
     const client = await this.getClient();
     // Pendientes = accionables (tarea/recordatorio) que aún no están hechos.
     return client.message.findMany({
       where: {
+        userId,
         hecho: false,
         categoria: { in: [...ACTIONABLE_CATEGORIES] },
       },
@@ -110,11 +113,11 @@ export class PrismaMessageRepository implements MessageRepository {
     });
   }
 
-  async savedBetween(from: Date, to: Date): Promise<StoredMessage[]> {
+  async savedBetween(userId: string, from: Date, to: Date): Promise<StoredMessage[]> {
     const client = await this.getClient();
     // Rango semiabierto [from, to): incluye el inicio, excluye el fin.
     return client.message.findMany({
-      where: { fecha: { gte: from, lt: to } },
+      where: { userId, fecha: { gte: from, lt: to } },
       orderBy: { fecha: 'desc' },
     });
   }

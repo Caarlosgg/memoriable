@@ -9,7 +9,8 @@ import { isCategory } from "@/lib/categories";
 // sesión y responden 401 en JSON en vez de redirigir a /login).
 export async function GET(request: NextRequest) {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  if (!(await verifySessionToken(token))) {
+  const userId = await verifySessionToken(token);
+  if (!userId) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
@@ -23,6 +24,6 @@ export async function GET(request: NextRequest) {
   const categoriaParam = request.nextUrl.searchParams.get("categoria");
   const categoria = categoriaParam && isCategory(categoriaParam) ? categoriaParam : null;
 
-  const results = await searchMessages(q, categoria);
+  const results = await searchMessages(userId, q, categoria);
   return NextResponse.json({ query: q, results });
 }

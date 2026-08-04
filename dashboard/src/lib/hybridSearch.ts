@@ -2,11 +2,6 @@ import "server-only";
 import type { Message } from "@prisma/client";
 import type { Embedder } from "./botPipeline/types";
 import type { Category } from "./categories";
-// Import de solo-tipo a propósito: esto se usa únicamente para el `typeof`
-// de abajo, y así este módulo (y sus tests) no arrastra en tiempo de
-// ejecución la cadena vectorSearch.ts -> prisma.ts (que construye un
-// PrismaClient real al importarse).
-import type { findSimilarMessages } from "./vectorSearch";
 
 /**
  * Combina resultados de texto (exacto, ya probado) con resultados
@@ -29,7 +24,8 @@ export interface HybridSearchDeps {
   /** Búsqueda de texto ya existente (ILIKE), inyectada para poder testear. */
   textSearch: (query: string, categoria: Category | null, limit: number) => Promise<Message[]>;
   embedder: Embedder;
-  findSimilar: typeof findSimilarMessages;
+  /** Búsqueda semántica ya existente, inyectada para poder testear (y para que el dueño quede ligado antes de llegar aquí). */
+  findSimilar: (queryEmbedding: number[], options: { categoria?: Category | null; limit?: number }) => Promise<Message[]>;
 }
 
 /**

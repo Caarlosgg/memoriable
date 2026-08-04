@@ -18,6 +18,7 @@ function msg(overrides: Partial<StoredMessage> & { id: string }): StoredMessage 
     resumen: '',
     hecho: false,
     fecha: new Date('2026-01-01T00:00:00.000Z'),
+    userId: 'u1',
     ...overrides,
   };
 }
@@ -77,8 +78,9 @@ describe('buildDailySummary', () => {
   it('pide a savedBetween exactamente el rango de ayer', async () => {
     const now = new Date(2026, 6, 29, 9, 0);
     const repo = fakeRepo([], []);
-    await buildDailySummary(repo, now);
+    await buildDailySummary(repo, 'u1', now);
     expect(repo.savedBetween).toHaveBeenCalledWith(
+      'u1',
       new Date(2026, 6, 28, 0, 0),
       new Date(2026, 6, 29, 0, 0),
     );
@@ -91,7 +93,7 @@ describe('buildDailySummary', () => {
       [msg({ id: 'p', categoria: 'tarea', resumen: 'Pagar la luz' })],
       [msg({ id: 's', categoria: 'nota', resumen: 'Cena con Marta' })],
     );
-    const text = await buildDailySummary(repo, now);
+    const text = await buildDailySummary(repo, 'u1', now);
     expect(text).toContain('Pendientes');
     expect(text).toContain('Pagar la luz');
     expect(text).toContain('Guardado ayer');
@@ -115,6 +117,7 @@ describe('runDailySummaryTick', () => {
     const store = new InMemorySummaryStateStore();
     const result = await runDailySummaryTick({
       repository: fakeRepo([], []),
+      userId: 'u1',
       store,
       send,
       hour: 9,
@@ -130,6 +133,7 @@ describe('runDailySummaryTick', () => {
     const store = new InMemorySummaryStateStore();
     const result = await runDailySummaryTick({
       repository: fakeRepo([], []),
+      userId: 'u1',
       store,
       send,
       hour: 9,
@@ -145,6 +149,7 @@ describe('runDailySummaryTick', () => {
     const store = new InMemorySummaryStateStore('2026-07-29'); // como tras un reinicio
     const result = await runDailySummaryTick({
       repository: fakeRepo([], []),
+      userId: 'u1',
       store,
       send,
       hour: 9,
@@ -157,7 +162,8 @@ describe('runDailySummaryTick', () => {
   it('dos ticks el mismo día solo envían una vez', async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     const store = new InMemorySummaryStateStore();
-    const deps = { repository: fakeRepo([], []), store, send, hour: 9, now };
+    const deps = { repository: fakeRepo([], []),
+      userId: 'u1', store, send, hour: 9, now };
     expect(await runDailySummaryTick(deps)).toBe('sent');
     expect(await runDailySummaryTick(deps)).toBe('already_sent_today');
     expect(send).toHaveBeenCalledOnce();
@@ -167,7 +173,8 @@ describe('runDailySummaryTick', () => {
     const send = vi.fn().mockRejectedValue(new Error('red caída'));
     const store = new InMemorySummaryStateStore();
     await expect(
-      runDailySummaryTick({ repository: fakeRepo([], []), store, send, hour: 9, now }),
+      runDailySummaryTick({ repository: fakeRepo([], []),
+      userId: 'u1', store, send, hour: 9, now }),
     ).rejects.toThrow('red caída');
     expect(store.lastSentDay()).toBeUndefined();
   });

@@ -10,6 +10,7 @@ function msg(overrides: Partial<StoredMessage> & { id: string }): StoredMessage 
     resumen: '',
     hecho: false,
     fecha: new Date('2026-01-01T00:00:00.000Z'),
+    userId: 'u1',
     ...overrides,
   };
 }
@@ -61,11 +62,11 @@ describe('pendingMessages', () => {
 describe('InMemoryMessageRepository.pending', () => {
   it('los mensajes nacen pendientes y solo aparecen los accionables', async () => {
     const repo = new InMemoryMessageRepository();
-    await repo.save({ tipo: 'text', contenido: 'Comprar pan', categoria: 'tarea', resumen: 'compra' });
-    await repo.save({ tipo: 'text', contenido: 'Idea genial', categoria: 'idea', resumen: 'idea' });
-    await repo.save({ tipo: 'text', contenido: 'Llamar médico', categoria: 'recordatorio', resumen: 'cita' });
+    await repo.save('u1', { tipo: 'text', contenido: 'Comprar pan', categoria: 'tarea', resumen: 'compra' });
+    await repo.save('u1', { tipo: 'text', contenido: 'Idea genial', categoria: 'idea', resumen: 'idea' });
+    await repo.save('u1', { tipo: 'text', contenido: 'Llamar médico', categoria: 'recordatorio', resumen: 'cita' });
 
-    const pending = await repo.pending();
+    const pending = await repo.pending('u1');
     expect(pending.map((m) => m.contenido).sort()).toEqual(['Comprar pan', 'Llamar médico']);
     expect(pending.every((m) => m.hecho === false)).toBe(true);
   });

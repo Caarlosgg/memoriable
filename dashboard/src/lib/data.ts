@@ -20,12 +20,12 @@ export interface CategoryGroup {
  * más recientes (para no traer miles de filas de golpe). Una consulta de
  * conteo + una por categoría, en paralelo.
  */
-export async function getCategoryGroups(): Promise<CategoryGroup[]> {
+export async function getCategoryGroups(userId: string): Promise<CategoryGroup[]> {
   const [counts, ...messagesByCategory] = await Promise.all([
-    prisma.message.groupBy({ by: ["categoria"], _count: { _all: true } }),
+    prisma.message.groupBy({ by: ["categoria"], where: { userId }, _count: { _all: true } }),
     ...CATEGORIES.map((categoria) =>
       prisma.message.findMany({
-        where: { categoria },
+        where: { categoria, userId },
         orderBy: { fecha: "desc" },
         take: RECENT_PER_CATEGORY,
       }),
@@ -52,9 +52,15 @@ const SEARCH_LIMIT = 15;
  * reimplementado aquí porque el dashboard tiene su propio cliente de Prisma
  * (ver prisma/schema.prisma). Es la mitad "texto" de la búsqueda híbrida.
  */
-async function textSearch(query: string, categoria: Category | null, limit: number): Promise<Message[]> {
+async function textSearch(
+  userId: string,
+  query: string,
+  categoria: Category | null,
+  limit: number,
+): Promise<Message[]> {
   return prisma.message.findMany({
     where: {
+      userId,
       ...(categoria ? { categoria } : {}),
       OR: [
         { contenido: { contains: query, mode: "insensitive" } },
@@ -72,6 +78,7 @@ async function textSearch(query: string, categoria: Category | null, limit: numb
  * hybridSearch.ts para la política de mezcla exacta.
  */
 export async function searchMessages(
+  userId: string,
   query: string,
   categoria: Category | null = null,
 ): Promise<Message[]> {
@@ -79,9 +86,9 @@ export async function searchMessages(
   if (needle === "") return [];
 
   return hybridSearch(needle, categoria, SEARCH_LIMIT, {
-    textSearch,
+    textSearch: (q, c, limit) => textSearch(userId, q, c, limit),
     embedder: resolveEmbedder(),
-    findSimilar: findSimilarMessages,
+    findSimilar: (queryEmbedding, options) => findSimilarMessages(userId, queryEmbedding, options),
   });
 }
 
@@ -89,9 +96,10 @@ export async function searchMessages(
  * Pendientes: tareas y recordatorios que aún no se han marcado como hechos,
  * los más recientes primero. Mismo criterio que /pendientes en el bot.
  */
-export async function getPendingMessages(): Promise<Message[]> {
+export async function getPendingMessages(userId: string): Promise<Message[]> {
   return prisma.message.findMany({
     where: {
+      userId,
       hecho: false,
       categoria: { in: [...ACTIONABLE_CATEGORIES] },
     },

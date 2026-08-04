@@ -10,4 +10,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/buscador", label: "Buscador", emoji: "🔎" },
   { href: "/categorias", label: "Categorías", emoji: "🗃️" },
   { href: "/pendientes", label: "Pendientes", emoji: "📋" },
+  { href: "/cuenta", label: "Cuenta", emoji: "👤" },
 ];

@@ -37,8 +37,12 @@ function toStoredMessage(row: {
   resumen: string;
   hecho: boolean;
   fecha: Date;
+  userId: string | null;
 }): StoredMessage {
-  return { ...row, categoria: toCategory(row.categoria) };
+  // La columna es nullable en la BD (transición del backfill de la Fase 2),
+  // pero todo método de este repositorio filtra `WHERE userId = ...`, así
+  // que cualquier fila que llega aquí pertenece de verdad a ese usuario.
+  return { ...row, categoria: toCategory(row.categoria), userId: row.userId as string };
 }
 
 /** Convierte un vector a la forma que pgvector acepta casteada (`::vector`). */
@@ -48,7 +52,7 @@ function toVectorLiteral(embedding: number[]): string {
 
 /** Repositorio propio del dashboard: mismas operaciones, con su propio Prisma. */
 class DashboardMessageRepository implements MessageRepository {
-  async save(record: NewMessage): Promise<StoredMessage> {
+  async save(userId: string, record: NewMessage): Promise<StoredMessage> {
     // Insert tipado primero (siempre fiable) y luego, si hay embedding, un
     // UPDATE aparte para la columna Unsupported — igual que en
     // src/db/prismaRepository.ts del bot (mismo motivo: Prisma excluye los
@@ -60,6 +64,7 @@ class DashboardMessageRepository implements MessageRepository {
         contenido: record.contenido,
         categoria: record.categoria,
         resumen: record.resumen,
+        userId,
       },
     });
 
@@ -74,11 +79,12 @@ class DashboardMessageRepository implements MessageRepository {
     return toStoredMessage(row);
   }
 
-  async search(query: string, limit = 15): Promise<StoredMessage[]> {
+  async search(userId: string, query: string, limit = 15): Promise<StoredMessage[]> {
     const needle = query.trim();
     if (needle === "") return [];
     const rows = await prisma.message.findMany({
       where: {
+        userId,
         OR: [
           { contenido: { contains: needle, mode: "insensitive" } },
           { resumen: { contains: needle, mode: "insensitive" } },
@@ -90,18 +96,18 @@ class DashboardMessageRepository implements MessageRepository {
     return rows.map(toStoredMessage);
   }
 
-  async pending(limit = 50): Promise<StoredMessage[]> {
+  async pending(userId: string, limit = 50): Promise<StoredMessage[]> {
     const rows = await prisma.message.findMany({
-      where: { hecho: false, categoria: { in: ["tarea", "recordatorio"] } },
+      where: { userId, hecho: false, categoria: { in: ["tarea", "recordatorio"] } },
       orderBy: { fecha: "desc" },
       take: Math.max(0, limit),
     });
     return rows.map(toStoredMessage);
   }
 
-  async savedBetween(from: Date, to: Date): Promise<StoredMessage[]> {
+  async savedBetween(userId: string, from: Date, to: Date): Promise<StoredMessage[]> {
     const rows = await prisma.message.findMany({
-      where: { fecha: { gte: from, lt: to } },
+      where: { userId, fecha: { gte: from, lt: to } },
       orderBy: { fecha: "desc" },
     });
     return rows.map(toStoredMessage);
@@ -138,9 +144,10 @@ export function resolveEmbedder(): Embedder {
  * (sanea → categoriza → embebe → guarda), con el categorizador, embedder y
  * repositorio propios del dashboard inyectados.
  */
-export async function captureMessage(contenido: string): Promise<StoredMessage> {
+export async function captureMessage(userId: string, contenido: string): Promise<StoredMessage> {
   return processMessage(
     { tipo: "text", contenido },
+    userId,
     {
       categorizer: resolveCategorizer(),
       embedder: resolveEmbedder(),

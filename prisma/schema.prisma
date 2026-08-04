@@ -42,6 +42,30 @@ datasource db {
   extensions = [vector]
 }
 
+/// Cuenta del dashboard. Multiusuario (Fase 2): cada usuario ve solo sus
+/// propias notas — el bot de Telegram averigua a qué usuario pertenece un
+/// mensaje entrante por `telegramChatId` (vinculado desde el dashboard con
+/// un código corto, ver `linkCode`).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  /// Chat de Telegram vinculado a esta cuenta (null hasta que se vincula
+  /// con /vincular). Único: un chat solo puede pertenecer a una cuenta.
+  telegramChatId    BigInt?   @unique
+  /// Código corto de un solo uso para vincular el chat de Telegram desde
+  /// el dashboard (ver sección "Cuenta"). Expira a los ~10 minutos.
+  linkCode          String?   @unique
+  linkCodeExpiresAt DateTime?
+
+  messages  Message[]
+  exchanges AssistantExchange[]
+
+  @@map("users")
+}
+
 /// Un mensaje entrante ya categorizado y resumido.
 model Message {
   id        String   @id @default(cuid())
@@ -59,6 +83,14 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
+  /// Dueño de la nota. Nullable en tránsito: las notas ya existentes antes
+  /// de la Fase 2 (multiusuario) nacen sin dueño y quedan invisibles para
+  /// todos hasta el backfill manual a la cuenta real (nunca se asigna un
+  /// dueño inventado). Una vez completado el backfill se cierra a NOT NULL
+  /// en una migración de seguimiento.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
   /// Vector de embedding para búsqueda semántica (Fase 2), generado con
   /// gemini-embedding-001 truncado a 768 dimensiones (Matryoshka Representation
   /// Learning: 768 conserva calidad de recuperación suficiente para este caso
@@ -71,6 +103,7 @@ model Message {
   @@index([categoria])
   @@index([fecha])
   @@index([hecho])
+  @@index([userId])
   @@map("messages")
 }
 
@@ -98,6 +131,11 @@ model AssistantExchange {
   respuesta String
   fecha     DateTime @default(now())
 
+  /// Ver comentario de `Message.userId`: mismo criterio de transición.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
   @@index([fecha])
+  @@index([userId])
   @@map("assistant_exchanges")
 }

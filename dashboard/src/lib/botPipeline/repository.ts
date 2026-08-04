@@ -10,6 +10,8 @@ export interface StoredMessage extends IncomingMessage, Analysis {
   /** ¿Marcado como hecho? Nace en `false` (pendiente). */
   hecho: boolean;
   fecha: Date;
+  /** Dueño de la nota (Fase 2, multiusuario). Ver MessageRepository. */
+  userId: string;
   /** Vector de embedding, si se generó al guardar. Ver embedder.ts. */
   embedding?: number[] | null;
 }
@@ -20,10 +22,13 @@ export type NewMessage = IncomingMessage & Analysis & { embedding?: number[] | n
 /**
  * Contrato de persistencia. El pipeline depende de esta interfaz, no de
  * Prisma, para poder inyectar distintas implementaciones (bot, dashboard).
+ *
+ * Todas las operaciones reciben `userId` (Fase 2, multiusuario): cada
+ * cuenta ve solo sus propias notas.
  */
 export interface MessageRepository {
-  save(record: NewMessage): Promise<StoredMessage>;
-  search(query: string, limit?: number): Promise<StoredMessage[]>;
-  pending(limit?: number): Promise<StoredMessage[]>;
-  savedBetween(from: Date, to: Date): Promise<StoredMessage[]>;
+  save(userId: string, record: NewMessage): Promise<StoredMessage>;
+  search(userId: string, query: string, limit?: number): Promise<StoredMessage[]>;
+  pending(userId: string, limit?: number): Promise<StoredMessage[]>;
+  savedBetween(userId: string, from: Date, to: Date): Promise<StoredMessage[]>;
 }

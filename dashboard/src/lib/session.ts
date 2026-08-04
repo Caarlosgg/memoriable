@@ -1,7 +1,7 @@
 import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-import { requireDashboardPassword } from "./env";
+import { requireSessionSecret } from "./env";
 
 export const SESSION_COOKIE_NAME = "memoria_ia_session";
 
@@ -9,18 +9,18 @@ export const SESSION_COOKIE_NAME = "memoria_ia_session";
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 
 function secretKey(): Uint8Array {
-  return new TextEncoder().encode(requireDashboardPassword());
+  return new TextEncoder().encode(requireSessionSecret());
 }
 
 /**
- * Crea la sesión: firma un JWT mínimo (sin datos personales, solo la marca
- * de autenticado) y lo guarda en una cookie httpOnly. Debe llamarse desde un
- * Server Action o Route Handler (no se puede escribir una cookie durante el
- * renderizado de un Server Component).
+ * Crea la sesión: firma un JWT con el id del usuario autenticado y lo guarda
+ * en una cookie httpOnly. Debe llamarse desde un Server Action o Route
+ * Handler (no se puede escribir una cookie durante el renderizado de un
+ * Server Component).
  */
-export async function createSession(): Promise<void> {
+export async function createSession(userId: string): Promise<void> {
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-  const token = await new SignJWT({ authenticated: true })
+  const token = await new SignJWT({ userId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(expiresAt)
@@ -49,18 +49,19 @@ export async function readSessionCookie(): Promise<string | undefined> {
 }
 
 /**
- * Verifica un token de sesión. Usable tanto desde `cookies()` (Server
+ * Verifica un token de sesión y devuelve el id del usuario autenticado, o
+ * `null` si no hay sesión válida. Usable tanto desde `cookies()` (Server
  * Components/Actions) como desde `NextRequest.cookies` (Proxy), por eso
  * recibe el valor ya extraído en vez de leerlo él mismo.
  */
 export async function verifySessionToken(
   token: string | undefined,
-): Promise<boolean> {
-  if (!token) return false;
+): Promise<string | null> {
+  if (!token) return null;
   try {
-    await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
-    return true;
+    const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
+    return typeof payload.userId === "string" ? payload.userId : null;
   } catch {
-    return false;
+    return null;
   }
 }

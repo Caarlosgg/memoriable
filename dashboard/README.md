@@ -7,11 +7,14 @@ Tailwind, con su propio despliegue en Vercel, independiente del bot.
 
 ## ¿Qué hace?
 
-- **Login** por contraseña (`DASHBOARD_PASSWORD`), con cookie de sesión
-  firmada.
+- **Multiusuario** (Fase 2): cada persona crea su propia cuenta en
+  `/registro` (email + contraseña con hash) y ve solo sus propias notas.
+  Sesión con cookie firmada (`SESSION_SECRET`). El chat de Telegram se
+  vincula a la cuenta desde "Cuenta" en el dashboard, con un código de un
+  solo uso (`/vincular <código>` al bot).
 - **Navegación** con sidebar colapsable en desktop y barra de pestañas en
-  móvil, entre cuatro apartados: Asistente, Buscador, Categorías y
-  Pendientes (ver [Navegación](#navegación)).
+  móvil, entre los apartados: Asistente, Buscador, Categorías, Pendientes y
+  Cuenta (ver [Navegación](#navegación)).
 - **Asistente conversacional** (pantalla de inicio): preguntas en lenguaje
   natural sobre tus notas guardadas, respondidas por Groq en streaming a
   partir de lo que encuentra por similitud semántica, citando de qué notas
@@ -181,7 +184,7 @@ en el panel del proyecto, pestaña **Cron Jobs**.
 ```bash
 npm install               # también genera el cliente de Prisma (postinstall)
 cp .env.example .env.local
-# rellena DATABASE_URL (la misma cadena que usa el bot) y DASHBOARD_PASSWORD
+# rellena DATABASE_URL (la misma cadena que usa el bot) y SESSION_SECRET
 npm run dev
 ```
 
@@ -198,7 +201,7 @@ npm run build && npm start
 | Variable             | Uso                                              | Obligatoria |
 | --------------------- | ------------------------------------------------- | ----------- |
 | `DATABASE_URL`        | Conexión a PostgreSQL (la misma que usa el bot)    | Sí          |
-| `DASHBOARD_PASSWORD`  | Contraseña de acceso; también firma la cookie de sesión (si rota, las sesiones activas dejan de valer) | Sí |
+| `SESSION_SECRET`      | Firma la cookie de sesión (si rota, las sesiones activas dejan de valer). No es la contraseña de nadie: cada usuario tiene la suya, con hash, en la base de datos | Sí |
 | `GROQ_API_KEY`        | API key de Groq: categoriza la captura rápida y sintetiza las respuestas del Asistente | No para captura (cae a offline); el Asistente no tiene alternativa sin ella |
 | `GROQ_MODEL`          | Modelo servido por Groq (opcional)                | — (def. `openai/gpt-oss-120b`) |
 | `GEMINI_API_KEY`      | API key de Gemini, para el embedding de cada mensaje y de cada pregunta al Asistente | No — sin ella, todo sigue funcionando solo con texto |
@@ -233,8 +236,9 @@ que decirle a Vercel dónde vive el proyecto de Next.js.
 3. En **Environment Variables**, añade:
    - `DATABASE_URL` — la misma cadena de conexión que usa el bot
      (pooler de Supavisor, puerto 6543).
-   - `DASHBOARD_PASSWORD` — una contraseña larga y propia de este
-     dashboard (no reutilices otra).
+   - `SESSION_SECRET` — cualquier cadena larga y aleatoria propia de este
+     dashboard (p. ej. `openssl rand -base64 32`). No es la contraseña de
+     nadie: cada persona crea la suya en `/registro`.
    - `GROQ_API_KEY` (opcional, pero necesaria para el Asistente) — sin
      ella la captura rápida cae al heurístico offline, y el Asistente
      responde con un aviso de que no está configurado.
@@ -255,7 +259,7 @@ que decirle a Vercel dónde vive el proyecto de Next.js.
 Con el dashboard ya desplegado (HTTPS, que Vercel da por defecto):
 
 1. Abre la URL en Safari.
-2. Entra con la contraseña.
+2. Entra con tu cuenta (o créala en `/registro`).
 3. Toca el icono de compartir (⎋) → **Añadir a pantalla de inicio**.
 
 Se abre a pantalla completa, sin la barra de Safari, con su propio

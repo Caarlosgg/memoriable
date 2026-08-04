@@ -5,12 +5,12 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage, InferUITools, UIDataTypes } from "ai";
 import type { AssistantSource } from "@/lib/assistantContext";
-import type { assistantTools } from "@/lib/assistantTools";
+import type { AssistantTools } from "@/lib/assistantTools";
 import type { ExchangeDayGroup, ExchangeLike } from "@/lib/groupExchangesByDay";
 import { AssistantMarkdown } from "./AssistantMarkdown";
 import { AssistantHistoryPanel } from "./AssistantHistoryPanel";
 
-type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }, UIDataTypes, InferUITools<typeof assistantTools>>;
+type AssistantMessage = UIMessage<{ sources?: AssistantSource[] }, UIDataTypes, InferUITools<AssistantTools>>;
 
 /**
  * Reconstruye un intercambio guardado como el par de mensajes que

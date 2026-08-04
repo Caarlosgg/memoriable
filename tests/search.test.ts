@@ -10,6 +10,7 @@ function msg(overrides: Partial<StoredMessage> & { id: string }): StoredMessage 
     resumen: '',
     hecho: false,
     fecha: new Date('2026-01-01T00:00:00.000Z'),
+    userId: 'u1',
     ...overrides,
   };
 }
@@ -64,17 +65,17 @@ describe('searchMessages', () => {
 describe('InMemoryMessageRepository.search', () => {
   it('encuentra por contenido y por resumen, ordenado por fecha desc', async () => {
     const repo = new InMemoryMessageRepository();
-    await repo.save({ tipo: 'text', contenido: 'Reunión con Ana', categoria: 'nota', resumen: 'cita' });
-    await repo.save({ tipo: 'text', contenido: 'otra cosa', categoria: 'nota', resumen: 'sobre Ana' });
+    await repo.save('u1', { tipo: 'text', contenido: 'Reunión con Ana', categoria: 'nota', resumen: 'cita' });
+    await repo.save('u1', { tipo: 'text', contenido: 'otra cosa', categoria: 'nota', resumen: 'sobre Ana' });
 
-    const found = await repo.search('ana');
+    const found = await repo.search('u1', 'ana');
     expect(found).toHaveLength(2);
     expect(found.map((m) => m.contenido).sort()).toEqual(['Reunión con Ana', 'otra cosa']);
   });
 
   it('devuelve lista vacía si no hay coincidencias', async () => {
     const repo = new InMemoryMessageRepository();
-    await repo.save({ tipo: 'text', contenido: 'hola', categoria: 'nota', resumen: 'saludo' });
-    expect(await repo.search('adiós')).toEqual([]);
+    await repo.save('u1', { tipo: 'text', contenido: 'hola', categoria: 'nota', resumen: 'saludo' });
+    expect(await repo.search('u1', 'adiós')).toEqual([]);
   });
 });

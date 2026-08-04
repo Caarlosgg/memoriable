@@ -1,5 +1,6 @@
 import type { IncomingMessage } from '../ai/types.js';
 import { InMemoryMessageRepository } from '../db/repository.js';
+import { LOCAL_DEV_USER_ID } from '../db/users.js';
 import { resolveCategorizer } from '../pipeline/factory.js';
 import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
 import { env, hasGroq } from '../config/env.js';
@@ -17,7 +18,7 @@ export async function runSimulation(texto: string, pipeline?: Pipeline) {
     };
 
   const message: IncomingMessage = { tipo: 'text', contenido: texto };
-  return processMessage(message, effective);
+  return processMessage(message, LOCAL_DEV_USER_ID, effective);
 }
 
 async function main(): Promise<void> {

@@ -12,6 +12,7 @@ function fakeMessage(id: string, overrides: Partial<Message> = {}): Message {
     resumen: `resumen ${id}`,
     hecho: false,
     fecha: new Date("2026-08-01T00:00:00.000Z"),
+    userId: "u1",
     ...overrides,
   };
 }

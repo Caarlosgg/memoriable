@@ -1,9 +1,11 @@
 import { getCategoryGroups, type CategoryGroup } from "@/lib/data";
 import { presentCategory } from "@/lib/categories";
+import { verifySession } from "@/lib/dal";
 import { MessageCard } from "./MessageCard";
 
 export async function CategoriesSection() {
-  const groups = await getCategoryGroups();
+  const userId = await verifySession();
+  const groups = await getCategoryGroups(userId);
   const hasAnyMessages = groups.some((g) => g.total > 0);
 
   if (!hasAnyMessages) {

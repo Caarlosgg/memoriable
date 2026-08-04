@@ -23,6 +23,7 @@ describe('processMessage', () => {
 
     const stored = await processMessage(
       { tipo: 'text', contenido: 'comprar pan' },
+      'u1',
       { categorizer, repository },
     );
 
@@ -43,7 +44,7 @@ describe('processMessage', () => {
     const repository = new InMemoryMessageRepository();
 
     await expect(
-      processMessage({ tipo: 'text', contenido: 'x' }, { categorizer, repository }),
+      processMessage({ tipo: 'text', contenido: 'x' }, 'u1', { categorizer, repository }),
     ).rejects.toThrow('fallo IA');
     expect(repository.all()).toHaveLength(0);
   });
@@ -53,7 +54,7 @@ describe('processMessage', () => {
     const repository = new InMemoryMessageRepository();
 
     await expect(
-      processMessage({ tipo: 'text', contenido: '   ' }, { categorizer, repository }),
+      processMessage({ tipo: 'text', contenido: '   ' }, 'u1', { categorizer, repository }),
     ).rejects.toBeInstanceOf(InvalidMessageError);
 
     // Clave para el coste: no se gasta ni una llamada a la API.
@@ -68,6 +69,7 @@ describe('processMessage', () => {
 
     const stored = await processMessage(
       { tipo: 'text', contenido: `  hola${NUL}   mundo  ` },
+      'u1',
       { categorizer, repository },
     );
 
@@ -83,6 +85,7 @@ describe('processMessage', () => {
 
     const stored = await processMessage(
       { tipo: 'text', contenido: 'a'.repeat(50_000) },
+      'u1',
       { categorizer, repository, logger },
     );
 
@@ -95,6 +98,7 @@ describe('processMessage', () => {
 
     const stored = await processMessage(
       { tipo: 'text', contenido: 'comprar pan' },
+      'u1',
       { categorizer: stubCategorizer(), repository: new InMemoryMessageRepository(), logger },
     );
 
@@ -113,6 +117,7 @@ describe('processMessage', () => {
     await expect(
       processMessage(
         { tipo: 'text', contenido: 'hola' },
+        'u1',
         { categorizer, repository: new InMemoryMessageRepository(), logger },
       ),
     ).rejects.toThrow('API caída');
@@ -131,6 +136,7 @@ describe('processMessage', () => {
 
     const stored = await processMessage(
       { tipo: 'text', contenido: 'comprar pan' },
+      'u1',
       { categorizer: stubCategorizer(), repository, embedder },
     );
 
@@ -144,6 +150,7 @@ describe('processMessage', () => {
 
     const stored = await processMessage(
       { tipo: 'text', contenido: 'comprar pan' },
+      'u1',
       { categorizer: stubCategorizer(), repository, embedder },
     );
 
@@ -155,6 +162,7 @@ describe('processMessage', () => {
 
     const stored = await processMessage(
       { tipo: 'text', contenido: 'comprar pan' },
+      'u1',
       { categorizer: stubCategorizer(), repository },
     );
 
@@ -167,6 +175,7 @@ describe('processMessage', () => {
     await expect(
       processMessage(
         { tipo: 'text', contenido: '' },
+        'u1',
         { categorizer: stubCategorizer(), repository: new InMemoryMessageRepository(), logger },
       ),
     ).rejects.toBeInstanceOf(InvalidMessageError);

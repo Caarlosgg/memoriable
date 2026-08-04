@@ -82,18 +82,21 @@ export function formatDailySummary({
  */
 export async function buildDailySummary(
   repository: MessageRepository,
+  userId: string,
   now: Date,
 ): Promise<string> {
   const { from, to } = yesterdayRange(now);
   const [pending, savedYesterday] = await Promise.all([
-    repository.pending(),
-    repository.savedBetween(from, to),
+    repository.pending(userId),
+    repository.savedBetween(userId, from, to),
   ]);
   return formatDailySummary({ pending, savedYesterday, now });
 }
 
 export interface DailySummaryTickDeps {
   repository: MessageRepository;
+  /** Cuenta dueña del chat al que se envía el resumen (Fase 2, multiusuario). */
+  userId: string;
   store: SummaryStateStore;
   /** Envía el texto al chat del usuario. Inyectado para testear sin red. */
   send: (text: string) => Promise<void>;
@@ -125,7 +128,7 @@ export async function runDailySummaryTick(
   const key = dayKey(now);
   if (deps.store.lastSentDay() === key) return 'already_sent_today';
 
-  const text = await buildDailySummary(deps.repository, now);
+  const text = await buildDailySummary(deps.repository, deps.userId, now);
   await deps.send(text);
   deps.store.markSent(key);
   deps.logger?.info('summary.sent', { day: key });

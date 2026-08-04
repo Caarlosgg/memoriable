@@ -34,6 +34,23 @@ datasource db {
   extensions = [vector]
 }
 
+/// Ver ../../prisma/schema.prisma: cuenta del dashboard (multiusuario, Fase 2).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  telegramChatId    BigInt?   @unique
+  linkCode          String?   @unique
+  linkCodeExpiresAt DateTime?
+
+  messages  Message[]
+  exchanges AssistantExchange[]
+
+  @@map("users")
+}
+
 /// Un mensaje entrante ya categorizado y resumido.
 model Message {
   id        String   @id @default(cuid())
@@ -51,6 +68,10 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
+  /// Ver ../../prisma/schema.prisma: nullable en tránsito hasta el backfill.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
   /// Ver ../../prisma/schema.prisma para el porqué de las dimensiones y del
   /// acceso vía $queryRaw/$executeRaw (Prisma no soporta Unsupported en el
   /// cliente tipado).
@@ -59,6 +80,7 @@ model Message {
   @@index([categoria])
   @@index([fecha])
   @@index([hecho])
+  @@index([userId])
   @@map("messages")
 }
 
@@ -80,6 +102,10 @@ model AssistantExchange {
   respuesta String
   fecha     DateTime @default(now())
 
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
   @@index([fecha])
+  @@index([userId])
   @@map("assistant_exchanges")
 }

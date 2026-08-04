@@ -3,6 +3,7 @@ import type { Telegraf } from 'telegraf';
 import { env } from '../config/env.js';
 import { errorContext, logger as rootLogger, type Logger } from '../logging/index.js';
 import type { MessageRepository } from '../db/repository.js';
+import { resolveChatOwner } from '../db/users.js';
 import {
   runDailySummaryTick,
   type DailySummaryTickDeps,
@@ -48,7 +49,7 @@ export function startDailySummary(
     (err) => logger.warn('summary.state_store_error', errorContext(err)),
   );
 
-  const deps: DailySummaryTickDeps = {
+  const baseDeps: Omit<DailySummaryTickDeps, 'userId'> = {
     repository,
     store,
     hour,
@@ -56,10 +57,22 @@ export function startDailySummary(
     send: (text) => bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' }).then(() => {}),
   };
 
+  // Se resuelve en cada tick (no una vez al arrancar): así, si el chat se
+  // vincula a una cuenta después de que el bot ya esté corriendo, el
+  // resumen empieza a mandarse sin reiniciar el proceso.
   const tick = () =>
-    runDailySummaryTick(deps).catch((err) =>
-      logger.error('summary.tick_failed', errorContext(err)),
-    );
+    resolveChatOwner(Number(chatId))
+      .then((userId) => {
+        if (!userId) {
+          logger.warn('summary.chat_not_linked', {
+            chatId,
+            hint: 'Vincula este chat a una cuenta desde /cuenta en el dashboard (envía /vincular <código>).',
+          });
+          return;
+        }
+        return runDailySummaryTick({ ...baseDeps, userId });
+      })
+      .catch((err) => logger.error('summary.tick_failed', errorContext(err)));
 
   logger.info('summary.scheduled', { hour, chatId });
 

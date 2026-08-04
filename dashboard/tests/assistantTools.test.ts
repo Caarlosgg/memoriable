@@ -9,21 +9,25 @@ const fakeSaved: StoredMessage = {
   resumen: "Llamar al banco",
   hecho: false,
   fecha: new Date("2026-08-04T10:00:00.000Z"),
+  userId: "u1",
 };
 
-const captureMessage = vi.fn(async () => fakeSaved);
-vi.mock("../src/lib/pipeline", () => ({ captureMessage: (contenido: string) => captureMessage(contenido) }));
+const captureMessage = vi.fn(async (_userId: string, _contenido: string) => fakeSaved);
+vi.mock("../src/lib/pipeline", () => ({
+  captureMessage: (userId: string, contenido: string) => captureMessage(userId, contenido),
+}));
 
-describe("assistantTools.crearNota", () => {
-  it("guarda el contenido con el mismo pipeline que la captura rápida y devuelve una fuente presentable", async () => {
-    const { assistantTools } = await import("../src/lib/assistantTools");
+describe("createAssistantTools", () => {
+  it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
 
-    const result = await assistantTools.crearNota.execute!(
+    const result = await tools.crearNota.execute!(
       { contenido: "Llamar al banco mañana" },
       { toolCallId: "call-1", messages: [], context: undefined },
     );
 
-    expect(captureMessage).toHaveBeenCalledWith("Llamar al banco mañana");
+    expect(captureMessage).toHaveBeenCalledWith("u1", "Llamar al banco mañana");
     expect(result).toMatchObject({
       id: "m1",
       categoria: "recordatorio",

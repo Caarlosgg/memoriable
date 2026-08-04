@@ -16,6 +16,7 @@ function toVectorLiteral(embedding: number[]): string {
  * coincida con `Message` y no arrastre el vector completo de vuelta.
  */
 export async function findSimilarMessages(
+  userId: string,
   queryEmbedding: number[],
   options: { categoria?: Category | null; limit?: number } = {},
 ): Promise<Message[]> {
@@ -27,6 +28,7 @@ export async function findSimilarMessages(
     SELECT "id", "tipo", "contenido", "categoria", "resumen", "hecho", "fecha"
     FROM "messages"
     WHERE "embedding" IS NOT NULL
+      AND "userId" = ${userId}
       AND (${categoria}::text IS NULL OR "categoria" = ${categoria})
     ORDER BY "embedding" <=> ${literal}::vector
     LIMIT ${limit}

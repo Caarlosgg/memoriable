@@ -34,6 +34,7 @@ const noopLogger: Pick<Logger, 'info' | 'warn' | 'error'> = {
  */
 export async function processMessage(
   message: IncomingMessage,
+  userId: string,
   { categorizer, repository, embedder, logger }: Pipeline,
 ): Promise<StoredMessage> {
   const log = logger ?? noopLogger;
@@ -61,7 +62,7 @@ export async function processMessage(
   try {
     const analysis = await categorizer.analyze(clean);
     const embedding = (await embedder?.embedDocument(clean.contenido)) ?? null;
-    const stored = await repository.save({ ...clean, ...analysis, embedding });
+    const stored = await repository.save(userId, { ...clean, ...analysis, embedding });
 
     log.info('message.processed', {
       id: stored.id,
