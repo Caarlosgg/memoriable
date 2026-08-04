@@ -17,9 +17,12 @@
   --accent-strong: #0d5e47;
   --accent-ink: #eef4f1;
   --accent-soft: #dcece5;
-  /* Ámbar con más punch, sigue leyéndose como "resalte cálido". */
+  /* Ámbar con más punch, sigue leyéndose como "resalte cálido". El brillante
+     (--highlight) es para rellenos/bordes; el -strong es el que se usa como
+     TEXTO pequeño, así que se oscurece lo justo para pasar WCAG AA (4.5:1)
+     sobre --highlight-soft y sobre papel. */
   --highlight: #dd9012;
-  --highlight-strong: #a86b0a;
+  --highlight-strong: #8f5a06;
   --highlight-soft: #fbead0;
   --danger: #b3261e;
   --danger-soft: #fbeceb;
@@ -29,7 +32,9 @@
      incluso sin leer la etiqueta. */
   --cat-tarea: #157a5f;
   --cat-tarea-soft: #dcece5;
-  --cat-idea: #dd9012;
+  /* Ámbar oscurecido: como etiqueta de categoría es texto pequeño, necesita
+     4.5:1 sobre blanco/papel (el brillante #dd9012 se quedaba en 2.6). */
+  --cat-idea: #8f5a06;
   --cat-idea-soft: #fbead0;
   --cat-pregunta: #3a66a6;
   --cat-pregunta-soft: #e3ebf7;
@@ -173,4 +178,15 @@ body {
   .skeleton {
     animation: none;
   }
+}
+
+/* Resplandor sutil del CTA primario: hace que la acción principal de cada
+   pantalla destaque sin necesidad de más color. Usa var(--accent) con
+   color-mix, así se adapta solo a claro/oscuro. No es movimiento, así que
+   se mantiene también con prefers-reduced-motion. */
+.cta-glow {
+  box-shadow: 0 4px 16px -6px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.cta-glow:hover {
+  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--accent) 62%, transparent);
 }

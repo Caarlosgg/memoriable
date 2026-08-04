@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
-import { PenLine } from "lucide-react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { PenLine, Check } from "lucide-react";
 import { capture, type CaptureState } from "@/app/(dashboard)/actions";
 import { presentCategory } from "@/lib/categories";
 import { Input } from "./ui/input";
@@ -18,6 +18,24 @@ export function CaptureForm() {
   const [state, formAction, pending] = useActionState(capture, initialState);
   const formRef = useRef<HTMLFormElement>(null);
 
+  // "Guardado ✓" en el propio botón como confirmación inmediata (además del
+  // texto de abajo). Se resuelve con estado derivado en render — el patrón
+  // que React recomienda para "ajustar estado cuando cambia un valor", en
+  // vez de setState dentro de un efecto: al detectar un guardado nuevo se
+  // reinicia el descarte; la confirmación se mantiene hasta que el usuario
+  // vuelve a escribir (onChange), lo que es mejor UX que un timer.
+  const savedId = state.saved?.id ?? null;
+  const [seenSavedId, setSeenSavedId] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  if (savedId !== seenSavedId) {
+    setSeenSavedId(savedId);
+    setDismissed(false);
+  }
+  const justSaved = savedId !== null && !dismissed;
+
+  // Efecto SOLO para el side-effect en el DOM (vaciar el input no controlado
+  // tras guardar). No toca estado de React, así que no dispara el aviso de
+  // setState-en-efecto.
   useEffect(() => {
     if (state.saved) formRef.current?.reset();
   }, [state.saved]);
@@ -47,10 +65,19 @@ export function CaptureForm() {
           required
           placeholder="Una idea, una tarea, un recordatorio…"
           aria-describedby={state.error ? "captura-error" : undefined}
+          onChange={() => setDismissed(true)}
           className="flex-1"
         />
-        <Button type="submit" disabled={pending}>
-          {pending ? "Guardando…" : "Guardar"}
+        <Button type="submit" disabled={pending} className={justSaved ? "bg-accent-strong" : ""}>
+          {pending ? (
+            "Guardando…"
+          ) : justSaved ? (
+            <>
+              <Check aria-hidden size={16} /> Guardado
+            </>
+          ) : (
+            "Guardar"
+          )}
         </Button>
       </form>
 
@@ -60,7 +87,7 @@ export function CaptureForm() {
         </p>
       )}
 
-      {state.saved && saved && (
+      {state.saved && saved && !dismissed && (
         <p role="status" className="fade-in flex items-center gap-1.5 text-sm text-muted">
           Guardado como{" "}
           <span className={`inline-flex items-center gap-1 font-medium ${saved.color}`}>

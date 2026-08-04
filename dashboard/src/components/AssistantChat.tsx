@@ -163,7 +163,7 @@ export function AssistantChat({ initialConversations = [] }: { initialConversati
                 key={q}
                 type="button"
                 onClick={() => handleSend(q)}
-                className="rounded-full border border-paper-line bg-paper px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent hover:bg-accent-soft"
+                className="rounded-full border border-paper-line bg-paper px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.97] motion-reduce:active:scale-100"
               >
                 {q}
               </button>
@@ -197,7 +197,7 @@ export function AssistantChat({ initialConversations = [] }: { initialConversati
                     )}
                     {sources.length > 0 && (
                       <details className="text-xs text-muted">
-                        <summary className="cursor-pointer select-none font-medium text-accent hover:text-accent-strong">
+                        <summary className="w-fit cursor-pointer select-none rounded font-medium text-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                           {sources.length} nota{sources.length === 1 ? "" : "s"} usada{sources.length === 1 ? "" : "s"}
                         </summary>
                         <ul className="mt-2 flex flex-col gap-2">

@@ -48,7 +48,8 @@ export function KanbanCard({ message }: { message: Message }) {
           onPointerDown={(e) => e.stopPropagation()}
           onClick={handlePriorityClick}
           title="Cambiar prioridad"
-          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${priority.colorSoft} ${priority.color} hover:brightness-95 active:brightness-90`}
+          aria-label={`Prioridad ${priority.label}. Cambiar.`}
+          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-[filter] hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${priority.colorSoft} ${priority.color}`}
         >
           <PriorityIcon aria-hidden size={11} />
           {priority.label}

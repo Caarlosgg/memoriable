@@ -32,7 +32,7 @@ export function ConversationSidebar({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="flex items-center gap-2 rounded-lg px-1 py-1 text-left text-sm font-medium text-ink transition-colors hover:text-accent-strong"
+          className="flex items-center gap-2 rounded-lg px-1 py-1 text-left text-sm font-medium text-ink transition-colors hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <History aria-hidden size={15} />
           Conversaciones
@@ -59,7 +59,7 @@ export function ConversationSidebar({
                   setOpen(false);
                 }}
                 aria-current={c.id === activeId ? "true" : undefined}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                   c.id === activeId ? "bg-accent-soft text-accent-strong" : "text-ink hover:bg-accent-soft"
                 }`}
               >

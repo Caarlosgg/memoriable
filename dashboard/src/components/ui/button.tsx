@@ -9,12 +9,16 @@ import { cn } from "@/lib/utils";
  * vez de que cada componente los repita a mano con ligeras variaciones.
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-150 outline-none disabled:pointer-events-none disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  // Micro-interacciones con propósito (Tarea 2): press "elástico" (scale-down
+  // al pulsar), focus-visible de alto contraste, y todo desactivado bajo
+  // prefers-reduced-motion (motion-reduce:*). El lift/glow del CTA vive en
+  // cada variante.
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-150 outline-none active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none motion-reduce:active:scale-100 motion-reduce:hover:translate-y-0 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-accent text-accent-ink shadow-sm hover:bg-accent-strong hover:-translate-y-px active:translate-y-0 active:bg-accent-strong",
+          "bg-accent text-accent-ink cta-glow hover:bg-accent-strong hover:-translate-y-px active:translate-y-0 active:bg-accent-strong",
         secondary:
           "border border-paper-line bg-paper-raised text-ink hover:border-accent hover:bg-accent-soft active:bg-accent-soft",
         ghost: "text-muted hover:bg-accent-soft hover:text-accent-strong active:bg-accent-soft",
