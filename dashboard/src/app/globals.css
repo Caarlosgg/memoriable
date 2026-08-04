@@ -12,15 +12,33 @@
   --paper-line: #e4ddcf;
   --ink: #1c1b18;
   --muted: #6b6558;
-  --accent: #2f5d50;
-  --accent-strong: #234a3f;
+  /* Verde bosque más saturado que antes: mismo tono, más vivo. */
+  --accent: #157a5f;
+  --accent-strong: #0d5e47;
   --accent-ink: #eef4f1;
-  --accent-soft: #e6ede9;
-  --highlight: #e8a33d;
-  --highlight-strong: #c9821f;
+  --accent-soft: #dcece5;
+  /* Ámbar con más punch, sigue leyéndose como "resalte cálido". */
+  --highlight: #dd9012;
+  --highlight-strong: #a86b0a;
   --highlight-soft: #fbead0;
   --danger: #b3261e;
   --danger-soft: #fbeceb;
+
+  /* Color propio por categoría (Fase 4): el icono lo hereda, nunca lleva
+     color fijo en sí mismo — así una categoría se reconoce por color
+     incluso sin leer la etiqueta. */
+  --cat-tarea: #157a5f;
+  --cat-tarea-soft: #dcece5;
+  --cat-idea: #dd9012;
+  --cat-idea-soft: #fbead0;
+  --cat-pregunta: #3a66a6;
+  --cat-pregunta-soft: #e3ebf7;
+  --cat-recordatorio: #c2542f;
+  --cat-recordatorio-soft: #f7e5dd;
+  --cat-nota: #7a5a34;
+  --cat-nota-soft: #ede4d6;
+  --cat-otro: #6b6558;
+  --cat-otro-soft: #e9e5db;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,15 +48,28 @@
     --paper-line: #33312a;
     --ink: #f3efe6;
     --muted: #a99f8d;
-    --accent: #6faf9d;
-    --accent-strong: #8bc4b3;
-    --accent-ink: #0d1e1a;
-    --accent-soft: #223330;
-    --highlight: #f0b86a;
-    --highlight-strong: #f6cf95;
+    --accent: #4fceac;
+    --accent-strong: #7fe0c4;
+    --accent-ink: #08211a;
+    --accent-soft: #1c3830;
+    --highlight: #f3b84e;
+    --highlight-strong: #f8cf85;
     --highlight-soft: #3a2c17;
     --danger: #e6857e;
     --danger-soft: #3a1e1c;
+
+    --cat-tarea: #4fceac;
+    --cat-tarea-soft: #1c3830;
+    --cat-idea: #f3b84e;
+    --cat-idea-soft: #3a2c17;
+    --cat-pregunta: #7ea6e0;
+    --cat-pregunta-soft: #1e2c40;
+    --cat-recordatorio: #e58b62;
+    --cat-recordatorio-soft: #3a2318;
+    --cat-nota: #c9a876;
+    --cat-nota-soft: #33291a;
+    --cat-otro: #a99f8d;
+    --cat-otro-soft: #2b291f;
   }
 }
 
@@ -57,6 +88,18 @@
   --color-highlight-soft: var(--highlight-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-cat-tarea: var(--cat-tarea);
+  --color-cat-tarea-soft: var(--cat-tarea-soft);
+  --color-cat-idea: var(--cat-idea);
+  --color-cat-idea-soft: var(--cat-idea-soft);
+  --color-cat-pregunta: var(--cat-pregunta);
+  --color-cat-pregunta-soft: var(--cat-pregunta-soft);
+  --color-cat-recordatorio: var(--cat-recordatorio);
+  --color-cat-recordatorio-soft: var(--cat-recordatorio-soft);
+  --color-cat-nota: var(--cat-nota);
+  --color-cat-nota-soft: var(--cat-nota-soft);
+  --color-cat-otro: var(--cat-otro);
+  --color-cat-otro-soft: var(--cat-otro-soft);
   --font-display: var(--font-fraunces);
   --font-sans: var(--font-inter);
 }

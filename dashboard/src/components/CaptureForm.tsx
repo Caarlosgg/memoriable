@@ -1,8 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { PenLine } from "lucide-react";
 import { capture, type CaptureState } from "@/app/(dashboard)/actions";
 import { presentCategory } from "@/lib/categories";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
 
 const initialState: CaptureState = {};
 
@@ -19,6 +22,8 @@ export function CaptureForm() {
     if (state.saved) formRef.current?.reset();
   }, [state.saved]);
 
+  const saved = state.saved ? presentCategory(state.saved.categoria) : null;
+
   return (
     <section
       aria-labelledby="captura-heading"
@@ -26,31 +31,27 @@ export function CaptureForm() {
     >
       <h2
         id="captura-heading"
-        className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent"
+        className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent"
       >
-        ✍️ Anotar algo
+        <PenLine aria-hidden size={14} /> Anotar algo
       </h2>
 
       <form ref={formRef} action={formAction} className="flex flex-col gap-2 sm:flex-row">
         <label htmlFor="contenido" className="sr-only">
           Escribe una idea, tarea, pregunta o recordatorio
         </label>
-        <input
+        <Input
           id="contenido"
           name="contenido"
           type="text"
           required
           placeholder="Una idea, una tarea, un recordatorio…"
           aria-describedby={state.error ? "captura-error" : undefined}
-          className="w-full flex-1 rounded-lg border border-paper-line bg-paper px-4 py-2.5 text-base text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+          className="flex-1"
         />
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-ink transition-all hover:-translate-y-px hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-        >
+        <Button type="submit" disabled={pending}>
           {pending ? "Guardando…" : "Guardar"}
-        </button>
+        </Button>
       </form>
 
       {state.error && (
@@ -59,11 +60,11 @@ export function CaptureForm() {
         </p>
       )}
 
-      {state.saved && (
-        <p role="status" className="fade-in text-sm text-muted">
+      {state.saved && saved && (
+        <p role="status" className="fade-in flex items-center gap-1.5 text-sm text-muted">
           Guardado como{" "}
-          <span className="font-medium text-accent-strong">
-            {presentCategory(state.saved.categoria).emoji} {presentCategory(state.saved.categoria).label}
+          <span className={`inline-flex items-center gap-1 font-medium ${saved.color}`}>
+            <saved.Icon aria-hidden size={13} /> {saved.label}
           </span>
           : «{state.saved.resumen}»
         </p>

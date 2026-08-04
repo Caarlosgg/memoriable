@@ -3,12 +3,17 @@ import type { StoredMessage } from "./botPipeline/repository";
 import { presentCategory } from "./categories";
 import { formatDate } from "./format";
 
-/** Nota usada como evidencia por el Asistente; lo que se manda al cliente para las tarjetas de fuentes. */
+/**
+ * Nota usada como evidencia por el Asistente; lo que se manda al cliente
+ * para las tarjetas de fuentes. Sin icono: un componente de lucide-react no
+ * es serializable a través del stream de UI Messages — el cliente resuelve
+ * el icono y el color a partir de `categoria` con `presentCategory` (ver
+ * AssistantChat.tsx).
+ */
 export interface AssistantSource {
   id: string;
   categoria: string;
   label: string;
-  emoji: string;
   resumen: string;
   contenido: string;
   fecha: string;
@@ -18,12 +23,11 @@ export interface AssistantSource {
 export function toAssistantSource(
   m: Pick<Message | StoredMessage, "id" | "categoria" | "resumen" | "contenido" | "fecha">,
 ): AssistantSource {
-  const { emoji, label } = presentCategory(m.categoria);
+  const { label } = presentCategory(m.categoria);
   return {
     id: m.id,
     categoria: m.categoria,
     label,
-    emoji,
     resumen: m.resumen,
     contenido: m.contenido,
     fecha: formatDate(m.fecha),

@@ -29,7 +29,7 @@ export async function CategoriesSection() {
 }
 
 function CategoryCard({ group }: { group: CategoryGroup }) {
-  const { emoji, label } = presentCategory(group.categoria);
+  const { Icon, label, color, colorSoft } = presentCategory(group.categoria);
   const headingId = `categoria-${group.categoria}`;
 
   return (
@@ -38,11 +38,8 @@ function CategoryCard({ group }: { group: CategoryGroup }) {
         id={headingId}
         className="flex items-center gap-2 font-display text-base font-semibold text-ink"
       >
-        <span
-          aria-hidden
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-sm"
-        >
-          {emoji}
+        <span className={`flex h-7 w-7 items-center justify-center rounded-full ${colorSoft} ${color}`}>
+          <Icon aria-hidden size={15} />
         </span>
         {label}
         <span className="ml-auto rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-muted">

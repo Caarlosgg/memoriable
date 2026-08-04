@@ -17,7 +17,7 @@ function fakeMessage(overrides: Partial<Message> = {}): Message {
 }
 
 describe("toAssistantSources", () => {
-  it("mapea categoría a emoji/etiqueta y formatea la fecha", () => {
+  it("mapea categoría a etiqueta y formatea la fecha", () => {
     const [source] = toAssistantSources([fakeMessage()]);
 
     expect(source).toMatchObject({
@@ -27,7 +27,6 @@ describe("toAssistantSources", () => {
       resumen: "Pedir la matrícula del curso de IA",
       contenido: "Recuérdame pedir la matrícula del curso de IA",
     });
-    expect(source!.emoji).toBeTruthy();
     expect(source!.fecha).toContain("2026");
   });
 

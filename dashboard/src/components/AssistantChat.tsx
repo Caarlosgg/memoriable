@@ -4,9 +4,13 @@ import { useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage, InferUITools, UIDataTypes } from "ai";
+import { MessageCircle, Send, CircleCheck } from "lucide-react";
 import type { AssistantSource } from "@/lib/assistantContext";
 import type { AssistantTools } from "@/lib/assistantTools";
 import type { ExchangeDayGroup, ExchangeLike } from "@/lib/groupExchangesByDay";
+import { presentCategory } from "@/lib/categories";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 import { AssistantMarkdown } from "./AssistantMarkdown";
 import { AssistantHistoryPanel } from "./AssistantHistoryPanel";
 
@@ -61,10 +65,12 @@ function CrearNotaResult({ part }: { part: CrearNotaPart }) {
   }
 
   const s = part.output;
+  const { Icon, color } = presentCategory(s.categoria);
   return (
     <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
-      <p className="font-medium text-ink">
-        ✅ {s.emoji} {s.label} guardada
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <CircleCheck aria-hidden size={14} className="text-accent" />
+        <Icon aria-hidden size={13} className={color} /> {s.label} guardada
       </p>
       <p className="mt-0.5 line-clamp-2 text-muted">{s.resumen}</p>
     </div>
@@ -89,8 +95,11 @@ export function AssistantChat({ initialHistory = [] }: { initialHistory?: Exchan
 
   return (
     <section aria-labelledby="asistente-heading" className="flex flex-col gap-4">
-      <h2 id="asistente-heading" className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent">
-        💬 Asistente
+      <h2
+        id="asistente-heading"
+        className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent"
+      >
+        <MessageCircle aria-hidden size={14} /> Asistente
       </h2>
 
       <AssistantHistoryPanel
@@ -151,14 +160,17 @@ export function AssistantChat({ initialHistory = [] }: { initialHistory?: Exchan
                           {sources.length} nota{sources.length === 1 ? "" : "s"} usada{sources.length === 1 ? "" : "s"}
                         </summary>
                         <ul className="mt-2 flex flex-col gap-2">
-                          {sources.map((s) => (
-                            <li key={s.id} className="rounded-lg border border-paper-line bg-paper p-2.5">
-                              <p className="font-medium text-ink">
-                                {s.emoji} {s.label} · {s.fecha}
-                              </p>
-                              <p className="mt-0.5 line-clamp-2 text-muted">{s.contenido}</p>
-                            </li>
-                          ))}
+                          {sources.map((s) => {
+                            const { Icon, color } = presentCategory(s.categoria);
+                            return (
+                              <li key={s.id} className="rounded-lg border border-paper-line bg-paper p-2.5">
+                                <p className="flex items-center gap-1.5 font-medium text-ink">
+                                  <Icon aria-hidden size={13} className={color} /> {s.label} · {s.fecha}
+                                </p>
+                                <p className="mt-0.5 line-clamp-2 text-muted">{s.contenido}</p>
+                              </li>
+                            );
+                          })}
                         </ul>
                       </details>
                     )}
@@ -173,13 +185,15 @@ export function AssistantChat({ initialHistory = [] }: { initialHistory?: Exchan
       {error && (
         <div role="alert" className="fade-in rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
           <p>{error.message || "No se ha podido generar una respuesta."}</p>
-          <button
+          <Button
             type="button"
+            variant="destructive"
+            size="sm"
             onClick={() => clearError()}
-            className="mt-2 rounded-full bg-danger/10 px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+            className="mt-2 focus-visible:ring-danger"
           >
             Entendido
-          </button>
+          </Button>
         </div>
       )}
 
@@ -193,21 +207,18 @@ export function AssistantChat({ initialHistory = [] }: { initialHistory?: Exchan
         <label htmlFor="asistente-input" className="sr-only">
           Escribe tu pregunta al Asistente
         </label>
-        <input
+        <Input
           id="asistente-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Escribe tu pregunta…"
           disabled={isBusy}
-          className="w-full flex-1 rounded-lg border border-paper-line bg-paper px-4 py-2.5 text-base text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
+          className="flex-1"
         />
-        <button
-          type="submit"
-          disabled={isBusy || input.trim() === ""}
-          className="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-ink transition-all hover:-translate-y-px hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-        >
-          {isBusy ? "…" : "Enviar"}
-        </button>
+        <Button type="submit" disabled={isBusy || input.trim() === ""}>
+          {isBusy ? "…" : <Send aria-hidden size={16} />}
+          <span className="sr-only sm:not-sr-only">Enviar</span>
+        </Button>
       </form>
     </section>
   );

@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from "react";
 import type { Message } from "@prisma/client";
+import { ListTodo } from "lucide-react";
 import { markDone } from "@/app/(dashboard)/actions";
+import { Button } from "./ui/button";
 import { MessageCard } from "./MessageCard";
 
 export function PendingList({
@@ -36,7 +38,7 @@ export function PendingList({
         id="pendientes-heading"
         className="flex items-center gap-2 text-sm font-semibold text-highlight-strong"
       >
-        <span aria-hidden>📋</span>
+        <ListTodo aria-hidden size={16} />
         Pendientes
         <span className="ml-auto rounded-full bg-highlight/20 px-2 py-0.5 text-xs font-medium text-highlight-strong">
           {messages.length}
@@ -59,14 +61,15 @@ export function PendingList({
                   completing ? "scale-95 opacity-0" : "scale-100 opacity-100"
                 }`}
               >
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => handleDone(message.id)}
                   disabled={isPending && completing}
-                  className="rounded-full bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent-strong transition-colors hover:bg-accent hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Marcar como hecho
-                </button>
+                </Button>
               </MessageCard>
             );
           })}

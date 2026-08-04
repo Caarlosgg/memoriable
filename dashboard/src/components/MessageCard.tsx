@@ -1,4 +1,5 @@
 import type { Message } from "@prisma/client";
+import { Clock } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
 import { formatDate } from "@/lib/format";
 import { Highlight } from "./Highlight";
@@ -23,7 +24,7 @@ export function MessageCard({
    */
   className?: string;
 }) {
-  const { emoji, label } = presentCategory(message.categoria);
+  const { Icon, label, color } = presentCategory(message.categoria);
   const resumen = message.resumen || "(sin resumen)";
 
   return (
@@ -31,8 +32,8 @@ export function MessageCard({
       className={`fade-in group rounded-xl border border-paper-line bg-paper-raised p-4 shadow-sm transition-shadow hover:shadow-md ${className}`}
     >
       {showCategory && (
-        <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-accent">
-          <span aria-hidden>{emoji}</span> {label}
+        <p className={`mb-1.5 flex items-center gap-1.5 text-xs font-semibold ${color}`}>
+          <Icon aria-hidden size={14} /> {label}
         </p>
       )}
       <p className="font-display text-[1.05rem] leading-snug font-semibold text-ink">
@@ -50,7 +51,9 @@ export function MessageCard({
         )}
       </p>
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-paper-line pt-2.5">
-        <p className="text-xs text-muted">🕒 {formatDate(message.fecha)}</p>
+        <p className="flex items-center gap-1 text-xs text-muted">
+          <Clock aria-hidden size={12} /> {formatDate(message.fecha)}
+        </p>
         {children}
       </div>
     </li>

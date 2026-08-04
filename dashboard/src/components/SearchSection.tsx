@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { Message } from "@prisma/client";
+import { Search } from "lucide-react";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import { CATEGORIES, CATEGORY_PRESENTATION, type Category } from "@/lib/categories";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
 import { MessageCard } from "./MessageCard";
 
 const DEBOUNCE_MS = 300;
@@ -76,19 +79,19 @@ export function SearchSection() {
     >
       <h2
         id="buscar-heading"
-        className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent"
+        className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent"
       >
-        🔎 Buscar
+        <Search aria-hidden size={14} /> Buscar
       </h2>
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <input
+        <Input
           type="search"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Buscar en tus mensajes…"
           aria-label="Buscar en tus mensajes"
-          className="w-full flex-1 rounded-lg border border-paper-line bg-paper px-4 py-2.5 text-base text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+          className="flex-1"
         />
         <select
           value={categoria}
@@ -96,10 +99,10 @@ export function SearchSection() {
           aria-label="Filtrar por categoría"
           className="rounded-lg border border-paper-line bg-paper px-3 py-2.5 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
         >
-          <option value="todos">🗂️ Todos</option>
+          <option value="todos">Todos</option>
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>
-              {CATEGORY_PRESENTATION[c].emoji} {CATEGORY_PRESENTATION[c].label}
+              {CATEGORY_PRESENTATION[c].label}
             </option>
           ))}
         </select>
@@ -116,13 +119,15 @@ export function SearchSection() {
       {status === "error" && (
         <div className="rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
           <p>No se ha podido completar la búsqueda.</p>
-          <button
+          <Button
             type="button"
+            variant="destructive"
+            size="sm"
             onClick={() => setAttempt((n) => n + 1)}
-            className="mt-2 rounded-full bg-danger/10 px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+            className="mt-2 focus-visible:ring-danger"
           >
             Reintentar
-          </button>
+          </Button>
         </div>
       )}
 

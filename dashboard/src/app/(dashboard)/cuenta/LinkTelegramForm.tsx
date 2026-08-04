@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Send } from "lucide-react";
 import { generateTelegramLinkCode, type GenerateLinkCodeState } from "./actions";
 import { formatDate } from "@/lib/format";
+import { Button } from "@/components/ui/button";
 
 // Público a propósito (NEXT_PUBLIC_*): el nombre de usuario de un bot de
 // Telegram ya es público por naturaleza (aparece en la URL de cualquiera
@@ -21,14 +23,9 @@ export function LinkTelegramForm() {
 
   return (
     <div className="flex flex-col gap-3">
-      <button
-        type="button"
-        onClick={handleGenerate}
-        disabled={pending}
-        className="w-fit rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-ink transition-all hover:-translate-y-px hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-      >
+      <Button type="button" onClick={handleGenerate} disabled={pending} className="w-fit">
         {pending ? "Generando…" : "Generar código de vínculo"}
-      </button>
+      </Button>
 
       {state.error && (
         <p role="alert" className="text-sm text-danger">
@@ -41,14 +38,11 @@ export function LinkTelegramForm() {
           <p className="text-muted">Caduca a las {formatDate(state.expiresAt)}.</p>
 
           {BOT_USERNAME ? (
-            <a
-              href={`https://t.me/${BOT_USERNAME}?start=${state.code}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-fit rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-ink transition-all hover:-translate-y-px hover:bg-accent-strong"
-            >
-              Abrir Telegram y vincular
-            </a>
+            <Button asChild className="w-fit">
+              <a href={`https://t.me/${BOT_USERNAME}?start=${state.code}`} target="_blank" rel="noopener noreferrer">
+                <Send aria-hidden size={15} /> Abrir Telegram y vincular
+              </a>
+            </Button>
           ) : (
             <>
               <p className="text-muted">Envía este mensaje al bot de Telegram:</p>

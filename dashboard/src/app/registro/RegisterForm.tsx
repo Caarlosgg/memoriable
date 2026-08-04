@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { register, type RegisterState } from "./actions";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 const initialState: RegisterState = {};
 
@@ -15,22 +17,14 @@ export function RegisterForm() {
         <label htmlFor="email" className="text-sm font-medium text-ink">
           Email
         </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          autoFocus
-          autoComplete="email"
-          className="rounded-lg border border-paper-line bg-paper-raised px-4 py-2.5 text-base text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-        />
+        <Input id="email" name="email" type="email" required autoFocus autoComplete="email" />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="password" className="text-sm font-medium text-ink">
           Contraseña
         </label>
-        <input
+        <Input
           id="password"
           name="password"
           type="password"
@@ -39,7 +33,6 @@ export function RegisterForm() {
           autoComplete="new-password"
           aria-invalid={state?.error ? true : undefined}
           aria-describedby={state?.error ? "register-error" : undefined}
-          className="rounded-lg border border-paper-line bg-paper-raised px-4 py-2.5 text-base text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
         />
       </div>
 
@@ -49,13 +42,9 @@ export function RegisterForm() {
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="mt-2 rounded-full bg-accent px-4 py-2.5 text-base font-medium text-accent-ink shadow-[0_10px_24px_-12px_rgba(47,93,80,0.55)] transition-all hover:-translate-y-px hover:bg-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-      >
+      <Button type="submit" disabled={pending} className="mt-2 shadow-[0_10px_24px_-12px_rgba(21,122,95,0.55)]">
         {pending ? "Creando cuenta…" : "Crear cuenta"}
-      </button>
+      </Button>
 
       <p className="text-center text-sm text-muted">
         ¿Ya tienes cuenta?{" "}

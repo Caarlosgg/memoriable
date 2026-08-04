@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { History, ChevronUp, ChevronDown } from "lucide-react";
 import type { ExchangeDayGroup, ExchangeLike } from "@/lib/groupExchangesByDay";
 import { formatDate } from "@/lib/format";
 
@@ -29,9 +30,11 @@ export function AssistantHistoryPanel({
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm font-medium text-ink transition-colors hover:bg-accent-soft"
       >
-        <span>🕐 Historial reciente</span>
+        <span className="flex items-center gap-2">
+          <History aria-hidden size={15} /> Historial reciente
+        </span>
         <span aria-hidden className="text-muted">
-          {open ? "▲" : "▼"}
+          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </span>
       </button>
 

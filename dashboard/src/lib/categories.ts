@@ -1,3 +1,5 @@
+import { CheckSquare, Lightbulb, HelpCircle, Bell, StickyNote, Archive, type LucideIcon } from "lucide-react";
+
 /**
  * Categorías posibles de un mensaje. Metadato de presentación propio del
  * dashboard (no se importa del bot: son apps independientes desplegadas por
@@ -19,16 +21,27 @@ export function isCategory(value: string): value is Category {
   return (CATEGORIES as readonly string[]).includes(value);
 }
 
+/**
+ * Un icono lineal (lucide-react) por categoría, nunca con color propio: el
+ * color viene siempre de la paleta de la categoría (`color`/`colorSoft`,
+ * clases de Tailwind ligadas a los tokens `--cat-*` de globals.css), nunca
+ * del icono en sí — así el mismo trazo sirve en cualquier contexto.
+ */
 export const CATEGORY_PRESENTATION: Record<
   Category,
-  { emoji: string; label: string }
+  { Icon: LucideIcon; label: string; color: string; colorSoft: string }
 > = {
-  tarea: { emoji: "✅", label: "Tareas" },
-  idea: { emoji: "💡", label: "Ideas" },
-  pregunta: { emoji: "❓", label: "Preguntas" },
-  recordatorio: { emoji: "⏰", label: "Recordatorios" },
-  nota: { emoji: "📝", label: "Notas" },
-  otro: { emoji: "🗂️", label: "Sin categorizar" },
+  tarea: { Icon: CheckSquare, label: "Tareas", color: "text-cat-tarea", colorSoft: "bg-cat-tarea-soft" },
+  idea: { Icon: Lightbulb, label: "Ideas", color: "text-cat-idea", colorSoft: "bg-cat-idea-soft" },
+  pregunta: { Icon: HelpCircle, label: "Preguntas", color: "text-cat-pregunta", colorSoft: "bg-cat-pregunta-soft" },
+  recordatorio: {
+    Icon: Bell,
+    label: "Recordatorios",
+    color: "text-cat-recordatorio",
+    colorSoft: "bg-cat-recordatorio-soft",
+  },
+  nota: { Icon: StickyNote, label: "Notas", color: "text-cat-nota", colorSoft: "bg-cat-nota-soft" },
+  otro: { Icon: Archive, label: "Sin categorizar", color: "text-cat-otro", colorSoft: "bg-cat-otro-soft" },
 };
 
 export function presentCategory(categoria: string) {

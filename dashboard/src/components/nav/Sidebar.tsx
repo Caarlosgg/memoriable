@@ -3,7 +3,8 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { ChevronsLeft, ChevronsRight, LogOut } from "lucide-react";
 import { logout } from "@/app/actions";
 import { NAV_ITEMS } from "./navItems";
 
@@ -19,19 +20,24 @@ const MotionAside = dynamic(() => import("framer-motion").then((m) => m.motion.a
 const EXPANDED_WIDTH = 224;
 const COLLAPSED_WIDTH = 76;
 
-/** Ve si el usuario pide menos movimiento; se re-evalúa si cambia en vivo. */
+/**
+ * Ve si el usuario pide menos movimiento; se re-evalúa si cambia en vivo.
+ * `useSyncExternalStore` en vez de efecto+setState: es la forma pensada
+ * para suscribirse a estado externo del navegador (matchMedia) sin el
+ * "doble render" que dispara el lint de React sobre setState en efectos.
+ */
+function subscribeReducedMotion(onChange: () => void): () => void {
+  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function getReducedMotionSnapshot(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(query.matches);
-    const onChange = () => setReduced(query.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-
-  return reduced;
+  return useSyncExternalStore(subscribeReducedMotion, getReducedMotionSnapshot, () => false);
 }
 
 export function Sidebar() {
@@ -54,9 +60,9 @@ export function Sidebar() {
           type="button"
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
-          className="ml-auto rounded-full p-1.5 text-lg leading-none text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="ml-auto rounded-full p-1.5 text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-accent-soft"
         >
-          {collapsed ? "»" : "«"}
+          {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
         </button>
       </div>
 
@@ -70,12 +76,10 @@ export function Sidebar() {
               aria-current={active ? "page" : undefined}
               title={collapsed ? item.label : undefined}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                active ? "bg-accent text-accent-ink" : "text-ink hover:bg-accent-soft"
+                active ? "bg-accent text-accent-ink" : "text-ink hover:bg-accent-soft active:bg-accent-soft"
               }`}
             >
-              <span aria-hidden className="text-lg">
-                {item.emoji}
-              </span>
+              <item.Icon aria-hidden size={18} className="shrink-0" />
               {!collapsed && <span>{item.label}</span>}
             </Link>
           );
@@ -87,11 +91,9 @@ export function Sidebar() {
           <button
             type="submit"
             title={collapsed ? "Salir" : undefined}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong active:bg-accent-soft"
           >
-            <span aria-hidden className="text-lg">
-              🚪
-            </span>
+            <LogOut aria-hidden size={18} className="shrink-0" />
             {!collapsed && <span>Salir</span>}
           </button>
         </form>

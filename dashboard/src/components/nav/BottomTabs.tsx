@@ -25,12 +25,10 @@ export function BottomTabs() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors ${
-              active ? "text-accent" : "text-muted hover:text-ink"
+              active ? "text-accent" : "text-muted hover:text-ink active:text-accent"
             }`}
           >
-            <span aria-hidden className="text-lg">
-              {item.emoji}
-            </span>
+            <item.Icon aria-hidden size={20} />
             {item.label}
           </Link>
         );
