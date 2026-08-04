@@ -28,13 +28,26 @@ export function createAssistantTools(userId: string) {
           .describe("El texto de la nota/tarea/recordatorio tal como lo diría el usuario, listo para guardar y categorizar."),
       }),
       execute: async ({ contenido }) => {
-        const saved = await captureMessage(userId, contenido);
-        // Sin esto, navegar a Tablero/Categorías tras crear la nota podría
-        // enseñar la versión cacheada de antes de crearla — el chat vive en
-        // /asistente, una pestaña totalmente distinta, así que no hay forma
-        // de que Next se entere del cambio salvo invalidando la caché aquí.
-        revalidatePath("/pendientes");
-        revalidatePath("/categorias");
+        let saved;
+        try {
+          saved = await captureMessage(userId, contenido);
+        } catch (err) {
+          console.error("La tool crearNota no pudo guardar la nota:", err);
+          // Mensaje ya en español y sin detalles internos: el AI SDK lo
+          // expone como `errorText` del part, que la UI muestra tal cual
+          // (ver CrearNotaResult en AssistantChat.tsx).
+          throw new Error("No se ha podido guardar la nota. Inténtalo de nuevo en un momento.");
+        }
+        // Invalidar la caché no es crítico: si falla, la nota YA está guardada
+        // — no convertir un guardado correcto en un error de cara al usuario.
+        // (Sin esto, navegar a Tablero/Categorías tras crearla podría enseñar
+        // la versión cacheada de antes; el chat vive en otra pestaña.)
+        try {
+          revalidatePath("/pendientes");
+          revalidatePath("/categorias");
+        } catch (err) {
+          console.error("No se pudo invalidar la caché tras crear la nota (no crítico):", err);
+        }
         return toAssistantSource(saved);
       },
     }),

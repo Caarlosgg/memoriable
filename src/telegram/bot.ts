@@ -209,28 +209,52 @@ export function createBot(
     await ctx.reply(REPLIES.welcome);
   });
 
+  // Resuelve el dueño del chat y responde algo útil en los dos caminos que,
+  // sin esto, dejarían al usuario sin respuesta: chat no vinculado (pide
+  // /vincular) y fallo al consultar la BD (aviso de reintento, en vez del
+  // silencio de que el throw solo lo recoja bot.catch). Devuelve null si no
+  // se debe seguir procesando. `reply` lo pasa el handler ya ligado a su ctx.
+  const ownerFor = async (
+    chatId: number,
+    reply: (text: string) => Promise<unknown>,
+  ): Promise<string | null> => {
+    let userId: string | null;
+    try {
+      userId = await resolveChatOwner(chatId);
+    } catch (err) {
+      logger.error('telegram.resolve_owner_failed', errorContext(err));
+      await reply(REPLIES.error);
+      return null;
+    }
+    if (!userId) {
+      await reply(REPLIES.notLinked);
+      return null;
+    }
+    return userId;
+  };
+
   bot.command('vincular', async (ctx) => {
     const reply = await handleLinkCommand(commandArgument(ctx.message.text), ctx.chat.id, linkTelegramChat, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 
   bot.command('buscar', async (ctx) => {
-    const userId = await resolveChatOwner(ctx.chat.id);
-    if (!userId) return void ctx.reply(REPLIES.notLinked, { parse_mode: 'HTML' });
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
     const reply = await handleSearchCommand(commandArgument(ctx.message.text), userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 
   bot.command('pendientes', async (ctx) => {
-    const userId = await resolveChatOwner(ctx.chat.id);
-    if (!userId) return void ctx.reply(REPLIES.notLinked, { parse_mode: 'HTML' });
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
     const reply = await handlePendingCommand(userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 
   bot.on(message('text'), async (ctx) => {
-    const userId = await resolveChatOwner(ctx.chat.id);
-    if (!userId) return void ctx.reply(REPLIES.notLinked, { parse_mode: 'HTML' });
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
     const { reply, followUp } = await handleTextMessage(ctx.message.text, userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
     // Aparte, nunca en vez de la confirmación de arriba (ver TextMessageResult).

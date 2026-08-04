@@ -56,34 +56,56 @@ export async function POST(req: Request) {
     return errorResponse("El Asistente no está configurado (falta GROQ_API_KEY).", 503);
   }
 
+  // El fusible de coste es best-effort: si la BD tiene un fallo puntual al
+  // consultarlo, no se bloquea al usuario — se registra y se sigue (fail-open).
   const maxPerDay = Number(process.env.ASSISTANT_MAX_QUESTIONS_PER_DAY ?? DEFAULT_MAX_QUESTIONS_PER_DAY);
-  const canProceed = await tryConsumeAssistantBudget(maxPerDay);
-  if (!canProceed) {
-    return errorResponse("Se alcanzó el límite de preguntas al Asistente por hoy. Vuelve mañana.", 429);
+  try {
+    const canProceed = await tryConsumeAssistantBudget(maxPerDay);
+    if (!canProceed) {
+      return errorResponse("Se alcanzó el límite de preguntas al Asistente por hoy. Vuelve mañana.", 429);
+    }
+  } catch (err) {
+    console.error("No se pudo comprobar el fusible de coste del Asistente (se continúa):", err);
   }
 
-  const { messages, conversationId: requestedConversationId }: { messages: AssistantMessage[]; conversationId: string } =
-    await req.json();
-  const question = lastUserQuestion(messages);
+  let body: { messages: AssistantMessage[]; conversationId: string };
+  try {
+    body = await req.json();
+  } catch {
+    return errorResponse("La petición no es válida.", 400);
+  }
+  const { messages, conversationId: requestedConversationId } = body;
+  const question = lastUserQuestion(messages ?? []);
 
   // El cliente genera el id al empezar un chat nuevo (una conversación es
   // "suya" desde el primer mensaje); aquí solo se confirma que existe y que
   // de verdad pertenece a este usuario (ver ensureConversation) antes de
-  // guardar nada en ella.
-  const conversationId = question
-    ? await ensureConversation(userId, requestedConversationId, question)
-    : requestedConversationId;
+  // guardar nada en ella. Si la BD falla, se sigue con el id propuesto: se
+  // responde igual, solo que ese intercambio podría no quedar guardado (el
+  // onFinish tiene su propio try/catch).
+  let conversationId = requestedConversationId;
+  if (question) {
+    try {
+      conversationId = await ensureConversation(userId, requestedConversationId, question);
+    } catch (err) {
+      console.error("No se pudo preparar la conversación (se responde igual):", err);
+    }
+  }
 
-  // Nunca bloquea la respuesta: sin GEMINI_API_KEY (o si Gemini falla),
-  // embedQuery devuelve null y el Asistente responde igual, solo que sin
-  // notas citadas — dice con naturalidad que no encontró nada relevante
-  // (ver el system prompt en assistantContext.ts).
+  // Nunca bloquea la respuesta: sin GEMINI_API_KEY (o si Gemini/BD fallan),
+  // el Asistente responde igual, solo que sin notas citadas — dice con
+  // naturalidad que no encontró nada relevante (ver el system prompt en
+  // assistantContext.ts).
   let sources: AssistantSource[] = [];
   if (question) {
-    const queryEmbedding = await resolveEmbedder().embedQuery(question);
-    if (queryEmbedding) {
-      const similar = await findSimilarMessages(userId, queryEmbedding, { limit: SOURCES_PER_ANSWER });
-      sources = toAssistantSources(similar);
+    try {
+      const queryEmbedding = await resolveEmbedder().embedQuery(question);
+      if (queryEmbedding) {
+        const similar = await findSimilarMessages(userId, queryEmbedding, { limit: SOURCES_PER_ANSWER });
+        sources = toAssistantSources(similar);
+      }
+    } catch (err) {
+      console.error("No se pudieron recuperar notas relevantes (se responde sin fuentes):", err);
     }
   }
 
