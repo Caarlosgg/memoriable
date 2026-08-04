@@ -13,6 +13,18 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Convención estándar: un parámetro/variable con prefijo "_" es
+  // intencionadamente sin usar (p. ej. el `_text` de NullEmbedder, que
+  // cumple una interfaz pero no necesita el argumento). Sin esto, el naming
+  // "_" no surtía efecto y generaba avisos de ruido.
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
