@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { hashPassword, verifyPassword, generateLinkCode, MIN_PASSWORD_LENGTH } from "../src/lib/auth";
+import {
+  hashPassword,
+  verifyPassword,
+  verifyPasswordConstantTime,
+  generateLinkCode,
+  MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
+} from "../src/lib/auth";
 
 describe("hashPassword/verifyPassword", () => {
   it("un hash verifica correctamente contra la contraseña original", async () => {
@@ -24,9 +31,31 @@ describe("hashPassword/verifyPassword", () => {
   });
 });
 
-describe("MIN_PASSWORD_LENGTH", () => {
-  it("es un mínimo razonable, no trivial", () => {
+describe("verifyPasswordConstantTime", () => {
+  it("acepta la contraseña correcta contra el hash de un usuario existente", async () => {
+    const hash = await hashPassword("clave-correcta");
+    expect(await verifyPasswordConstantTime("clave-correcta", hash)).toBe(true);
+  });
+
+  it("rechaza la contraseña incorrecta contra un usuario existente", async () => {
+    const hash = await hashPassword("clave-correcta");
+    expect(await verifyPasswordConstantTime("otra", hash)).toBe(false);
+  });
+
+  it("devuelve false cuando el usuario no existe (hash null), sin lanzar", async () => {
+    // Aun así ejecuta un bcrypt.compare interno (contra el hash de relleno)
+    // para no delatar por tiempo que la cuenta no existe.
+    expect(await verifyPasswordConstantTime("cualquiera", null)).toBe(false);
+  });
+});
+
+describe("límites de contraseña", () => {
+  it("el mínimo es razonable, no trivial", () => {
     expect(MIN_PASSWORD_LENGTH).toBeGreaterThanOrEqual(8);
+  });
+
+  it("el máximo es 72 (límite real de bcrypt)", () => {
+    expect(MAX_PASSWORD_LENGTH).toBe(72);
   });
 });
 

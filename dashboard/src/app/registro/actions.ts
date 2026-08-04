@@ -2,8 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
-import { hashPassword, MIN_PASSWORD_LENGTH } from "@/lib/auth";
+import { hashPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@/lib/auth";
 import { createSession } from "@/lib/session";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
 
 export interface RegisterState {
@@ -11,6 +12,11 @@ export interface RegisterState {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_EMAIL_LENGTH = 254; // RFC 5321
+
+// Alta de cuentas: más restrictivo que el login (5 por IP cada 15 minutos).
+const REGISTER_LIMIT = 5;
+const REGISTER_WINDOW_MS = 15 * 60 * 1000;
 
 export async function register(
   _prevState: RegisterState,
@@ -19,11 +25,20 @@ export async function register(
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
-  if (!EMAIL_RE.test(email)) {
+  if (!EMAIL_RE.test(email) || email.length > MAX_EMAIL_LENGTH) {
     return { error: "Escribe un email válido." };
   }
   if (password.length < MIN_PASSWORD_LENGTH) {
     return { error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.` };
+  }
+  // bcrypt ignora más de 72 bytes: se rechaza en vez de truncar en silencio.
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return { error: `La contraseña no puede tener más de ${MAX_PASSWORD_LENGTH} caracteres.` };
+  }
+
+  const limit = checkRateLimit(`registro:${await clientIp()}`, REGISTER_LIMIT, REGISTER_WINDOW_MS);
+  if (!limit.allowed) {
+    return { error: `Demasiados intentos. Espera ${limit.retryAfterSeconds}s e inténtalo de nuevo.` };
   }
 
   let userId: string;

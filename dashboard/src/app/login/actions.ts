@@ -1,13 +1,19 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { verifyPassword } from "@/lib/auth";
+import { verifyPasswordConstantTime } from "@/lib/auth";
 import { createSession } from "@/lib/session";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
 
 export interface LoginState {
   error?: string;
 }
+
+// Freno de fuerza bruta: 10 intentos por IP cada 5 minutos (best-effort en
+// serverless, ver rateLimit.ts).
+const LOGIN_LIMIT = 10;
+const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 
 export async function login(
   _prevState: LoginState,
@@ -20,12 +26,19 @@ export async function login(
     return { error: "Escribe tu email y contraseña." };
   }
 
+  const limit = checkRateLimit(`login:${await clientIp()}`, LOGIN_LIMIT, LOGIN_WINDOW_MS);
+  if (!limit.allowed) {
+    return { error: `Demasiados intentos. Espera ${limit.retryAfterSeconds}s e inténtalo de nuevo.` };
+  }
+
   let userId: string;
   try {
     const user = await prisma.user.findUnique({ where: { email } });
-    // Mismo mensaje tanto si el email no existe como si la contraseña no
-    // coincide: no revelar cuál de los dos falló.
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    // Comparación en tiempo constante: corre bcrypt exista o no la cuenta,
+    // para no delatar por tiempo si el email está registrado. Mismo mensaje
+    // en ambos casos: tampoco se revela cuál de los dos falló.
+    const ok = await verifyPasswordConstantTime(password, user?.passwordHash ?? null);
+    if (!user || !ok) {
       return { error: "Email o contraseña incorrectos." };
     }
     userId = user.id;
