@@ -37,12 +37,9 @@ function toStoredMessage(row: {
   resumen: string;
   hecho: boolean;
   fecha: Date;
-  userId: string | null;
+  userId: string;
 }): StoredMessage {
-  // La columna es nullable en la BD (transición del backfill de la Fase 2),
-  // pero todo método de este repositorio filtra `WHERE userId = ...`, así
-  // que cualquier fila que llega aquí pertenece de verdad a ese usuario.
-  return { ...row, categoria: toCategory(row.categoria), userId: row.userId as string };
+  return { ...row, categoria: toCategory(row.categoria) };
 }
 
 /** Convierte un vector a la forma que pgvector acepta casteada (`::vector`). */

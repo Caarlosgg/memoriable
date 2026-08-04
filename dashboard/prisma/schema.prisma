@@ -68,9 +68,9 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
-  /// Ver ../../prisma/schema.prisma: nullable en tránsito hasta el backfill.
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  /// Ver ../../prisma/schema.prisma: obligatorio, backfill ya completado.
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   /// Ver ../../prisma/schema.prisma para el porqué de las dimensiones y del
   /// acceso vía $queryRaw/$executeRaw (Prisma no soporta Unsupported en el
@@ -102,8 +102,8 @@ model AssistantExchange {
   respuesta String
   fecha     DateTime @default(now())
 
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   @@index([fecha])
   @@index([userId])

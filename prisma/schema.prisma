@@ -83,13 +83,11 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
-  /// Dueño de la nota. Nullable en tránsito: las notas ya existentes antes
-  /// de la Fase 2 (multiusuario) nacen sin dueño y quedan invisibles para
-  /// todos hasta el backfill manual a la cuenta real (nunca se asigna un
-  /// dueño inventado). Una vez completado el backfill se cierra a NOT NULL
-  /// en una migración de seguimiento.
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  /// Dueño de la nota (Fase 2, multiusuario). Obligatorio: el backfill de
+  /// las notas previas a esta fase ya se completó (ver migración
+  /// 20260804190000_require_user_owner).
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   /// Vector de embedding para búsqueda semántica (Fase 2), generado con
   /// gemini-embedding-001 truncado a 768 dimensiones (Matryoshka Representation
@@ -131,9 +129,9 @@ model AssistantExchange {
   respuesta String
   fecha     DateTime @default(now())
 
-  /// Ver comentario de `Message.userId`: mismo criterio de transición.
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  /// Ver comentario de `Message.userId`.
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   @@index([fecha])
   @@index([userId])
