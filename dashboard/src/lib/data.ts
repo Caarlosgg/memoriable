@@ -20,10 +20,16 @@ export interface CategoryGroup {
  * Agrupa los mensajes por categoría: el total real (para el contador) y los
  * más recientes (para no traer miles de filas de golpe). Una consulta de
  * conteo + una por categoría, en paralelo.
+ *
+ * `highlightId`: cuando el Asistente cita una nota (ver assistantContext.ts)
+ * y el enlace trae ese id, hay que poder verla aunque no esté entre las
+ * `RECENT_PER_CATEGORY` más recientes de su categoría — se trae aparte y se
+ * antepone a su grupo si hiciera falta.
  */
-export async function getCategoryGroups(userId: string): Promise<CategoryGroup[]> {
-  const [counts, ...messagesByCategory] = await Promise.all([
+export async function getCategoryGroups(userId: string, highlightId?: string): Promise<CategoryGroup[]> {
+  const [counts, highlighted, ...messagesByCategory] = await Promise.all([
     prisma.message.groupBy({ by: ["categoria"], where: { userId }, _count: { _all: true } }),
+    highlightId ? prisma.message.findUnique({ where: { id: highlightId, userId } }) : Promise.resolve(null),
     ...CATEGORIES.map((categoria) =>
       prisma.message.findMany({
         where: { categoria, userId },
@@ -37,11 +43,15 @@ export async function getCategoryGroups(userId: string): Promise<CategoryGroup[]
     counts.map((c) => [c.categoria, c._count._all]),
   );
 
-  return CATEGORIES.map((categoria, i) => ({
-    categoria,
-    total: totalByCategory.get(categoria) ?? 0,
-    messages: messagesByCategory[i]!,
-  }));
+  return CATEGORIES.map((categoria, i) => {
+    const messages = messagesByCategory[i]!;
+    const needsHighlight = highlighted?.categoria === categoria && !messages.some((m) => m.id === highlighted.id);
+    return {
+      categoria,
+      total: totalByCategory.get(categoria) ?? 0,
+      messages: needsHighlight ? [highlighted!, ...messages] : messages,
+    };
+  });
 }
 
 /** Resultados devueltos por una búsqueda. */

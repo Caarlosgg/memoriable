@@ -1,4 +1,5 @@
 import "server-only";
+import { revalidatePath } from "next/cache";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { captureMessage } from "./pipeline";
@@ -28,6 +29,12 @@ export function createAssistantTools(userId: string) {
       }),
       execute: async ({ contenido }) => {
         const saved = await captureMessage(userId, contenido);
+        // Sin esto, navegar a Tablero/Categorías tras crear la nota podría
+        // enseñar la versión cacheada de antes de crearla — el chat vive en
+        // /asistente, una pestaña totalmente distinta, así que no hay forma
+        // de que Next se entere del cambio salvo invalidando la caché aquí.
+        revalidatePath("/pendientes");
+        revalidatePath("/categorias");
         return toAssistantSource(saved);
       },
     }),

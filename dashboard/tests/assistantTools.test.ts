@@ -17,8 +17,14 @@ vi.mock("../src/lib/pipeline", () => ({
   captureMessage: (userId: string, contenido: string) => captureMessage(userId, contenido),
 }));
 
+// `revalidatePath` exige contexto de petición de Next real (Route Handler en
+// marcha) — fuera de eso, incluso en producción, lanza. En el test no hay
+// petición real, así que se sustituye por un espía.
+const revalidatePath = vi.fn();
+vi.mock("next/cache", () => ({ revalidatePath: (path: string) => revalidatePath(path) }));
+
 describe("createAssistantTools", () => {
-  it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión", async () => {
+  it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión, e invalida Tablero/Categorías", async () => {
     const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1");
 
@@ -34,5 +40,7 @@ describe("createAssistantTools", () => {
       label: "Recordatorios",
       resumen: "Llamar al banco",
     });
+    expect(revalidatePath).toHaveBeenCalledWith("/pendientes");
+    expect(revalidatePath).toHaveBeenCalledWith("/categorias");
   });
 });

@@ -7,7 +7,15 @@ import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 
 export const metadata: Metadata = { title: "Categorías · MemorIAble" };
 
-export default function CategoriasPage() {
+export default async function CategoriasPage({
+  searchParams,
+}: {
+  // El Asistente enlaza aquí a la nota real que cita (?mensaje=<id>), ver
+  // AssistantChat.tsx y CategoriesSection.tsx.
+  searchParams: Promise<{ mensaje?: string }>;
+}) {
+  const { mensaje } = await searchParams;
+
   return (
     <>
       <SectionErrorBoundary title="Anotar">
@@ -16,7 +24,7 @@ export default function CategoriasPage() {
 
       <SectionErrorBoundary title="Categorías">
         <Suspense fallback={<CategoriesSkeleton />}>
-          <CategoriesSection />
+          <CategoriesSection highlightId={mensaje} />
         </Suspense>
       </SectionErrorBoundary>
     </>

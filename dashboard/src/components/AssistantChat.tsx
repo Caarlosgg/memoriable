@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage, InferUITools, UIDataTypes } from "ai";
@@ -203,11 +204,16 @@ export function AssistantChat({ initialConversations = [] }: { initialConversati
                           {sources.map((s) => {
                             const { Icon, color } = presentCategory(s.categoria);
                             return (
-                              <li key={s.id} className="rounded-lg border border-paper-line bg-paper p-2.5">
-                                <p className="flex items-center gap-1.5 font-medium text-ink">
-                                  <Icon aria-hidden size={13} className={color} /> {s.label} · {s.fecha}
-                                </p>
-                                <p className="mt-0.5 line-clamp-2 text-muted">{s.contenido}</p>
+                              <li key={s.id}>
+                                <Link
+                                  href={`/categorias?mensaje=${s.id}#mensaje-${s.id}`}
+                                  className="block rounded-lg border border-paper-line bg-paper p-2.5 transition-colors hover:border-accent hover:bg-accent-soft"
+                                >
+                                  <p className="flex items-center gap-1.5 font-medium text-ink">
+                                    <Icon aria-hidden size={13} className={color} /> {s.label} · {s.fecha}
+                                  </p>
+                                  <p className="mt-0.5 line-clamp-2 text-muted">{s.contenido}</p>
+                                </Link>
                               </li>
                             );
                           })}

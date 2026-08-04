@@ -3,9 +3,9 @@ import { presentCategory } from "@/lib/categories";
 import { verifySession } from "@/lib/dal";
 import { MessageCard } from "./MessageCard";
 
-export async function CategoriesSection() {
+export async function CategoriesSection({ highlightId }: { highlightId?: string }) {
   const userId = await verifySession();
-  const groups = await getCategoryGroups(userId);
+  const groups = await getCategoryGroups(userId, highlightId);
   const hasAnyMessages = groups.some((g) => g.total > 0);
 
   if (!hasAnyMessages) {
@@ -22,13 +22,13 @@ export async function CategoriesSection() {
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
       {groups.map((group) => (
-        <CategoryCard key={group.categoria} group={group} />
+        <CategoryCard key={group.categoria} group={group} highlightId={highlightId} />
       ))}
     </div>
   );
 }
 
-function CategoryCard({ group }: { group: CategoryGroup }) {
+function CategoryCard({ group, highlightId }: { group: CategoryGroup; highlightId?: string }) {
   const { Icon, label, color, colorSoft } = presentCategory(group.categoria);
   const headingId = `categoria-${group.categoria}`;
 
@@ -54,7 +54,12 @@ function CategoryCard({ group }: { group: CategoryGroup }) {
       ) : (
         <ul className="flex flex-col gap-3">
           {group.messages.map((message) => (
-            <MessageCard key={message.id} message={message} showCategory={false} />
+            <MessageCard
+              key={message.id}
+              message={message}
+              showCategory={false}
+              highlighted={message.id === highlightId}
+            />
           ))}
         </ul>
       )}
