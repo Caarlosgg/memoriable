@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { nextPriority, PRIORIDADES, ESTADOS_TABLERO } from "../src/lib/kanban";
+import { nextPriority, nextEstado, PRIORIDADES, ESTADOS_TABLERO } from "../src/lib/kanban";
 
 describe("nextPriority", () => {
   it("cicla Baja -> Media -> Alta -> Baja", () => {
     expect(nextPriority("BAJA")).toBe("MEDIA");
     expect(nextPriority("MEDIA")).toBe("ALTA");
     expect(nextPriority("ALTA")).toBe("BAJA");
+  });
+});
+
+describe("nextEstado", () => {
+  it("cicla Por hacer -> En progreso -> Hecho -> Por hacer", () => {
+    expect(nextEstado("POR_HACER")).toBe("EN_PROGRESO");
+    expect(nextEstado("EN_PROGRESO")).toBe("HECHO");
+    expect(nextEstado("HECHO")).toBe("POR_HACER");
   });
 });
 

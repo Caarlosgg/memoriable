@@ -70,7 +70,7 @@ describe("hybridSearch", () => {
     const findSimilar = vi.fn();
     const embedder = stubEmbedder([0.1]);
 
-    const result = await hybridSearch("pan", null, 2, { textSearch, embedder, findSimilar });
+    const result = await hybridSearch("pan", {}, 2, { textSearch, embedder, findSimilar });
 
     expect(result.map((m) => m.id)).toEqual(["t1", "t2"]);
     expect(embedder.embedQuery).not.toHaveBeenCalled();
@@ -82,22 +82,29 @@ describe("hybridSearch", () => {
     const findSimilar = vi.fn().mockResolvedValue([fakeMessage("s1"), fakeMessage("s2")]);
     const embedder = stubEmbedder([0.1, 0.2]);
 
-    const result = await hybridSearch("pan", null, 3, { textSearch, embedder, findSimilar });
+    const result = await hybridSearch("pan", {}, 3, { textSearch, embedder, findSimilar });
 
     expect(result.map((m) => m.id)).toEqual(["t1", "s1", "s2"]);
     expect(embedder.embedQuery).toHaveBeenCalledWith("pan");
-    expect(findSimilar).toHaveBeenCalledWith([0.1, 0.2], { categoria: null, limit: 2 });
+    expect(findSimilar).toHaveBeenCalledWith([0.1, 0.2], { limit: 2 });
   });
 
-  it("pasa el filtro de categoría a ambas búsquedas", async () => {
+  it("pasa los filtros (categoría, estado, prioridad, fechas) a ambas búsquedas", async () => {
     const textSearch = vi.fn().mockResolvedValue([]);
     const findSimilar = vi.fn().mockResolvedValue([]);
     const embedder = stubEmbedder([0.1]);
+    const desde = new Date("2026-08-01T00:00:00.000Z");
+    const hasta = new Date("2026-08-05T23:59:59.999Z");
 
-    await hybridSearch("pan", "tarea", 5, { textSearch, embedder, findSimilar });
+    await hybridSearch("pan", { categoria: "tarea", estado: "EN_PROGRESO", prioridad: "ALTA", desde, hasta }, 5, {
+      textSearch,
+      embedder,
+      findSimilar,
+    });
 
-    expect(textSearch).toHaveBeenCalledWith("pan", "tarea", 5);
-    expect(findSimilar).toHaveBeenCalledWith([0.1], { categoria: "tarea", limit: 5 });
+    const filters = { categoria: "tarea", estado: "EN_PROGRESO", prioridad: "ALTA", desde, hasta };
+    expect(textSearch).toHaveBeenCalledWith("pan", filters, 5);
+    expect(findSimilar).toHaveBeenCalledWith([0.1], { ...filters, limit: 5 });
   });
 
   it("se queda solo con texto si el embedder no puede generar el vector (sin GEMINI_API_KEY o fallo)", async () => {
@@ -105,7 +112,7 @@ describe("hybridSearch", () => {
     const findSimilar = vi.fn();
     const embedder = stubEmbedder(null);
 
-    const result = await hybridSearch("pan", null, 5, { textSearch, embedder, findSimilar });
+    const result = await hybridSearch("pan", {}, 5, { textSearch, embedder, findSimilar });
 
     expect(result.map((m) => m.id)).toEqual(["t1"]);
     expect(findSimilar).not.toHaveBeenCalled();
@@ -116,7 +123,7 @@ describe("hybridSearch", () => {
     const findSimilar = vi.fn();
     const embedder = stubEmbedder([0.1]);
 
-    const result = await hybridSearch("   ", null, 5, { textSearch, embedder, findSimilar });
+    const result = await hybridSearch("   ", {}, 5, { textSearch, embedder, findSimilar });
 
     expect(result).toEqual([]);
     expect(textSearch).not.toHaveBeenCalled();

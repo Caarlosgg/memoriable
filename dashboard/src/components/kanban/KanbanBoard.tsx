@@ -2,12 +2,17 @@
 
 import { useState } from "react";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import type { Message, EstadoTarea } from "@prisma/client";
+import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import type { BoardColumn } from "@/lib/data";
-import { ESTADOS_TABLERO, nextEstado, nextPriority } from "@/lib/kanban";
+import { ESTADOS_TABLERO, nextEstado, nextPriority, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
+import { CATEGORIES, CATEGORY_PRESENTATION, type Category } from "@/lib/categories";
 import { updateTaskStatus, updateTaskPriority } from "@/app/(dashboard)/actions";
 import type { EditableFields } from "@/components/MessageDetailDialog";
 import { KanbanColumn } from "./KanbanColumn";
+
+/** Mismas clases en ambos selects del filtro — un único sitio para que se vean iguales. */
+const FILTER_CLASSNAME =
+  "rounded-lg border border-paper-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
 
 function isEstadoTarea(value: string): value is EstadoTarea {
   return (ESTADOS_TABLERO as readonly string[]).includes(value);
@@ -17,6 +22,17 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
   const [byEstado, setByEstado] = useState<Record<EstadoTarea, Message[]>>(() =>
     Object.fromEntries(initialColumns.map((c) => [c.estado, c.messages])) as Record<EstadoTarea, Message[]>,
   );
+  // Filtro visual (Fase F): no toca `byEstado` (los datos reales, con los
+  // que trabajan drag/optimista), solo lo que se pasa a renderizar.
+  const [filtroCategoria, setFiltroCategoria] = useState<Category | "todas">("todas");
+  const [filtroPrioridad, setFiltroPrioridad] = useState<Prioridad | "todas">("todas");
+  const hasFilters = filtroCategoria !== "todas" || filtroPrioridad !== "todas";
+
+  function matchesFilter(message: Message): boolean {
+    if (filtroCategoria !== "todas" && message.categoria !== filtroCategoria) return false;
+    if (filtroPrioridad !== "todas" && message.prioridad !== filtroPrioridad) return false;
+    return true;
+  }
 
   // Distancia mínima antes de considerarlo arrastre: sin esto, un tap normal
   // en móvil (o un click) se interpretaría como el inicio de un drag.
@@ -110,19 +126,62 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:overflow-x-auto sm:pb-2">
-        {ESTADOS_TABLERO.map((estado) => (
-          <KanbanColumn
-            key={estado}
-            estado={estado}
-            messages={byEstado[estado]}
-            onCycleEstado={handleCycleEstado}
-            onCyclePrioridad={handleCyclePrioridad}
-            onSaved={handleSaved}
-          />
-        ))}
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={filtroCategoria}
+          onChange={(e) => setFiltroCategoria(e.target.value as Category | "todas")}
+          aria-label="Filtrar el tablero por categoría"
+          className={FILTER_CLASSNAME}
+        >
+          <option value="todas">Cualquier categoría</option>
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {CATEGORY_PRESENTATION[c].label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filtroPrioridad}
+          onChange={(e) => setFiltroPrioridad(e.target.value as Prioridad | "todas")}
+          aria-label="Filtrar el tablero por prioridad"
+          className={FILTER_CLASSNAME}
+        >
+          <option value="todas">Cualquier prioridad</option>
+          {PRIORIDADES.map((p) => (
+            <option key={p} value={p}>
+              {PRIORIDAD_PRESENTATION[p].label}
+            </option>
+          ))}
+        </select>
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroCategoria("todas");
+              setFiltroPrioridad("todas");
+            }}
+            className="text-xs font-medium text-muted underline-offset-2 hover:text-accent-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            Quitar filtros
+          </button>
+        )}
       </div>
-    </DndContext>
+
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:overflow-x-auto sm:pb-2">
+          {ESTADOS_TABLERO.map((estado) => (
+            <KanbanColumn
+              key={estado}
+              estado={estado}
+              messages={byEstado[estado].filter(matchesFilter)}
+              onCycleEstado={handleCycleEstado}
+              onCyclePrioridad={handleCyclePrioridad}
+              onSaved={handleSaved}
+            />
+          ))}
+        </div>
+      </DndContext>
+    </div>
   );
 }

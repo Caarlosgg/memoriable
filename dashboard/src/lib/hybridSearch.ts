@@ -1,7 +1,22 @@
 import "server-only";
-import type { Message } from "@prisma/client";
+import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import type { Embedder } from "./botPipeline/types";
 import type { Category } from "./categories";
+
+/**
+ * Filtros del buscador (Fase F): además del texto y la categoría (ya
+ * existían), estado/prioridad/rango de fechas. Todos opcionales — sin
+ * ninguno, el comportamiento es el de siempre.
+ */
+export interface SearchFilters {
+  categoria?: Category | null;
+  estado?: EstadoTarea | null;
+  prioridad?: Prioridad | null;
+  /** Inclusive: solo mensajes desde esta fecha. */
+  desde?: Date | null;
+  /** Inclusive: solo mensajes hasta esta fecha. */
+  hasta?: Date | null;
+}
 
 /**
  * Combina resultados de texto (exacto, ya probado) con resultados
@@ -22,10 +37,10 @@ export function mergeHybridResults(
 
 export interface HybridSearchDeps {
   /** Búsqueda de texto ya existente (ILIKE), inyectada para poder testear. */
-  textSearch: (query: string, categoria: Category | null, limit: number) => Promise<Message[]>;
+  textSearch: (query: string, filters: SearchFilters, limit: number) => Promise<Message[]>;
   embedder: Embedder;
   /** Búsqueda semántica ya existente, inyectada para poder testear (y para que el dueño quede ligado antes de llegar aquí). */
-  findSimilar: (queryEmbedding: number[], options: { categoria?: Category | null; limit?: number }) => Promise<Message[]>;
+  findSimilar: (queryEmbedding: number[], options: SearchFilters & { limit?: number }) => Promise<Message[]>;
 }
 
 /**
@@ -36,14 +51,14 @@ export interface HybridSearchDeps {
  */
 export async function hybridSearch(
   query: string,
-  categoria: Category | null,
+  filters: SearchFilters,
   limit: number,
   deps: HybridSearchDeps,
 ): Promise<Message[]> {
   const needle = query.trim();
   if (needle === "") return [];
 
-  const textResults = await deps.textSearch(needle, categoria, limit);
+  const textResults = await deps.textSearch(needle, filters, limit);
   if (textResults.length >= limit) return textResults;
 
   const queryEmbedding = await deps.embedder.embedQuery(needle);
@@ -53,7 +68,7 @@ export async function hybridSearch(
   // Se piden algunos de más (remaining, no remaining+ya-vistos) porque
   // deduplicar es barato y pedir "encuentra N que no sean estos ids" por
   // SQL añade complejidad de parametrización de arrays que no compensa aquí.
-  const semanticResults = await deps.findSimilar(queryEmbedding, { categoria, limit: remaining });
+  const semanticResults = await deps.findSimilar(queryEmbedding, { ...filters, limit: remaining });
 
   return mergeHybridResults(textResults, semanticResults, limit);
 }

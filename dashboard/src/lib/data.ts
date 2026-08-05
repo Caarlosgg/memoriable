@@ -1,9 +1,9 @@
 import "server-only";
-import type { Message } from "@prisma/client";
+import type { Message, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { ACTIONABLE_CATEGORIES, CATEGORIES, type Category } from "./categories";
 import { ESTADOS_TABLERO } from "./kanban";
-import { hybridSearch } from "./hybridSearch";
+import { hybridSearch, type SearchFilters } from "./hybridSearch";
 import { findSimilarMessages } from "./vectorSearch";
 import { resolveEmbedder } from "./pipeline";
 
@@ -57,22 +57,40 @@ export async function getCategoryGroups(userId: string, highlightId?: string): P
 /** Resultados devueltos por una búsqueda. */
 const SEARCH_LIMIT = 15;
 
+/** Traduce los filtros del buscador (Fase F) a un `where` de Prisma, reutilizado por texto y por conteo. */
+function filtersToWhere(filters: SearchFilters): Prisma.MessageWhereInput {
+  return {
+    ...(filters.categoria ? { categoria: filters.categoria } : {}),
+    ...(filters.estado ? { estado: filters.estado } : {}),
+    ...(filters.prioridad ? { prioridad: filters.prioridad } : {}),
+    ...(filters.desde || filters.hasta
+      ? {
+          fecha: {
+            ...(filters.desde ? { gte: filters.desde } : {}),
+            ...(filters.hasta ? { lte: filters.hasta } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 /**
- * Búsqueda de texto (ILIKE) sobre contenido o resumen, con filtro de
- * categoría opcional. Mismo comportamiento que el /buscar del bot,
- * reimplementado aquí porque el dashboard tiene su propio cliente de Prisma
- * (ver prisma/schema.prisma). Es la mitad "texto" de la búsqueda híbrida.
+ * Búsqueda de texto (ILIKE) sobre contenido o resumen, con filtros
+ * opcionales (categoría/estado/prioridad/fechas, Fase F). Mismo
+ * comportamiento que el /buscar del bot, reimplementado aquí porque el
+ * dashboard tiene su propio cliente de Prisma (ver prisma/schema.prisma).
+ * Es la mitad "texto" de la búsqueda híbrida.
  */
 async function textSearch(
   userId: string,
   query: string,
-  categoria: Category | null,
+  filters: SearchFilters,
   limit: number,
 ): Promise<Message[]> {
   return prisma.message.findMany({
     where: {
       userId,
-      ...(categoria ? { categoria } : {}),
+      ...filtersToWhere(filters),
       OR: [
         { contenido: { contains: query, mode: "insensitive" } },
         { resumen: { contains: query, mode: "insensitive" } },
@@ -91,13 +109,13 @@ async function textSearch(
 export async function searchMessages(
   userId: string,
   query: string,
-  categoria: Category | null = null,
+  filters: SearchFilters = {},
 ): Promise<Message[]> {
   const needle = query.trim();
   if (needle === "") return [];
 
-  return hybridSearch(needle, categoria, SEARCH_LIMIT, {
-    textSearch: (q, c, limit) => textSearch(userId, q, c, limit),
+  return hybridSearch(needle, filters, SEARCH_LIMIT, {
+    textSearch: (q, f, limit) => textSearch(userId, q, f, limit),
     embedder: resolveEmbedder(),
     findSimilar: (queryEmbedding, options) => findSimilarMessages(userId, queryEmbedding, options),
   });
