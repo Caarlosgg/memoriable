@@ -2,6 +2,7 @@ import { getCategoryGroups, type CategoryGroup } from "@/lib/data";
 import { presentCategory } from "@/lib/categories";
 import { verifySession } from "@/lib/dal";
 import { MessageCard } from "./MessageCard";
+import { MessageDetailDialog } from "./MessageDetailDialog";
 
 export async function CategoriesSection({ highlightId }: { highlightId?: string }) {
   const userId = await verifySession();
@@ -54,12 +55,14 @@ function CategoryCard({ group, highlightId }: { group: CategoryGroup; highlightI
       ) : (
         <ul className="flex flex-col gap-3">
           {group.messages.map((message) => (
-            <MessageCard
-              key={message.id}
-              message={message}
-              showCategory={false}
-              highlighted={message.id === highlightId}
-            />
+            <MessageDetailDialog key={message.id} message={message}>
+              <MessageCard
+                message={message}
+                showCategory={false}
+                highlighted={message.id === highlightId}
+                className="cursor-pointer"
+              />
+            </MessageDetailDialog>
           ))}
         </ul>
       )}

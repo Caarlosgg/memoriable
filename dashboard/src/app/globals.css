@@ -256,3 +256,41 @@ body {
     animation: none;
   }
 }
+
+/*
+ * Modal (Fase B, `ui/dialog.tsx`): aparición con opacidad+escala leída del
+ * `data-state` que ya pone Radix, sin depender de un plugin de animaciones
+ * aparte (mismo criterio que `.fade-in`/`.skeleton` arriba). Sin animación
+ * de cierre a propósito: Radix desmonta al cerrar, más simple que retrasar
+ * el desmontaje solo para animar la salida.
+ */
+@keyframes dialog-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dialog-content-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+.dialog-overlay[data-state="open"] {
+  animation: dialog-overlay-in 0.18s ease-out both;
+}
+.dialog-content[data-state="open"] {
+  animation: dialog-content-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog-overlay[data-state="open"],
+  .dialog-content[data-state="open"] {
+    animation: none;
+  }
+}

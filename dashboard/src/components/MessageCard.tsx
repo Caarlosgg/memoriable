@@ -1,31 +1,44 @@
+import * as React from "react";
 import type { Message } from "@prisma/client";
 import { Clock } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
 import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { Highlight } from "./Highlight";
 
-export function MessageCard({
-  message,
-  showCategory = true,
-  highlightQuery,
-  highlighted = false,
-}: {
+interface MessageCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   message: Pick<Message, "id" | "contenido" | "categoria" | "resumen" | "fecha">;
   showCategory?: boolean;
   /** Si se pasa, resalta las coincidencias de este término en el texto. */
   highlightQuery?: string;
   /** Nota citada por el Asistente y a la que se ha navegado directamente. */
   highlighted?: boolean;
-}) {
+}
+
+/**
+ * `forwardRef` + spread de `...rest`: necesario para que
+ * `MessageDetailDialog` pueda usarla directamente como disparador de un
+ * modal Radix (`DialogTrigger asChild`), que clona el hijo e inyecta
+ * `onClick`/`ref`/atributos ARIA — sin esto, esos props nunca llegarían al
+ * `<li>` real y el modal no se abriría al hacer clic.
+ */
+export const MessageCard = React.forwardRef<HTMLLIElement, MessageCardProps>(function MessageCard(
+  { message, showCategory = true, highlightQuery, highlighted = false, className, ...rest },
+  ref,
+) {
   const { Icon, label, color } = presentCategory(message.categoria);
   const resumen = message.resumen || "(sin resumen)";
 
   return (
     <li
+      ref={ref}
       id={`mensaje-${message.id}`}
-      className={`fade-in group scroll-mt-24 rounded-xl border p-4 shadow-sm transition-shadow hover:shadow-md ${
-        highlighted ? "border-accent bg-accent-soft ring-2 ring-accent/40" : "border-paper-line bg-paper-raised"
-      }`}
+      className={cn(
+        "fade-in group scroll-mt-24 rounded-xl border p-4 shadow-sm transition-shadow hover:shadow-md",
+        highlighted ? "border-accent bg-accent-soft ring-2 ring-accent/40" : "border-paper-line bg-paper-raised",
+        className,
+      )}
+      {...rest}
     >
       {showCategory && (
         <p className={`mb-1.5 flex items-center gap-1.5 text-xs font-semibold ${color}`}>
@@ -53,4 +66,4 @@ export function MessageCard({
       </div>
     </li>
   );
-}
+});

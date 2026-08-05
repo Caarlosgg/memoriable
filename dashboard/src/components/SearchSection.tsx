@@ -8,6 +8,7 @@ import { CATEGORIES, CATEGORY_PRESENTATION, type Category } from "@/lib/categori
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { MessageCard } from "./MessageCard";
+import { MessageDetailDialog } from "./MessageDetailDialog";
 
 const DEBOUNCE_MS = 300;
 
@@ -141,7 +142,9 @@ export function SearchSection() {
       {status === "done" && results.length > 0 && (
         <ul className="flex flex-col gap-3">
           {results.map((message) => (
-            <MessageCard key={message.id} message={message} highlightQuery={query} />
+            <MessageDetailDialog key={message.id} message={message}>
+              <MessageCard message={message} highlightQuery={query} className="cursor-pointer" />
+            </MessageDetailDialog>
           ))}
         </ul>
       )}
