@@ -32,10 +32,11 @@ export async function findSimilarMessages(
   const prioridad = options.prioridad ?? null;
   const desde = options.desde ?? null;
   const hasta = options.hasta ?? null;
+  const etiqueta = options.etiqueta ?? null;
   const literal = toVectorLiteral(queryEmbedding);
 
   return prisma.$queryRaw<Message[]>`
-    SELECT "id", "tipo", "contenido", "categoria", "resumen", "hecho", "estado", "prioridad", "fecha", "userId"
+    SELECT "id", "tipo", "contenido", "categoria", "resumen", "hecho", "estado", "prioridad", "etiquetas", "fecha", "userId"
     FROM "messages"
     WHERE "embedding" IS NOT NULL
       AND "userId" = ${userId}
@@ -44,6 +45,7 @@ export async function findSimilarMessages(
       AND (${prioridad}::"Prioridad" IS NULL OR "prioridad" = ${prioridad}::"Prioridad")
       AND (${desde}::timestamptz IS NULL OR "fecha" >= ${desde}::timestamptz)
       AND (${hasta}::timestamptz IS NULL OR "fecha" <= ${hasta}::timestamptz)
+      AND (${etiqueta}::text IS NULL OR "etiquetas" @> ARRAY[${etiqueta}]::text[])
     ORDER BY "embedding" <=> ${literal}::vector
     LIMIT ${limit}
   `;

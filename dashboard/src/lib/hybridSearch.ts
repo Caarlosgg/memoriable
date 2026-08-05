@@ -16,6 +16,8 @@ export interface SearchFilters {
   desde?: Date | null;
   /** Inclusive: solo mensajes hasta esta fecha. */
   hasta?: Date | null;
+  /** Etiqueta libre (Fase F/J): coincidencia exacta contra `Message.etiquetas`. */
+  etiqueta?: string | null;
 }
 
 /**

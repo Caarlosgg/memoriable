@@ -108,6 +108,13 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
+  /// Etiquetas libres (Fase F/J): a mayores de la categoría fija, texto
+  /// suelto que el usuario añade desde el modal de detalle para filtrar
+  /// más fino en el buscador. Sin tabla de definición aparte — un array
+  /// nativo de Postgres es proporcional a la necesidad real (uso
+  /// personal, no un editor de esquema de etiquetas por proyecto).
+  etiquetas String[] @default([])
+
   /// Dueño de la nota (Fase 2, multiusuario). Obligatorio: el backfill de
   /// las notas previas a esta fase ya se completó (ver migración
   /// 20260804190000_require_user_owner).

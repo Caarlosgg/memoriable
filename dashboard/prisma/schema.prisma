@@ -86,6 +86,9 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
+  /// Ver ../../prisma/schema.prisma: etiquetas libres (Fase F/J).
+  etiquetas String[] @default([])
+
   /// Ver ../../prisma/schema.prisma: obligatorio, backfill ya completado.
   userId String
   user   User   @relation(fields: [userId], references: [id])

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
-import { Search } from "lucide-react";
+import { Search, Tag } from "lucide-react";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import { CATEGORIES, CATEGORY_PRESENTATION, type Category } from "@/lib/categories";
 import { ESTADOS_TABLERO, ESTADO_PRESENTATION, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
@@ -28,8 +28,9 @@ interface Filters {
 const INITIAL_FILTERS: Filters = { categoria: "todos", estado: "todos", prioridad: "todos", desde: "", hasta: "" };
 
 interface FetchState {
-  /** Término, filtros y número de intento a los que corresponde este resultado. */
+  /** Término, etiqueta, filtros y número de intento a los que corresponde este resultado. */
   query: string;
+  etiqueta: string;
   filters: Filters;
   attempt: number;
   status: "error" | "done";
@@ -38,6 +39,7 @@ interface FetchState {
 
 const INITIAL_FETCH_STATE: FetchState = {
   query: "",
+  etiqueta: "",
   filters: INITIAL_FILTERS,
   attempt: 0,
   status: "done",
@@ -56,6 +58,7 @@ function sameFilters(a: Filters, b: Filters): boolean {
 
 export function SearchSection() {
   const [input, setInput] = useState("");
+  const [etiquetaInput, setEtiquetaInput] = useState("");
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [fetchState, setFetchState] = useState<FetchState>(INITIAL_FETCH_STATE);
   // Se incrementa para forzar una nueva búsqueda del mismo término (botón
@@ -63,6 +66,7 @@ export function SearchSection() {
   const [attempt, setAttempt] = useState(0);
   const debounced = useDebouncedValue(input, DEBOUNCE_MS);
   const query = debounced.trim();
+  const etiqueta = useDebouncedValue(etiquetaInput, DEBOUNCE_MS).trim();
 
   useEffect(() => {
     // Consulta vacía: no hay nada que pedir al servidor.
@@ -75,6 +79,7 @@ export function SearchSection() {
     if (filters.prioridad !== "todos") params.set("prioridad", filters.prioridad);
     if (filters.desde) params.set("desde", filters.desde);
     if (filters.hasta) params.set("hasta", filters.hasta);
+    if (etiqueta) params.set("etiqueta", etiqueta);
 
     fetch(`/api/search?${params.toString()}`, {
       signal: controller.signal,
@@ -83,20 +88,23 @@ export function SearchSection() {
         if (!res.ok) throw new Error(`La búsqueda falló (${res.status}).`);
         return res.json() as Promise<{ results: Message[] }>;
       })
-      .then((data) => setFetchState({ query, filters, attempt, status: "done", results: data.results }))
+      .then((data) => setFetchState({ query, etiqueta, filters, attempt, status: "done", results: data.results }))
       .catch((err) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setFetchState({ query, filters, attempt, status: "error", results: [] });
+        setFetchState({ query, etiqueta, filters, attempt, status: "error", results: [] });
       });
 
     return () => controller.abort();
-  }, [query, filters, attempt]);
+  }, [query, etiqueta, filters, attempt]);
 
   // "loading" es un estado derivado, no uno propio: es verdad mientras el
-  // último resultado que tenemos no corresponde al término/filtros/intento
-  // actuales.
+  // último resultado que tenemos no corresponde al término/etiqueta/filtros/
+  // intento actuales.
   const isStale =
-    fetchState.query !== query || !sameFilters(fetchState.filters, filters) || fetchState.attempt !== attempt;
+    fetchState.query !== query ||
+    fetchState.etiqueta !== etiqueta ||
+    !sameFilters(fetchState.filters, filters) ||
+    fetchState.attempt !== attempt;
   const status = query === "" ? "idle" : isStale ? "loading" : fetchState.status;
   const results = fetchState.results;
 
@@ -174,6 +182,17 @@ export function SearchSection() {
           aria-label="Hasta qué fecha"
           className={FILTER_CLASSNAME}
         />
+        <div className="relative">
+          <Tag aria-hidden size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" />
+          <input
+            type="text"
+            value={etiquetaInput}
+            onChange={(e) => setEtiquetaInput(e.target.value)}
+            placeholder="etiqueta"
+            aria-label="Filtrar por etiqueta"
+            className={`${FILTER_CLASSNAME} w-28 pl-7`}
+          />
+        </div>
       </div>
 
       {status === "loading" && (

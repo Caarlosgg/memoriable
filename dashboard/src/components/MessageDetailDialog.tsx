@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import type { Message } from "@prisma/client";
-import { Pencil, Clock } from "lucide-react";
+import { Pencil, Clock, Tag } from "lucide-react";
 import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION } from "@/lib/categories";
 import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
@@ -22,6 +22,7 @@ export interface EditableFields {
   categoria: string;
   estado: Message["estado"];
   prioridad: Message["prioridad"];
+  etiquetas: string[];
 }
 
 function fieldsFrom(message: Message): EditableFields {
@@ -31,7 +32,15 @@ function fieldsFrom(message: Message): EditableFields {
     categoria: message.categoria,
     estado: message.estado,
     prioridad: message.prioridad,
+    etiquetas: message.etiquetas,
   };
+}
+
+function parseEtiquetas(texto: string): string[] {
+  return texto
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
 }
 
 /**
@@ -64,6 +73,11 @@ export function MessageDetailDialog({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(defaultEditing);
   const [fields, setFields] = useState<EditableFields>(() => fieldsFrom(message));
+  // Aparte de `fields`: un array derivado de un `<input>` de texto en cada
+  // pulsación se pisaría a sí mismo justo después de escribir una coma (el
+  // valor mostrado se "recompone" sin la coma recién tecleada). Se guarda
+  // el texto tal cual y solo se parte en etiquetas al guardar.
+  const [etiquetasTexto, setEtiquetasTexto] = useState(() => message.etiquetas.join(", "));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -73,6 +87,7 @@ export function MessageDetailDialog({
       // Cada apertura arranca desde los datos actuales, por si la nota se
       // editó en otra pestaña/vista entre un cierre y la siguiente apertura.
       setFields(fieldsFrom(message));
+      setEtiquetasTexto(message.etiquetas.join(", "));
       setEditing(defaultEditing);
       setError(null);
     }
@@ -80,19 +95,21 @@ export function MessageDetailDialog({
 
   function handleCancel() {
     setFields(fieldsFrom(message));
+    setEtiquetasTexto(message.etiquetas.join(", "));
     setError(null);
     setEditing(false);
   }
 
   function handleSave() {
     setError(null);
+    const patch: EditableFields = { ...fields, etiquetas: parseEtiquetas(etiquetasTexto) };
     startTransition(async () => {
-      const result = await updateMessage(message.id, fields);
+      const result = await updateMessage(message.id, patch);
       if (result.error) {
         setError(result.error);
         return;
       }
-      onSaved?.(message.id, fields);
+      onSaved?.(message.id, patch);
       setEditing(false);
     });
   }
@@ -113,6 +130,18 @@ export function MessageDetailDialog({
               <CategoryIcon aria-hidden size={14} /> {categoryLabel}
             </p>
             <p className="text-sm whitespace-pre-wrap text-ink">{message.contenido}</p>
+            {message.etiquetas.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5">
+                {message.etiquetas.map((tag) => (
+                  <li
+                    key={tag}
+                    className="flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-strong"
+                  >
+                    <Tag aria-hidden size={10} /> {tag}
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-paper-line pt-3 text-xs text-muted">
               <span className="flex items-center gap-1">
                 <Clock aria-hidden size={12} /> {formatDate(message.fecha)}
@@ -201,6 +230,18 @@ export function MessageDetailDialog({
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="detalle-etiquetas" className="text-sm font-medium text-ink">
+                Etiquetas
+              </label>
+              <Input
+                id="detalle-etiquetas"
+                value={etiquetasTexto}
+                onChange={(e) => setEtiquetasTexto(e.target.value)}
+                placeholder="separadas por comas: viaje, urgente, casa…"
+              />
             </div>
 
             {error && (

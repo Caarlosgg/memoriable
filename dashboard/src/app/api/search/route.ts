@@ -54,7 +54,8 @@ export async function GET(request: NextRequest) {
     : null;
   const desde = parseDate(params.get("desde"));
   const hasta = parseHasta(params.get("hasta"));
+  const etiqueta = params.get("etiqueta")?.trim() || null;
 
-  const results = await searchMessages(userId, q, { categoria, estado, prioridad, desde, hasta });
+  const results = await searchMessages(userId, q, { categoria, estado, prioridad, desde, hasta, etiqueta });
   return NextResponse.json({ query: q, results });
 }

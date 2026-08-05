@@ -39,6 +39,7 @@ export interface UpdateMessageInput {
   categoria?: string;
   estado?: EstadoTarea;
   prioridad?: Prioridad;
+  etiquetas?: string[];
 }
 
 export interface UpdateMessageResult {
@@ -71,6 +72,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
         ...(input.categoria !== undefined ? { categoria: input.categoria } : {}),
         ...(input.estado !== undefined ? { estado: input.estado, hecho: input.estado === "HECHO" } : {}),
         ...(input.prioridad !== undefined ? { prioridad: input.prioridad } : {}),
+        ...(input.etiquetas !== undefined ? { etiquetas: input.etiquetas } : {}),
       },
     });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };

@@ -71,6 +71,7 @@ function filtersToWhere(filters: SearchFilters): Prisma.MessageWhereInput {
           },
         }
       : {}),
+    ...(filters.etiqueta ? { etiquetas: { has: filters.etiqueta } } : {}),
   };
 }
 

@@ -12,6 +12,7 @@ function fakeMessage(overrides: Partial<Message> = {}): Message {
     hecho: false,
     estado: "POR_HACER",
     prioridad: "MEDIA",
+    etiquetas: [],
     fecha: new Date("2026-07-28T21:24:00.000Z"),
     userId: "u1",
     ...overrides,
