@@ -2,6 +2,7 @@ import { User, CircleCheck } from "lucide-react";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { LinkTelegramForm } from "@/app/(dashboard)/cuenta/LinkTelegramForm";
+import { ExportSection } from "@/components/ExportSection";
 
 export async function CuentaSection() {
   const userId = await verifySession();
@@ -41,6 +42,8 @@ export async function CuentaSection() {
           </>
         )}
       </div>
+
+      <ExportSection />
     </section>
   );
 }
