@@ -36,7 +36,7 @@ export async function findSimilarMessages(
   const literal = toVectorLiteral(queryEmbedding);
 
   return prisma.$queryRaw<Message[]>`
-    SELECT "id", "tipo", "contenido", "categoria", "resumen", "hecho", "estado", "prioridad", "etiquetas", "fecha", "userId"
+    SELECT "id", "tipo", "contenido", "categoria", "resumen", "hecho", "estado", "prioridad", "etiquetas", "camposExtra", "fecha", "userId"
     FROM "messages"
     WHERE "embedding" IS NOT NULL
       AND "userId" = ${userId}

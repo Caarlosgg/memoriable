@@ -115,6 +115,13 @@ model Message {
   /// personal, no un editor de esquema de etiquetas por proyecto).
   etiquetas String[] @default([])
 
+  /// Campos extra personalizados (Fase E): mapa libre `{nombre: {tipo,
+  /// valor}}` (tipo: texto/numero/fecha, valor siempre como string — las
+  /// fechas en ISO). Sin tabla de definición de campos aparte: para uso
+  /// personal, un campo dinámico tipo JSON es proporcional a la necesidad
+  /// real y evita construir un editor de "esquema de esquema" por tarjeta.
+  camposExtra Json @default("{}")
+
   /// Dueño de la nota (Fase 2, multiusuario). Obligatorio: el backfill de
   /// las notas previas a esta fase ya se completó (ver migración
   /// 20260804190000_require_user_owner).

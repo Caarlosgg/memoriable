@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { EstadoTarea, Prioridad } from "@prisma/client";
+import type { EstadoTarea, Prioridad, Prisma } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
@@ -40,6 +40,7 @@ export interface UpdateMessageInput {
   estado?: EstadoTarea;
   prioridad?: Prioridad;
   etiquetas?: string[];
+  camposExtra?: Prisma.InputJsonValue;
 }
 
 export interface UpdateMessageResult {
@@ -73,6 +74,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
         ...(input.estado !== undefined ? { estado: input.estado, hecho: input.estado === "HECHO" } : {}),
         ...(input.prioridad !== undefined ? { prioridad: input.prioridad } : {}),
         ...(input.etiquetas !== undefined ? { etiquetas: input.etiquetas } : {}),
+        ...(input.camposExtra !== undefined ? { camposExtra: input.camposExtra } : {}),
       },
     });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };

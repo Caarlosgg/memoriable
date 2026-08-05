@@ -2,11 +2,12 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import type { Message } from "@prisma/client";
-import { Pencil, Clock, Tag } from "lucide-react";
+import { Pencil, Clock, Tag, X, Plus } from "lucide-react";
 import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION } from "@/lib/categories";
 import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
 import { updateMessage } from "@/app/(dashboard)/actions";
+import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtraJson } from "@/lib/camposExtra";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -23,6 +24,7 @@ export interface EditableFields {
   estado: Message["estado"];
   prioridad: Message["prioridad"];
   etiquetas: string[];
+  camposExtra: CamposExtraJson;
 }
 
 function fieldsFrom(message: Message): EditableFields {
@@ -33,6 +35,7 @@ function fieldsFrom(message: Message): EditableFields {
     estado: message.estado,
     prioridad: message.prioridad,
     etiquetas: message.etiquetas,
+    camposExtra: message.camposExtra as CamposExtraJson,
   };
 }
 
@@ -78,6 +81,7 @@ export function MessageDetailDialog({
   // valor mostrado se "recompone" sin la coma recién tecleada). Se guarda
   // el texto tal cual y solo se parte en etiquetas al guardar.
   const [etiquetasTexto, setEtiquetasTexto] = useState(() => message.etiquetas.join(", "));
+  const [camposExtraRows, setCamposExtraRows] = useState<CampoExtra[]>(() => camposExtraToArray(message.camposExtra));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -88,6 +92,7 @@ export function MessageDetailDialog({
       // editó en otra pestaña/vista entre un cierre y la siguiente apertura.
       setFields(fieldsFrom(message));
       setEtiquetasTexto(message.etiquetas.join(", "));
+      setCamposExtraRows(camposExtraToArray(message.camposExtra));
       setEditing(defaultEditing);
       setError(null);
     }
@@ -96,13 +101,30 @@ export function MessageDetailDialog({
   function handleCancel() {
     setFields(fieldsFrom(message));
     setEtiquetasTexto(message.etiquetas.join(", "));
+    setCamposExtraRows(camposExtraToArray(message.camposExtra));
     setError(null);
     setEditing(false);
   }
 
+  function updateCampoExtra(index: number, patch: Partial<CampoExtra>) {
+    setCamposExtraRows((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function removeCampoExtra(index: number) {
+    setCamposExtraRows((rows) => rows.filter((_, i) => i !== index));
+  }
+
+  function addCampoExtra() {
+    setCamposExtraRows((rows) => [...rows, { nombre: "", tipo: "texto", valor: "" }]);
+  }
+
   function handleSave() {
     setError(null);
-    const patch: EditableFields = { ...fields, etiquetas: parseEtiquetas(etiquetasTexto) };
+    const patch: EditableFields = {
+      ...fields,
+      etiquetas: parseEtiquetas(etiquetasTexto),
+      camposExtra: camposExtraToJson(camposExtraRows),
+    };
     startTransition(async () => {
       const result = await updateMessage(message.id, patch);
       if (result.error) {
@@ -141,6 +163,16 @@ export function MessageDetailDialog({
                   </li>
                 ))}
               </ul>
+            )}
+            {camposExtraToArray(message.camposExtra).length > 0 && (
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-paper-line pt-3 text-xs">
+                {camposExtraToArray(message.camposExtra).map((campo) => (
+                  <div key={campo.nombre} className="contents">
+                    <dt className="text-muted">{campo.nombre}</dt>
+                    <dd className="text-ink">{campo.valor || "—"}</dd>
+                  </div>
+                ))}
+              </dl>
             )}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-paper-line pt-3 text-xs text-muted">
               <span className="flex items-center gap-1">
@@ -242,6 +274,50 @@ export function MessageDetailDialog({
                 onChange={(e) => setEtiquetasTexto(e.target.value)}
                 placeholder="separadas por comas: viaje, urgente, casa…"
               />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium text-ink">Campos extra</p>
+              {camposExtraRows.map((campo, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input
+                    value={campo.nombre}
+                    onChange={(e) => updateCampoExtra(i, { nombre: e.target.value })}
+                    placeholder="Nombre"
+                    aria-label={`Nombre del campo extra ${i + 1}`}
+                    className="flex-1"
+                  />
+                  <select
+                    value={campo.tipo}
+                    onChange={(e) => updateCampoExtra(i, { tipo: e.target.value as CampoExtra["tipo"] })}
+                    aria-label={`Tipo del campo extra ${i + 1}`}
+                    className={`${SELECT_CLASSNAME} shrink-0`}
+                  >
+                    <option value="texto">Texto</option>
+                    <option value="numero">Número</option>
+                    <option value="fecha">Fecha</option>
+                  </select>
+                  <Input
+                    type={campo.tipo === "numero" ? "number" : campo.tipo === "fecha" ? "date" : "text"}
+                    value={campo.valor}
+                    onChange={(e) => updateCampoExtra(i, { valor: e.target.value })}
+                    placeholder="Valor"
+                    aria-label={`Valor del campo extra ${i + 1}`}
+                    className="flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeCampoExtra(i)}
+                    aria-label={`Quitar el campo extra ${i + 1}`}
+                    className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-danger-soft hover:text-danger focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+                  >
+                    <X aria-hidden size={16} />
+                  </button>
+                </div>
+              ))}
+              <Button type="button" variant="secondary" size="sm" onClick={addCampoExtra} className="self-start">
+                <Plus aria-hidden size={14} /> Añadir campo
+              </Button>
             </div>
 
             {error && (
