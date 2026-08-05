@@ -1,5 +1,6 @@
 import "server-only";
 import { revalidatePath } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import type { Message } from "@prisma/client";
@@ -89,6 +90,7 @@ export function createAssistantTools(userId: string) {
           saved = await captureMessage(userId, contenido);
         } catch (err) {
           console.error("La tool crearNota no pudo guardar la nota:", err);
+          Sentry.captureException(err);
           // Mensaje ya en español y sin detalles internos: el AI SDK lo
           // expone como `errorText` del part, que la UI muestra tal cual
           // (ver CrearNotaResult en AssistantChat.tsx).
@@ -148,6 +150,7 @@ export function createAssistantTools(userId: string) {
           });
         } catch (err) {
           console.error("La tool crearEvento no pudo guardar el evento:", err);
+          Sentry.captureException(err);
           throw new Error("No se ha podido guardar el evento. Inténtalo de nuevo en un momento.");
         }
 
@@ -181,6 +184,7 @@ export function createAssistantTools(userId: string) {
           tarea = await encontrarTareaPendiente(userId, descripcion);
         } catch (err) {
           console.error("La tool completarTarea no pudo buscar la tarea:", err);
+          Sentry.captureException(err);
           throw new Error("No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.");
         }
         if (!tarea) {
@@ -191,6 +195,7 @@ export function createAssistantTools(userId: string) {
           await prisma.message.update({ where: { id: tarea.id }, data: { estado: "HECHO", hecho: true } });
         } catch (err) {
           console.error("La tool completarTarea no pudo marcarla como hecha:", err);
+          Sentry.captureException(err);
           throw new Error("No se ha podido marcar como hecha. Inténtalo de nuevo en un momento.");
         }
 

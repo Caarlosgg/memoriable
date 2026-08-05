@@ -1,5 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// Ver el comentario en assistantTools.test.ts: @sentry/nextjs real es
+// pesado de importar y llegó a hacer que tests de otros archivos superasen
+// su timeout bajo la suite completa. Se mockea (regla 3 de CLAUDE.md).
+vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
 
 const cuentaCreate = vi.fn();

@@ -16,6 +16,12 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // El valor por defecto (5s) se ha visto saltar de forma intermitente en
+    // máquinas de desarrollo cargadas (muchos test files en paralelo + otros
+    // procesos), en tests que no hacen nada lento de por sí (mocks
+    // síncronos). En un runner de CI limpio y dedicado no debería hacer
+    // falta, pero un margen mayor no cuesta nada y evita el ruido.
+    testTimeout: 15000,
     // Igual que en la raíz: los tests nunca deben depender del .env.local
     // real de quien los ejecuta. DATABASE_URL lleva un valor dummy (nunca
     // se conecta de verdad: las funciones bajo test reciben sus

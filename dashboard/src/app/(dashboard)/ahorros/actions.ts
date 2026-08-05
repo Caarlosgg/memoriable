@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 import type { MovimientoAhorro } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +25,7 @@ export async function createCuenta(nombre: string, objetivoCentimos: number | nu
     return {};
   } catch (err) {
     console.error("Error al crear la cuenta de ahorro:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido crear la cuenta. Inténtalo de nuevo." };
   }
 }
@@ -37,6 +39,7 @@ export async function deleteCuenta(id: string): Promise<AhorrosResult> {
     return {};
   } catch (err) {
     console.error("Error al borrar la cuenta de ahorro:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido borrar. Inténtalo de nuevo." };
   }
 }
@@ -65,6 +68,7 @@ export async function addMovimiento(
     return {};
   } catch (err) {
     console.error("Error al registrar el movimiento:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
   }
 }

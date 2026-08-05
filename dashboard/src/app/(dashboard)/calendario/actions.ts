@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 
@@ -66,6 +67,7 @@ export async function createEvento(input: EventoInput): Promise<EventoResult> {
     return {};
   } catch (err) {
     console.error("Error al crear el evento:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido guardar el evento. Inténtalo de nuevo." };
   }
 }
@@ -93,6 +95,7 @@ export async function updateEvento(id: string, input: EventoInput): Promise<Even
     return {};
   } catch (err) {
     console.error("Error al editar el evento:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
   }
 }
@@ -106,6 +109,7 @@ export async function deleteEvento(id: string): Promise<EventoResult> {
     return {};
   } catch (err) {
     console.error("Error al borrar el evento:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido borrar. Inténtalo de nuevo." };
   }
 }

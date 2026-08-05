@@ -1,6 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { StoredMessage } from "../src/lib/botPipeline/repository";
 
+// @sentry/nextjs de verdad es pesado de importar (arrastra instrumentación
+// de OpenTelemetry) — bajo la suite completa eso llegó a hacer que el
+// primer test de este archivo superase el timeout por defecto (5s), un
+// fallo intermitente real, no un capricho de máquina. Se mockea, además de
+// por rendimiento, porque es justo lo que pide la regla 3 de CLAUDE.md:
+// nada de dependencias de servicios reales en los tests.
+vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+
 const fakeSaved: StoredMessage = {
   id: "m1",
   tipo: "text",

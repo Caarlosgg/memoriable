@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import { Prisma } from "@prisma/client";
 import { hashPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@/lib/auth";
 import { createSession } from "@/lib/session";
@@ -48,9 +49,12 @@ export async function register(
     userId = user.id;
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      // Email duplicado: alguien intentando registrarse dos veces, no un
+      // bug — no tiene sentido mandarlo a Sentry como si lo fuera.
       return { error: "Ya existe una cuenta con ese email." };
     }
     console.error("Error al registrar cuenta:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido crear la cuenta. Inténtalo de nuevo." };
   }
 

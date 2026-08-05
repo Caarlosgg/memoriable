@@ -1,4 +1,5 @@
 import { groq } from "@ai-sdk/groq";
+import * as Sentry from "@sentry/nextjs";
 import { streamText, convertToModelMessages, createUIMessageStreamResponse, toUIMessageStream, stepCountIs } from "ai";
 import type { ToolSet, UIMessage, InferUITools, UIDataTypes } from "ai";
 import { cookies } from "next/headers";
@@ -163,8 +164,13 @@ export async function POST(req: Request) {
       sendReasoning: false,
       // Evita que se filtren detalles internos del error (p. ej. de Groq)
       // al cliente; el mensaje genérico es suficiente para que la UI lo
-      // muestre sin crashear.
-      onError: () => "No se ha podido generar una respuesta. Inténtalo de nuevo en un momento.",
+      // muestre sin crashear. Este SÍ va a Sentry (a diferencia de los
+      // catches "no crítico" de arriba): un fallo aquí es justo lo que ve
+      // el usuario como "no funciona", no un best-effort de segundo plano.
+      onError: (err) => {
+        Sentry.captureException(err);
+        return "No se ha podido generar una respuesta. Inténtalo de nuevo en un momento.";
+      },
     }),
   });
 }

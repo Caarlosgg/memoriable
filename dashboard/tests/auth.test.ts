@@ -101,7 +101,13 @@ describe("generateLinkCode", () => {
     const { expiresAt } = generateLinkCode();
     const deltaMinutes = (expiresAt.getTime() - before) / 60_000;
     expect(deltaMinutes).toBeGreaterThan(9);
-    expect(deltaMinutes).toBeLessThanOrEqual(10);
+    // <= 10 a secas es más estricto de lo que la propia función promete:
+    // `before` se captura ANTES de llamar a generateLinkCode(), así que el
+    // tiempo real transcurrido entre medias (aunque sea de un milisegundo)
+    // ya empuja el resultado un pelín por encima de 10 exactos — de ahí el
+    // pequeño margen, en vez de un límite que la propia lógica no puede
+    // cumplir siempre por construcción.
+    expect(deltaMinutes).toBeLessThanOrEqual(10.01);
   });
 
   it("genera códigos distintos entre llamadas (no determinista)", () => {

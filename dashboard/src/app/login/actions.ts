@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import { verifyPasswordConstantTime, needsRehash, hashPassword } from "@/lib/auth";
 import { createSession } from "@/lib/session";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
@@ -57,6 +58,7 @@ export async function login(
     }
   } catch (err) {
     console.error("Error al comprobar las credenciales:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido comprobar tu cuenta. Inténtalo de nuevo en un momento." };
   }
 
@@ -64,6 +66,7 @@ export async function login(
     await createSession(userId);
   } catch (err) {
     console.error("Credenciales correctas pero no se pudo iniciar sesión:", err);
+    Sentry.captureException(err);
     return { error: "Tu cuenta es correcta, pero no se ha podido iniciar sesión. Inténtalo de nuevo en un momento." };
   }
 
