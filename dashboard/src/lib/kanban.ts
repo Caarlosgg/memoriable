@@ -10,6 +10,12 @@ export const ESTADO_PRESENTATION: Record<EstadoTarea, { label: string; Icon: Luc
   HECHO: { label: "Hecho", Icon: CircleCheckBig },
 };
 
+/** Siguiente estado en el ciclo Por hacer → En progreso → Hecho → Por hacer. */
+export function nextEstado(e: EstadoTarea): EstadoTarea {
+  const i = ESTADOS_TABLERO.indexOf(e);
+  return ESTADOS_TABLERO[(i + 1) % ESTADOS_TABLERO.length]!;
+}
+
 /** Prioridades en orden creciente — usado también para ciclar al hacer click. */
 export const PRIORIDADES: readonly Prioridad[] = ["BAJA", "MEDIA", "ALTA"] as const;
 

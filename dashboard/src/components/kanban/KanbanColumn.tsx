@@ -3,9 +3,22 @@
 import { useDroppable } from "@dnd-kit/core";
 import type { Message, EstadoTarea } from "@prisma/client";
 import { ESTADO_PRESENTATION } from "@/lib/kanban";
+import { MessageDetailDialog, type EditableFields } from "@/components/MessageDetailDialog";
 import { KanbanCard } from "./KanbanCard";
 
-export function KanbanColumn({ estado, messages }: { estado: EstadoTarea; messages: Message[] }) {
+export function KanbanColumn({
+  estado,
+  messages,
+  onCycleEstado,
+  onCyclePrioridad,
+  onSaved,
+}: {
+  estado: EstadoTarea;
+  messages: Message[];
+  onCycleEstado: (messageId: string) => void;
+  onCyclePrioridad: (messageId: string) => void;
+  onSaved: (id: string, patch: EditableFields) => void;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: estado });
   const { label, Icon } = ESTADO_PRESENTATION[estado];
 
@@ -33,7 +46,16 @@ export function KanbanColumn({ estado, messages }: { estado: EstadoTarea; messag
             Nada por aquí.
           </li>
         ) : (
-          messages.map((message) => <KanbanCard key={message.id} message={message} />)
+          messages.map((message) => (
+            <MessageDetailDialog key={message.id} message={message} defaultEditing onSaved={onSaved}>
+              <KanbanCard
+                message={message}
+                className="cursor-pointer"
+                onCycleEstado={onCycleEstado}
+                onCyclePrioridad={onCyclePrioridad}
+              />
+            </MessageDetailDialog>
+          ))
         )}
       </ul>
     </section>

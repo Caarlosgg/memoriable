@@ -16,7 +16,7 @@ import { Textarea } from "./ui/textarea";
 const SELECT_CLASSNAME =
   "rounded-lg border border-paper-line bg-paper px-3 py-2.5 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
 
-interface EditableFields {
+export interface EditableFields {
   resumen: string;
   contenido: string;
   categoria: string;
@@ -44,12 +44,22 @@ export function MessageDetailDialog({
   message,
   children,
   defaultEditing = false,
+  onSaved,
 }: {
   message: Message;
   /** Lo que abre el modal al hacer clic — se envuelve con `DialogTrigger asChild`. */
   children: ReactNode;
   /** Abre directamente en modo edición (usado desde el tablero, Fase C). */
   defaultEditing?: boolean;
+  /**
+   * Se llama tras guardar con éxito, con los campos editados. El tablero
+   * (Fase C) lo usa para actualizar su estado local al vuelo — sin esto la
+   * tarjeta no se movería de columna hasta un refresco de página, porque
+   * `revalidatePath` no toca el estado de un Client Component ya montado
+   * (a diferencia de Buscador/Categorías, que son Server Components y se
+   * refrescan solos).
+   */
+  onSaved?: (id: string, patch: EditableFields) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(defaultEditing);
@@ -82,6 +92,7 @@ export function MessageDetailDialog({
         setError(result.error);
         return;
       }
+      onSaved?.(message.id, fields);
       setEditing(false);
     });
   }
