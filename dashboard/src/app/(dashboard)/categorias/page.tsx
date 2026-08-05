@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { CaptureForm } from "@/components/CaptureForm";
-import { CategoriesSection } from "@/components/CategoriesSection";
-import { CategoriesSkeleton } from "@/components/CategoriesSkeleton";
+import { NotesSection } from "@/components/NotesSection";
+import { NotesSkeleton } from "@/components/NotesSkeleton";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 
-export const metadata: Metadata = { title: "Categorías · MemorIAble" };
+export const metadata: Metadata = { title: "Notas · MemorIAble" };
 
-export default async function CategoriasPage({
+export default async function NotasPage({
   searchParams,
 }: {
   // El Asistente enlaza aquí a la nota real que cita (?mensaje=<id>), ver
-  // AssistantChat.tsx y CategoriesSection.tsx.
+  // AssistantChat.tsx y NotesExplorer.tsx.
   searchParams: Promise<{ mensaje?: string }>;
 }) {
   const { mensaje } = await searchParams;
@@ -22,9 +22,9 @@ export default async function CategoriasPage({
         <CaptureForm />
       </SectionErrorBoundary>
 
-      <SectionErrorBoundary title="Categorías">
-        <Suspense fallback={<CategoriesSkeleton />}>
-          <CategoriesSection highlightId={mensaje} />
+      <SectionErrorBoundary title="Notas">
+        <Suspense fallback={<NotesSkeleton />}>
+          <NotesSection highlightId={mensaje} />
         </Suspense>
       </SectionErrorBoundary>
     </>

@@ -35,9 +35,6 @@ export async function GET(request: NextRequest) {
   }
 
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
-  if (q === "") {
-    return NextResponse.json({ query: q, results: [] });
-  }
 
   // "todos" (o cualquier valor que no sea uno real) equivale a sin filtro,
   // en vez de devolver un 400 por un valor inesperado.

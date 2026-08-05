@@ -1,4 +1,4 @@
-import { MessageCircle, Search, LayoutGrid, ListTodo, User, type LucideIcon } from "lucide-react";
+import { MessageCircle, StickyNote, ListTodo, User, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -6,11 +6,14 @@ export interface NavItem {
   Icon: LucideIcon;
 }
 
-/** Compartido entre Sidebar (desktop) y BottomTabs (móvil): una sola fuente de verdad. */
+/**
+ * Compartido entre Sidebar (desktop) y BottomTabs (móvil): una sola fuente
+ * de verdad. "Notas" unifica lo que antes eran dos pantallas casi
+ * idénticas (Buscador y Categorías) — ver NotesExplorer.tsx.
+ */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/asistente", label: "Asistente", Icon: MessageCircle },
-  { href: "/buscador", label: "Buscador", Icon: Search },
-  { href: "/categorias", label: "Categorías", Icon: LayoutGrid },
+  { href: "/categorias", label: "Notas", Icon: StickyNote },
   { href: "/pendientes", label: "Tablero", Icon: ListTodo },
   { href: "/cuenta", label: "Cuenta", Icon: User },
 ];

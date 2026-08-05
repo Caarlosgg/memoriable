@@ -13,7 +13,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 
-/** Mismas clases que el select de categoría en SearchSection.tsx, para que todos los selects se vean igual. */
+/** Mismas clases que el select de categoría en NotesExplorer.tsx, para que todos los selects se vean igual. */
 const SELECT_CLASSNAME =
   "rounded-lg border border-paper-line bg-paper px-3 py-2.5 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
 
@@ -68,8 +68,8 @@ export function MessageDetailDialog({
    * (Fase C) lo usa para actualizar su estado local al vuelo — sin esto la
    * tarjeta no se movería de columna hasta un refresco de página, porque
    * `revalidatePath` no toca el estado de un Client Component ya montado
-   * (a diferencia de Buscador/Categorías, que son Server Components y se
-   * refrescan solos).
+   * (a diferencia de la vista agrupada de Notas, que parte de un Server
+   * Component y se refresca sola).
    */
   onSaved?: (id: string, patch: EditableFields) => void;
 }) {

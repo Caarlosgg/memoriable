@@ -102,10 +102,22 @@ async function textSearch(
   });
 }
 
+function hasAnyFilter(filters: SearchFilters): boolean {
+  return Boolean(
+    filters.categoria || filters.estado || filters.prioridad || filters.desde || filters.hasta || filters.etiqueta,
+  );
+}
+
 /**
  * Búsqueda híbrida: texto exacto (ya probado) primero, similitud semántica
  * como complemento cuando el texto no llena el límite — nunca al revés. Ver
  * hybridSearch.ts para la política de mezcla exacta.
+ *
+ * Sin texto (query vacía) pero con algún filtro puesto (Notas unificadas,
+ * Fase K): se listan las notas que cumplen los filtros, más recientes
+ * primero, sin ILIKE ni búsqueda semántica (no hay nada que "buscar",
+ * solo que filtrar). Sin texto y sin filtros, no hay nada que pedir —
+ * la vista agrupada por categoría ya cubre ese caso.
  */
 export async function searchMessages(
   userId: string,
@@ -113,7 +125,15 @@ export async function searchMessages(
   filters: SearchFilters = {},
 ): Promise<Message[]> {
   const needle = query.trim();
-  if (needle === "") return [];
+
+  if (needle === "") {
+    if (!hasAnyFilter(filters)) return [];
+    return prisma.message.findMany({
+      where: { userId, ...filtersToWhere(filters) },
+      orderBy: { fecha: "desc" },
+      take: SEARCH_LIMIT,
+    });
+  }
 
   return hybridSearch(needle, filters, SEARCH_LIMIT, {
     textSearch: (q, f, limit) => textSearch(userId, q, f, limit),

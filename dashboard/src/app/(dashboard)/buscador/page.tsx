@@ -1,13 +1,10 @@
-import type { Metadata } from "next";
-import { SearchSection } from "@/components/SearchSection";
-import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Buscador · MemorIAble" };
-
+/**
+ * Buscador y Categorías se unificaron en una sola vista (NotesExplorer,
+ * en /categorias): el filtro de texto vive ahí ahora. Se mantiene esta
+ * ruta como redirección por si queda algún enlace/marcador antiguo.
+ */
 export default function BuscadorPage() {
-  return (
-    <SectionErrorBoundary title="Buscador">
-      <SearchSection />
-    </SectionErrorBoundary>
-  );
+  redirect("/categorias");
 }
