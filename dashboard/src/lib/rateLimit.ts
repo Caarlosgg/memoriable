@@ -1,53 +1,59 @@
 import "server-only";
 import { headers } from "next/headers";
+import { prisma } from "./prisma";
 
 /**
- * Limitador de peticiones en memoria (ventana fija). Freno de fuerza bruta
- * para login/registro: barato y sin dependencias nuevas.
+ * Rate limiting distribuido (ventana fija), respaldado en Postgres — mismo
+ * patrón de upsert atómico que el fusible del Asistente
+ * (`tryConsumeAssistantBudget` en assistantBudget.ts), pero con ventana de
+ * tiempo en vez de por día. Reemplaza al limitador en memoria que había
+ * antes: en Vercel (serverless) ese estado vivía en la memoria de CADA
+ * instancia caliente — no se compartía entre instancias ni sobrevivía a un
+ * arranque en frío. Esta tabla sí es la misma para todas las instancias.
  *
- * AVISO DE ALCANCE: en Vercel (serverless) el estado vive en la memoria de
- * CADA instancia caliente, no se comparte entre instancias ni sobrevive a un
- * arranque en frío. Es best-effort: frena ráfagas contra una misma instancia
- * caliente, que es el caso común, pero NO es un límite distribuido robusto.
- * Un limitador de verdad necesita un store compartido (Upstash/Redis o una
- * tabla en BD) — documentado como pendiente porque toca infra/esquema.
+ * Fail-open: si la comprobación falla (BD caída, timeout), se deja pasar la
+ * petición en vez de bloquear un login legítimo — un rate limiter roto
+ * nunca debe convertirse en una forma de dejar a la gente fuera.
  */
-interface Bucket {
-  count: number;
-  resetAt: number;
-}
-
-const buckets = new Map<string, Bucket>();
-
-/** Evita que el Map crezca sin límite: purga las ventanas ya expiradas. */
-function sweep(now: number): void {
-  for (const [key, bucket] of buckets) {
-    if (bucket.resetAt <= now) buckets.delete(key);
-  }
-}
-
 export interface RateLimitResult {
   allowed: boolean;
   /** Segundos hasta que la ventana se reinicia (solo relevante si !allowed). */
   retryAfterSeconds: number;
 }
 
-export function checkRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
+export async function checkRateLimit(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
   const now = Date.now();
-  if (buckets.size > 5000) sweep(now); // cota de seguridad ante muchas claves distintas
+  const windowStartMs = Math.floor(now / windowMs) * windowMs;
+  const windowStart = new Date(windowStartMs);
 
-  const bucket = buckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
+  try {
+    const bucket = await prisma.rateLimitBucket.upsert({
+      where: { bucketKey_windowStart: { bucketKey: key, windowStart } },
+      create: { bucketKey: key, windowStart, count: 1 },
+      update: { count: { increment: 1 } },
+    });
+
+    if (bucket.count > limit) {
+      const retryAfterSeconds = Math.ceil((windowStartMs + windowMs - now) / 1000);
+      return { allowed: false, retryAfterSeconds };
+    }
+    return { allowed: true, retryAfterSeconds: 0 };
+  } catch (err) {
+    console.error("Rate limiter (BD) falló, se deja pasar la petición:", err);
     return { allowed: true, retryAfterSeconds: 0 };
   }
+}
 
-  if (bucket.count >= limit) {
-    return { allowed: false, retryAfterSeconds: Math.ceil((bucket.resetAt - now) / 1000) };
-  }
-
-  bucket.count += 1;
-  return { allowed: true, retryAfterSeconds: 0 };
+/**
+ * Borra ventanas ya muy expiradas. Las ventanas de login/registro duran
+ * como mucho 15 minutos, así que cualquier cosa de hace más de un día es
+ * pura basura — la llama el mismo Cron Job semanal que purga el historial
+ * del Asistente (ver purgeOldExchanges en assistantHistory.ts).
+ */
+export async function purgeOldRateLimitBuckets(): Promise<number> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const { count } = await prisma.rateLimitBucket.deleteMany({ where: { windowStart: { lt: cutoff } } });
+  return count;
 }
 
 /**

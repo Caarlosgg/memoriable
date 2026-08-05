@@ -36,7 +36,7 @@ export async function register(
     return { error: `La contraseña no puede tener más de ${MAX_PASSWORD_LENGTH} caracteres.` };
   }
 
-  const limit = checkRateLimit(`registro:${await clientIp()}`, REGISTER_LIMIT, REGISTER_WINDOW_MS);
+  const limit = await checkRateLimit(`registro:${await clientIp()}`, REGISTER_LIMIT, REGISTER_WINDOW_MS);
   if (!limit.allowed) {
     return { error: `Demasiados intentos. Espera ${limit.retryAfterSeconds}s e inténtalo de nuevo.` };
   }

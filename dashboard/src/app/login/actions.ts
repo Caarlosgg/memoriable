@@ -26,7 +26,7 @@ export async function login(
     return { error: "Escribe tu email y contraseña." };
   }
 
-  const limit = checkRateLimit(`login:${await clientIp()}`, LOGIN_LIMIT, LOGIN_WINDOW_MS);
+  const limit = await checkRateLimit(`login:${await clientIp()}`, LOGIN_LIMIT, LOGIN_WINDOW_MS);
   if (!limit.allowed) {
     return { error: `Demasiados intentos. Espera ${limit.retryAfterSeconds}s e inténtalo de nuevo.` };
   }

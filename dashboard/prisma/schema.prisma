@@ -113,6 +113,17 @@ model AssistantBudget {
   @@map("assistant_budget")
 }
 
+/// Ver ../../prisma/schema.prisma: rate limiting distribuido (login/registro).
+model RateLimitBucket {
+  bucketKey   String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([bucketKey, windowStart])
+  @@index([windowStart])
+  @@map("rate_limit_buckets")
+}
+
 /// Ver ../../prisma/schema.prisma: conversación del Asistente (Fase 5).
 model Conversation {
   id        String   @id @default(cuid())
