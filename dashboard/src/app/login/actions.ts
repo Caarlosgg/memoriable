@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { verifyPasswordConstantTime } from "@/lib/auth";
+import { verifyPasswordConstantTime, needsRehash, hashPassword } from "@/lib/auth";
 import { createSession } from "@/lib/session";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
@@ -42,6 +42,19 @@ export async function login(
       return { error: "Email o contraseña incorrectos." };
     }
     userId = user.id;
+
+    // Migración transparente de bcrypt a argon2id: si el hash guardado es el
+    // formato viejo, se regenera ahora que ya se sabe que la contraseña es
+    // correcta. No crítico: si falla, el login sigue adelante igual y se
+    // reintenta en el próximo login.
+    if (needsRehash(user.passwordHash)) {
+      try {
+        const newHash = await hashPassword(password);
+        await prisma.user.update({ where: { id: user.id }, data: { passwordHash: newHash } });
+      } catch (err) {
+        console.error("No se pudo regenerar el hash de la contraseña (no crítico):", err);
+      }
+    }
   } catch (err) {
     console.error("Error al comprobar las credenciales:", err);
     return { error: "No se ha podido comprobar tu cuenta. Inténtalo de nuevo en un momento." };

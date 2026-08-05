@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import bcrypt from "bcryptjs";
 import {
   hashPassword,
   verifyPassword,
   verifyPasswordConstantTime,
+  needsRehash,
   generateLinkCode,
   MIN_PASSWORD_LENGTH,
   MAX_PASSWORD_LENGTH,
@@ -29,6 +31,29 @@ describe("hashPassword/verifyPassword", () => {
     const b = await hashPassword("misma-contraseña");
     expect(a).not.toBe(b);
   });
+
+  it("los hashes nuevos son argon2id", async () => {
+    const hash = await hashPassword("una-contraseña-larga");
+    expect(hash.startsWith("$argon2id$")).toBe(true);
+  });
+
+  it("sigue verificando hashes bcrypt heredados", async () => {
+    const legacyHash = await bcrypt.hash("clave-vieja", 12);
+    expect(await verifyPassword("clave-vieja", legacyHash)).toBe(true);
+    expect(await verifyPassword("otra-cosa", legacyHash)).toBe(false);
+  });
+});
+
+describe("needsRehash", () => {
+  it("un hash bcrypt heredado necesita regenerarse", async () => {
+    const legacyHash = await bcrypt.hash("clave-vieja", 12);
+    expect(needsRehash(legacyHash)).toBe(true);
+  });
+
+  it("un hash argon2id ya no necesita regenerarse", async () => {
+    const hash = await hashPassword("clave-nueva");
+    expect(needsRehash(hash)).toBe(false);
+  });
 });
 
 describe("verifyPasswordConstantTime", () => {
@@ -43,9 +68,15 @@ describe("verifyPasswordConstantTime", () => {
   });
 
   it("devuelve false cuando el usuario no existe (hash null), sin lanzar", async () => {
-    // Aun así ejecuta un bcrypt.compare interno (contra el hash de relleno)
-    // para no delatar por tiempo que la cuenta no existe.
+    // Aun así ejecuta una comparación real (contra el hash de relleno) para
+    // no delatar por tiempo que la cuenta no existe.
     expect(await verifyPasswordConstantTime("cualquiera", null)).toBe(false);
+  });
+
+  it("también funciona contra un hash bcrypt heredado (durante la migración)", async () => {
+    const legacyHash = await bcrypt.hash("clave-vieja", 12);
+    expect(await verifyPasswordConstantTime("clave-vieja", legacyHash)).toBe(true);
+    expect(await verifyPasswordConstantTime("otra-cosa", legacyHash)).toBe(false);
   });
 });
 
