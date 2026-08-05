@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import type { Message } from "@prisma/client";
+import type { Message, CuentaAhorro } from "@prisma/client";
 import { captureMessage, resolveEmbedder } from "./pipeline";
 import { toAssistantSource } from "./assistantContext";
 import { ACTIONABLE_CATEGORIES } from "./categories";
@@ -21,6 +21,14 @@ export interface CompletarTareaResult {
   id: string;
   resumen: string;
   categoria: string;
+}
+
+export interface RegistrarAhorroResult {
+  cuentaId: string;
+  cuentaNombre: string;
+  centimos: number;
+  /** Si no existía ninguna cuenta parecida y se creó una nueva sobre la marcha. */
+  cuentaCreada: boolean;
 }
 
 function isPendienteAccionable(m: Message): boolean {
@@ -60,6 +68,33 @@ async function encontrarTareaPendiente(userId: string, descripcion: string): Pro
     },
     orderBy: { fecha: "desc" },
   });
+}
+
+/**
+ * Busca, entre las cuentas de ahorro del usuario, una cuyo nombre encaje
+ * con lo que menciona ("el fondo de emergencia" → "Fondo de emergencia").
+ * A diferencia de `encontrarTareaPendiente`, sin búsqueda semántica: los
+ * nombres de cuenta son etiquetas cortas puestas por el propio usuario, no
+ * texto libre largo — un simple contains en cualquiera de los dos sentidos
+ * ya cubre bien el caso real ("emergencia" ⊂ "Fondo de emergencia" y
+ * viceversa), y no hace falta generar un embedding para eso. Si no
+ * encuentra ninguna parecida, CREA la cuenta con ese nombre — "busca o
+ * crea", como pidió el usuario.
+ */
+async function encontrarOCrearCuenta(
+  userId: string,
+  nombreBuscado: string,
+): Promise<{ cuenta: CuentaAhorro; creada: boolean }> {
+  const normalizado = nombreBuscado.trim().toLowerCase();
+  const cuentas = await prisma.cuentaAhorro.findMany({ where: { userId } });
+  const match = cuentas.find((c) => {
+    const n = c.nombre.toLowerCase();
+    return n.includes(normalizado) || normalizado.includes(n);
+  });
+  if (match) return { cuenta: match, creada: false };
+
+  const creada = await prisma.cuentaAhorro.create({ data: { userId, nombre: nombreBuscado.trim() } });
+  return { cuenta: creada, creada: true };
 }
 
 /**
@@ -207,6 +242,62 @@ export function createAssistantTools(userId: string) {
         }
 
         const result: CompletarTareaResult = { id: tarea.id, resumen: tarea.resumen, categoria: tarea.categoria };
+        return result;
+      },
+    }),
+    registrarAhorro: tool({
+      description:
+        "Apunta un ingreso o retirada en una cuenta de ahorro del usuario (\"he ahorrado 50€ en el fondo de emergencia\", \"he sacado 20€ del viaje\"). Si no existe ninguna cuenta con ese nombre, se crea sobre la marcha — no hace falta preguntar primero. Importe positivo para ingresos, negativo para retiradas.",
+      inputSchema: z.object({
+        cuenta: z
+          .string()
+          .min(1)
+          .describe("Nombre de la cuenta de ahorro tal como la menciona el usuario (p. ej. \"fondo de emergencia\", \"viaje\")."),
+        importe: z
+          .number()
+          .describe("Cantidad en euros. Positiva si es un ingreso/ahorro, negativa si es una retirada/gasto."),
+        concepto: z.string().optional().describe("Breve descripción del movimiento, si se menciona."),
+      }),
+      execute: async ({ cuenta: nombreCuenta, importe, concepto }) => {
+        const centimos = Math.round(importe * 100);
+        if (!Number.isFinite(centimos) || centimos === 0) {
+          throw new Error("No he entendido el importe. ¿Cuánto es, en euros?");
+        }
+
+        let cuenta: CuentaAhorro;
+        let cuentaCreada: boolean;
+        try {
+          const encontrada = await encontrarOCrearCuenta(userId, nombreCuenta);
+          cuenta = encontrada.cuenta;
+          cuentaCreada = encontrada.creada;
+        } catch (err) {
+          console.error("La tool registrarAhorro no pudo buscar/crear la cuenta:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido buscar tus cuentas de ahorro. Inténtalo de nuevo en un momento.");
+        }
+
+        try {
+          await prisma.movimientoAhorro.create({
+            data: { cuentaId: cuenta.id, centimos, concepto: concepto?.trim() || null },
+          });
+        } catch (err) {
+          console.error("La tool registrarAhorro no pudo guardar el movimiento:", err);
+          Sentry.captureException(err);
+          throw new Error("No se ha podido guardar el movimiento. Inténtalo de nuevo en un momento.");
+        }
+
+        try {
+          revalidatePath("/ahorros");
+        } catch (err) {
+          console.error("No se pudo invalidar la caché tras registrar el ahorro (no crítico):", err);
+        }
+
+        const result: RegistrarAhorroResult = {
+          cuentaId: cuenta.id,
+          cuentaNombre: cuenta.nombre,
+          centimos,
+          cuentaCreada,
+        };
         return result;
       },
     }),

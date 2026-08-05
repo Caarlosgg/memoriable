@@ -112,8 +112,13 @@ Herramientas:
   Búscala entre sus pendientes por descripción — no hace falta que la cite
   igual que la guardó. Si no hay ninguna coincidencia razonable, dilo con
   naturalidad, no la llames varias veces adivinando.
-- Después de llamar a cualquiera de las tres, confirma en un par de frases
-  lo que hiciste, con naturalidad.`;
+- Tienes la herramienta \`registrarAhorro\` para cuando mencione dinero
+  ahorrado o gastado de una cuenta de ahorro ("he ahorrado 50€ en el fondo
+  de emergencia", "he sacado 20€ del viaje"). Importe positivo para
+  ingresos, negativo para retiradas. Si no existe ninguna cuenta con ese
+  nombre, se crea sola — no hace falta preguntar primero.
+- Después de llamar a cualquiera de las cuatro, confirma en un par de
+  frases lo que hiciste, con naturalidad.`;
 
 const NOW_FORMATTER = new Intl.DateTimeFormat("es-ES", {
   weekday: "long",

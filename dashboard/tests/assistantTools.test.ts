@@ -58,6 +58,9 @@ const fakeEvento = {
 const eventoCreate = vi.fn();
 const messageFindFirst = vi.fn();
 const messageUpdate = vi.fn();
+const cuentaAhorroFindMany = vi.fn();
+const cuentaAhorroCreate = vi.fn();
+const movimientoAhorroCreate = vi.fn();
 vi.mock("../src/lib/prisma", () => ({
   prisma: {
     evento: { create: (...args: unknown[]) => eventoCreate(...args) },
@@ -65,6 +68,11 @@ vi.mock("../src/lib/prisma", () => ({
       findFirst: (...args: unknown[]) => messageFindFirst(...args),
       update: (...args: unknown[]) => messageUpdate(...args),
     },
+    cuentaAhorro: {
+      findMany: (...args: unknown[]) => cuentaAhorroFindMany(...args),
+      create: (...args: unknown[]) => cuentaAhorroCreate(...args),
+    },
+    movimientoAhorro: { create: (...args: unknown[]) => movimientoAhorroCreate(...args) },
   },
 }));
 
@@ -101,6 +109,11 @@ describe("createAssistantTools", () => {
     messageFindFirst.mockResolvedValue(null);
     messageUpdate.mockReset();
     messageUpdate.mockResolvedValue({});
+    cuentaAhorroFindMany.mockReset();
+    cuentaAhorroFindMany.mockResolvedValue([]);
+    cuentaAhorroCreate.mockReset();
+    movimientoAhorroCreate.mockReset();
+    movimientoAhorroCreate.mockResolvedValue({});
   });
 
   it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión, e invalida Tablero/Categorías", async () => {
@@ -284,5 +297,114 @@ describe("createAssistantTools", () => {
     );
     expect(messageUpdate).toHaveBeenCalled();
     expect(result).toMatchObject({ id: "p3" });
+  });
+
+  it("registrarAhorro guarda el movimiento en una cuenta existente que coincide por nombre", async () => {
+    cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Fondo de emergencia", userId: "u1" }]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.registrarAhorro.execute!(
+      { cuenta: "fondo de emergencia", importe: 50 },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(cuentaAhorroCreate).not.toHaveBeenCalled();
+    expect(movimientoAhorroCreate).toHaveBeenCalledWith({
+      data: { cuentaId: "c1", centimos: 5000, concepto: null },
+    });
+    expect(result).toMatchObject({ cuentaId: "c1", cuentaNombre: "Fondo de emergencia", centimos: 5000, cuentaCreada: false });
+    expect(revalidatePath).toHaveBeenCalledWith("/ahorros");
+  });
+
+  it("registrarAhorro crea la cuenta sobre la marcha si no hay ninguna parecida", async () => {
+    cuentaAhorroFindMany.mockResolvedValue([]);
+    cuentaAhorroCreate.mockResolvedValue({ id: "c2", nombre: "Viaje a Japón", userId: "u1" });
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.registrarAhorro.execute!(
+      { cuenta: "Viaje a Japón", importe: 20, concepto: "paga extra" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(cuentaAhorroCreate).toHaveBeenCalledWith({ data: { userId: "u1", nombre: "Viaje a Japón" } });
+    expect(movimientoAhorroCreate).toHaveBeenCalledWith({
+      data: { cuentaId: "c2", centimos: 2000, concepto: "paga extra" },
+    });
+    expect(result).toMatchObject({ cuentaId: "c2", cuentaNombre: "Viaje a Japón", centimos: 2000, cuentaCreada: true });
+  });
+
+  it("registrarAhorro acepta un importe negativo como retirada", async () => {
+    cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Viaje", userId: "u1" }]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.registrarAhorro.execute!(
+      { cuenta: "viaje", importe: -15 },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(movimientoAhorroCreate).toHaveBeenCalledWith({
+      data: { cuentaId: "c1", centimos: -1500, concepto: null },
+    });
+    expect(result).toMatchObject({ centimos: -1500 });
+  });
+
+  it("registrarAhorro rechaza un importe que redondea a cero", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.registrarAhorro.execute!(
+        { cuenta: "viaje", importe: 0 },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he entendido el importe/);
+    expect(cuentaAhorroFindMany).not.toHaveBeenCalled();
+  });
+
+  it("registrarAhorro: ante un fallo al buscar/crear la cuenta, lanza un mensaje en español sin detalles internos", async () => {
+    cuentaAhorroFindMany.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.registrarAhorro.execute!(
+        { cuenta: "viaje", importe: 10 },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he podido buscar tus cuentas de ahorro/);
+    expect(movimientoAhorroCreate).not.toHaveBeenCalled();
+  });
+
+  it("registrarAhorro: ante un fallo al guardar el movimiento, lanza un mensaje en español sin detalles internos", async () => {
+    cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Viaje", userId: "u1" }]);
+    movimientoAhorroCreate.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.registrarAhorro.execute!(
+        { cuenta: "viaje", importe: 10 },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No se ha podido guardar el movimiento/);
+  });
+
+  it("registrarAhorro: un fallo al invalidar la caché NO tumba un movimiento ya guardado", async () => {
+    cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Viaje", userId: "u1" }]);
+    revalidatePath.mockImplementation(() => {
+      throw new Error("revalidatePath fuera de contexto de petición");
+    });
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.registrarAhorro.execute!(
+      { cuenta: "viaje", importe: 10 },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+    expect(movimientoAhorroCreate).toHaveBeenCalled();
+    expect(result).toMatchObject({ cuentaId: "c1" });
   });
 });

@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage, InferUITools, UIDataTypes } from "ai";
-import { MessageCircle, Send, CircleCheck, CalendarDays } from "lucide-react";
+import { MessageCircle, Send, CircleCheck, CalendarDays, PiggyBank } from "lucide-react";
 import type { AssistantSource } from "@/lib/assistantContext";
 import type { AssistantTools } from "@/lib/assistantTools";
 import type { AssistantExchangeRecord, ConversationSummary } from "@/lib/assistantHistory";
 import { presentCategory } from "@/lib/categories";
 import { titleFromQuestion } from "@/lib/conversationTitle";
 import { formatEventDate } from "@/lib/format";
+import { formatCentimos } from "@/lib/money";
 import { loadConversation } from "@/app/(dashboard)/asistente/actions";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -153,6 +154,43 @@ function CompletarTareaResult({ part }: { part: CompletarTareaPart }) {
   );
 }
 
+type RegistrarAhorroPart = Extract<AssistantMessage["parts"][number], { type: "tool-registrarAhorro" }>;
+
+function isRegistrarAhorroPart(part: AssistantMessage["parts"][number]): part is RegistrarAhorroPart {
+  return part.type === "tool-registrarAhorro";
+}
+
+/** Tarjeta de confirmación cuando el Asistente apunta un ingreso/retirada de una cuenta de ahorro. */
+function RegistrarAhorroResultCard({ part }: { part: RegistrarAhorroPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        No se ha podido guardar el movimiento: {part.errorText || "error desconocido"}.
+      </div>
+    );
+  }
+
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Guardando…</div>;
+  }
+
+  const r = part.output;
+  const esIngreso = r.centimos >= 0;
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <CircleCheck aria-hidden size={14} className="text-accent" />
+        <PiggyBank aria-hidden size={13} className="text-accent-strong" /> Movimiento guardado
+      </p>
+      <p className="mt-0.5 text-muted">
+        {esIngreso ? "+" : ""}
+        {formatCentimos(r.centimos)} en {r.cuentaNombre}
+        {r.cuentaCreada ? " (cuenta nueva)" : ""}
+      </p>
+    </div>
+  );
+}
+
 export function AssistantChat({ initialConversations = [] }: { initialConversations?: ConversationSummary[] }) {
   const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID());
@@ -249,8 +287,12 @@ export function AssistantChat({ initialConversations = [] }: { initialConversati
             const crearNotaParts = message.parts.filter(isCrearNotaPart);
             const crearEventoParts = message.parts.filter(isCrearEventoPart);
             const completarTareaParts = message.parts.filter(isCompletarTareaPart);
+            const registrarAhorroParts = message.parts.filter(isRegistrarAhorroPart);
             const hasToolResults =
-              crearNotaParts.length > 0 || crearEventoParts.length > 0 || completarTareaParts.length > 0;
+              crearNotaParts.length > 0 ||
+              crearEventoParts.length > 0 ||
+              completarTareaParts.length > 0 ||
+              registrarAhorroParts.length > 0;
 
             return (
               <li key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
@@ -268,6 +310,9 @@ export function AssistantChat({ initialConversations = [] }: { initialConversati
                     ))}
                     {completarTareaParts.map((part) => (
                       <CompletarTareaResult key={part.toolCallId} part={part} />
+                    ))}
+                    {registrarAhorroParts.map((part) => (
+                      <RegistrarAhorroResultCard key={part.toolCallId} part={part} />
                     ))}
                     {(text || isBusy || !hasToolResults) && (
                       <div className="fade-in rounded-2xl rounded-bl-sm border border-paper-line bg-paper-raised px-4 py-2.5 text-sm text-ink">

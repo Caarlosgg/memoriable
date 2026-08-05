@@ -103,6 +103,11 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("completarTarea");
   });
 
+  it("menciona la herramienta registrarAhorro para ingresos/retiradas por voz", () => {
+    const prompt = buildSystemPrompt("x");
+    expect(prompt).toContain("registrarAhorro");
+  });
+
   it("incluye la fecha/hora actual (pasada explícitamente), para poder calcular fechas relativas", () => {
     const now = new Date("2026-08-12T15:30:00.000Z");
     const prompt = buildSystemPrompt("x", now);
