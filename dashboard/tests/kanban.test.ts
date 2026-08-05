@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextPriority, nextEstado, PRIORIDADES, ESTADOS_TABLERO } from "../src/lib/kanban";
+import { nextPriority, nextEstado, PRIORIDADES, ESTADOS_TABLERO, readBoardFilters } from "../src/lib/kanban";
 
 describe("nextPriority", () => {
   it("cicla Baja -> Media -> Alta -> Baja", () => {
@@ -26,5 +26,33 @@ describe("ESTADOS_TABLERO", () => {
 describe("PRIORIDADES", () => {
   it("orden creciente", () => {
     expect(PRIORIDADES).toEqual(["BAJA", "MEDIA", "ALTA"]);
+  });
+});
+
+describe("readBoardFilters", () => {
+  it("lee categoría y prioridad válidas del JSON guardado", () => {
+    expect(readBoardFilters({ categoria: "tarea", prioridad: "ALTA" })).toEqual({
+      categoria: "tarea",
+      prioridad: "ALTA",
+    });
+  });
+
+  it("ignora una categoría desconocida sin lanzar", () => {
+    expect(readBoardFilters({ categoria: "marciano" })).toEqual({ categoria: undefined, prioridad: undefined });
+  });
+
+  it("ignora una prioridad desconocida sin lanzar", () => {
+    expect(readBoardFilters({ prioridad: "URGENTISIMA" })).toEqual({ categoria: undefined, prioridad: undefined });
+  });
+
+  it("devuelve vacío ante null, undefined o un valor que no es objeto", () => {
+    expect(readBoardFilters(null)).toEqual({});
+    expect(readBoardFilters(undefined)).toEqual({});
+    expect(readBoardFilters("texto suelto")).toEqual({});
+    expect(readBoardFilters(42)).toEqual({});
+  });
+
+  it("devuelve vacío ante el objeto por defecto ({})", () => {
+    expect(readBoardFilters({})).toEqual({ categoria: undefined, prioridad: undefined });
   });
 });

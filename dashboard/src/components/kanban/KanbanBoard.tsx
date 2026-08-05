@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import type { BoardColumn } from "@/lib/data";
 import { ESTADOS_TABLERO, nextEstado, nextPriority, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { CATEGORIES, CATEGORY_PRESENTATION, type Category } from "@/lib/categories";
-import { updateTaskStatus, updateTaskPriority } from "@/app/(dashboard)/actions";
+import { updateTaskStatus, updateTaskPriority, saveBoardFilters } from "@/app/(dashboard)/actions";
 import type { EditableFields } from "@/components/MessageDetailDialog";
 import { KanbanColumn } from "./KanbanColumn";
+
+/** Espera de inactividad antes de persistir el filtro — evita una escritura por cada clic si cambian ambos selects seguidos. */
+const FILTER_SAVE_DEBOUNCE_MS = 600;
 
 /** Mismas clases en ambos selects del filtro — un único sitio para que se vean iguales. */
 const FILTER_CLASSNAME =
@@ -18,15 +21,41 @@ function isEstadoTarea(value: string): value is EstadoTarea {
   return (ESTADOS_TABLERO as readonly string[]).includes(value);
 }
 
-export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] }) {
+export function KanbanBoard({
+  initialColumns,
+  initialFiltroCategoria,
+  initialFiltroPrioridad,
+}: {
+  initialColumns: BoardColumn[];
+  /** Último filtro guardado para este usuario (Fase A2) — recordado entre sesiones/dispositivos, no solo en este navegador. */
+  initialFiltroCategoria?: Category;
+  initialFiltroPrioridad?: Prioridad;
+}) {
   const [byEstado, setByEstado] = useState<Record<EstadoTarea, Message[]>>(() =>
     Object.fromEntries(initialColumns.map((c) => [c.estado, c.messages])) as Record<EstadoTarea, Message[]>,
   );
   // Filtro visual (Fase F): no toca `byEstado` (los datos reales, con los
   // que trabajan drag/optimista), solo lo que se pasa a renderizar.
-  const [filtroCategoria, setFiltroCategoria] = useState<Category | "todas">("todas");
-  const [filtroPrioridad, setFiltroPrioridad] = useState<Prioridad | "todas">("todas");
+  const [filtroCategoria, setFiltroCategoria] = useState<Category | "todas">(initialFiltroCategoria ?? "todas");
+  const [filtroPrioridad, setFiltroPrioridad] = useState<Prioridad | "todas">(initialFiltroPrioridad ?? "todas");
   const hasFilters = filtroCategoria !== "todas" || filtroPrioridad !== "todas";
+
+  // No persiste en el primer render (evita reescribir lo que ya vino del
+  // servidor) — solo cuando el usuario de verdad cambia un filtro.
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timeout = setTimeout(() => {
+      saveBoardFilters({
+        categoria: filtroCategoria === "todas" ? undefined : filtroCategoria,
+        prioridad: filtroPrioridad === "todas" ? undefined : filtroPrioridad,
+      }).catch((err) => console.error("No se pudo guardar el filtro del tablero:", err));
+    }, FILTER_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+  }, [filtroCategoria, filtroPrioridad]);
 
   function matchesFilter(message: Message): boolean {
     if (filtroCategoria !== "todas" && message.categoria !== filtroCategoria) return false;

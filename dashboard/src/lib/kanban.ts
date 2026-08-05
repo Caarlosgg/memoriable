@@ -1,5 +1,6 @@
 import type { EstadoTarea, Prioridad } from "@prisma/client";
 import { Circle, CircleDot, CircleCheckBig, Flag, type LucideIcon } from "lucide-react";
+import { isCategory, type Category } from "./categories";
 
 /** Columnas del tablero, de izquierda a derecha. Única fuente de verdad del orden. */
 export const ESTADOS_TABLERO: readonly EstadoTarea[] = ["POR_HACER", "EN_PROGRESO", "HECHO"] as const;
@@ -31,4 +32,26 @@ export const PRIORIDAD_ICON: LucideIcon = Flag;
 export function nextPriority(p: Prioridad): Prioridad {
   const i = PRIORIDADES.indexOf(p);
   return PRIORIDADES[(i + 1) % PRIORIDADES.length]!;
+}
+
+export interface BoardFilters {
+  categoria?: string;
+  prioridad?: Prioridad;
+}
+
+/**
+ * Filtros del tablero recordados por usuario (`User.preferenciasTablero`,
+ * JSON libre). Pura y defensiva: valida cada campo antes de confiar en él,
+ * porque el JSON pudo quedar de una versión anterior de la app o estar
+ * corrupto — nunca debe tumbar el render del tablero.
+ */
+export function readBoardFilters(value: unknown): { categoria?: Category; prioridad?: Prioridad } {
+  if (typeof value !== "object" || value === null) return {};
+  const raw = value as Record<string, unknown>;
+  const categoria = typeof raw.categoria === "string" && isCategory(raw.categoria) ? raw.categoria : undefined;
+  const prioridad =
+    typeof raw.prioridad === "string" && (PRIORIDADES as readonly string[]).includes(raw.prioridad)
+      ? (raw.prioridad as Prioridad)
+      : undefined;
+  return { categoria, prioridad };
 }

@@ -45,6 +45,12 @@ model User {
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
+  /// Filtros del tablero kanban recordados entre sesiones/dispositivos
+  /// (categoría/prioridad seleccionadas). Mapa libre en vez de columnas
+  /// propias: mismo criterio que `Message.camposExtra`, es preferencia de
+  /// UI, no un dato de negocio que necesite validar su forma en la BD.
+  preferenciasTablero Json @default("{}")
+
   messages      Message[]
   exchanges     AssistantExchange[]
   conversations Conversation[]

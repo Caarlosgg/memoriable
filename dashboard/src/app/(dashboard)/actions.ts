@@ -6,6 +6,7 @@ import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
 import { isCategory } from "@/lib/categories";
+import type { BoardFilters } from "@/lib/kanban";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 
 /**
@@ -85,6 +86,25 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
   } catch (err) {
     console.error("Error al editar la nota:", err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Guarda los filtros del tablero para que se recuerden entre sesiones y
+ * dispositivos (no solo en este navegador, a diferencia de la primera
+ * versión). Best-effort: un fallo aquí no debe romper la interacción del
+ * usuario con el filtro (el tablero sigue funcionando igual esta sesión),
+ * así que no lanza — solo deja de recordarse la próxima vez.
+ */
+export async function saveBoardFilters(filters: BoardFilters): Promise<void> {
+  const userId = await verifySession();
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { preferenciasTablero: filters as Prisma.InputJsonValue },
+    });
+  } catch (err) {
+    console.error("No se pudieron guardar los filtros del tablero (no crítico):", err);
   }
 }
 
