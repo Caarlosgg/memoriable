@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "./navItems";
 
 /**
- * Barra de pestañas inferior en móvil: con solo 4 destinos, se siente más
+ * Barra de pestañas inferior en móvil: con pocos destinos, se siente más
  * nativa que un menú hamburguesa (que tiene sentido con listas más largas).
  * Transición de color en CSS puro — no hace falta Framer Motion aquí.
  */
@@ -24,7 +24,7 @@ export function BottomTabs() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors ${
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset ${
               active ? "text-accent" : "text-muted hover:text-ink active:text-accent"
             }`}
           >

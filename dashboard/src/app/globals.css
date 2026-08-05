@@ -12,16 +12,21 @@
   --paper-line: #e4ddcf;
   --ink: #1c1b18;
   --muted: #6b6558;
-  /* Verde bosque más saturado que antes: mismo tono, más vivo. */
-  --accent: #157a5f;
+  /* Verde bosque, otro escalón más saturado (85% vs 70% antes, L=26% vs
+     28%): más presencia sin perder el aire profesional. Contraste
+     recomprobado (script de luminancia relativa) contra --paper (4.87:1),
+     --paper-raised (5.24:1) y --accent-ink (4.71:1) — todos por encima del
+     4.5:1 de WCAG AA con margen similar o mejor que antes. */
+  --accent: #0a7b5d;
   --accent-strong: #0d5e47;
   --accent-ink: #eef4f1;
   --accent-soft: #dcece5;
   /* Ámbar con más punch, sigue leyéndose como "resalte cálido". El brillante
-     (--highlight) es para rellenos/bordes; el -strong es el que se usa como
-     TEXTO pequeño, así que se oscurece lo justo para pasar WCAG AA (4.5:1)
-     sobre --highlight-soft y sobre papel. */
-  --highlight: #dd9012;
+     (--highlight) es para rellenos/bordes/fondos, NUNCA texto pequeño (por
+     eso no necesita pasar 4.5:1 por sí solo); el -strong es el que se usa
+     como TEXTO pequeño, así que se mantiene sin tocar: ya pasa WCAG AA
+     (4.5:1) sobre --highlight-soft y sobre papel. */
+  --highlight: #da8c0b;
   --highlight-strong: #8f5a06;
   --highlight-soft: #fbead0;
   --danger: #b3261e;
@@ -30,7 +35,7 @@
   /* Color propio por categoría (Fase 4): el icono lo hereda, nunca lleva
      color fijo en sí mismo — así una categoría se reconoce por color
      incluso sin leer la etiqueta. */
-  --cat-tarea: #157a5f;
+  --cat-tarea: #0a7b5d;
   --cat-tarea-soft: #dcece5;
   /* Ámbar oscurecido: como etiqueta de categoría es texto pequeño, necesita
      4.5:1 sobre blanco/papel (el brillante #dd9012 se quedaba en 2.6). */
@@ -189,4 +194,65 @@ body {
 }
 .cta-glow:hover {
   box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--accent) 62%, transparent);
+}
+
+/*
+ * Fondo "aurora" del login/registro: dos manchas de color muy difuminadas
+ * detrás de la tarjeta del formulario, con una deriva lentísima. Solo ahí
+ * (no en el resto del dashboard, que se queda con el fondo de papel liso) —
+ * es la primera pantalla que ve alguien nuevo, así que es donde más aporta
+ * un poco de profundidad. Nada de partículas ni movimiento vistoso: dos
+ * círculos borrosos al 16% de opacidad, quietos salvo por la deriva.
+ */
+.auth-background {
+  position: relative;
+  overflow: hidden;
+}
+.auth-background::before,
+.auth-background::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.16;
+}
+.auth-background::before {
+  top: -10rem;
+  left: -8rem;
+  width: 32rem;
+  height: 32rem;
+  background: var(--accent);
+  animation: aurora-drift-a 26s ease-in-out infinite alternate;
+}
+.auth-background::after {
+  right: -8rem;
+  bottom: -10rem;
+  width: 28rem;
+  height: 28rem;
+  background: var(--highlight);
+  animation: aurora-drift-b 30s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift-a {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(3rem, 2rem);
+  }
+}
+@keyframes aurora-drift-b {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(-2.5rem, -2rem);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-background::before,
+  .auth-background::after {
+    animation: none;
+  }
 }

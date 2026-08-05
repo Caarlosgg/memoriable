@@ -70,18 +70,23 @@ export function Sidebar() {
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              title={collapsed ? item.label : undefined}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                active ? "bg-accent text-accent-ink" : "text-ink hover:bg-accent-soft active:bg-accent-soft"
-              }`}
-            >
-              <item.Icon aria-hidden size={18} className="shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
+            <div key={item.href}>
+              {/* Separador antes de "Cuenta": distingue el contenido (notas,
+                  tablero...) de la gestión de la cuenta, sin necesitar dos
+                  <nav> aparte. */}
+              {item.href === "/cuenta" && <hr className="my-2 border-paper-line" />}
+              <Link
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                title={collapsed ? item.label : undefined}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                  active ? "bg-accent text-accent-ink" : "text-ink hover:bg-accent-soft active:bg-accent-soft"
+                }`}
+              >
+                <item.Icon aria-hidden size={18} className="shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            </div>
           );
         })}
       </nav>
