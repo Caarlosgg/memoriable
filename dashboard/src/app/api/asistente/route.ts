@@ -45,10 +45,16 @@ function lastUserQuestion(messages: UIMessage[]): string {
 // sesión y responden 401 en JSON en vez de redirigir a /login).
 export async function POST(req: Request) {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  const userId = await verifySessionToken(token);
-  if (!userId) {
+  const sessionUserId = await verifySessionToken(token);
+  if (!sessionUserId) {
     return errorResponse("No autenticado", 401);
   }
+  // Reasignado a un `const` propio: el estrechamiento de tipo de
+  // `sessionUserId` (de `string | null` a `string`) tras el `if` de arriba
+  // no se propaga dentro de las funciones anidadas de más abajo (TypeScript
+  // analiza los closures contra el tipo declarado, no el estrechado en el
+  // punto de captura) — `userId` sí queda tipado `string` sin más.
+  const userId: string = sessionUserId;
 
   if (!process.env.GROQ_API_KEY) {
     // Sin fallback posible aquí (a diferencia de la captura rápida): no hay
@@ -83,12 +89,13 @@ export async function POST(req: Request) {
   // guardar nada en ella. Si la BD falla, se sigue con el id propuesto: se
   // responde igual, solo que ese intercambio podría no quedar guardado (el
   // onFinish tiene su propio try/catch).
-  let conversationId = requestedConversationId;
-  if (question) {
+  async function resolveConversationId(): Promise<string> {
+    if (!question) return requestedConversationId;
     try {
-      conversationId = await ensureConversation(userId, requestedConversationId, question);
+      return await ensureConversation(userId, requestedConversationId, question);
     } catch (err) {
       console.error("No se pudo preparar la conversación (se responde igual):", err);
+      return requestedConversationId;
     }
   }
 
@@ -96,18 +103,24 @@ export async function POST(req: Request) {
   // el Asistente responde igual, solo que sin notas citadas — dice con
   // naturalidad que no encontró nada relevante (ver el system prompt en
   // assistantContext.ts).
-  let sources: AssistantSource[] = [];
-  if (question) {
+  async function resolveSources(): Promise<AssistantSource[]> {
+    if (!question) return [];
     try {
       const queryEmbedding = await resolveEmbedder().embedQuery(question);
-      if (queryEmbedding) {
-        const similar = await findSimilarMessages(userId, queryEmbedding, { limit: SOURCES_PER_ANSWER });
-        sources = toAssistantSources(similar);
-      }
+      if (!queryEmbedding) return [];
+      const similar = await findSimilarMessages(userId, queryEmbedding, { limit: SOURCES_PER_ANSWER });
+      return toAssistantSources(similar);
     } catch (err) {
       console.error("No se pudieron recuperar notas relevantes (se responde sin fuentes):", err);
+      return [];
     }
   }
+
+  // Independientes entre sí (ninguna depende del resultado de la otra) —
+  // en paralelo en vez de en secuencia recorta el tiempo hasta el primer
+  // token de la respuesta. Cada una atrapa sus propios errores, así que
+  // Promise.all nunca rechaza por un fallo aislado de una de las dos.
+  const [conversationId, sources] = await Promise.all([resolveConversationId(), resolveSources()]);
 
   const result = streamText({
     model: groq("openai/gpt-oss-120b"),
