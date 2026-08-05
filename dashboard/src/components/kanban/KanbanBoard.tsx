@@ -4,7 +4,14 @@ import { useState } from "react";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import type { BoardColumn } from "@/lib/data";
-import { ESTADOS_TABLERO, nextEstado, nextPriority, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
+import {
+  ESTADOS_TABLERO,
+  ESTADO_PRESENTATION,
+  nextEstado,
+  nextPriority,
+  PRIORIDADES,
+  PRIORIDAD_PRESENTATION,
+} from "@/lib/kanban";
 import { CATEGORIES, CATEGORY_PRESENTATION, type Category } from "@/lib/categories";
 import { updateTaskStatus, updateTaskPriority } from "@/app/(dashboard)/actions";
 import type { EditableFields } from "@/components/MessageDetailDialog";
@@ -41,6 +48,12 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
       return next;
     });
   }
+
+  // Anuncio para lectores de pantalla (Tier 1.4): el cambio visual del
+  // botón "Cambiar estado/prioridad" ya lo ve quien usa el ratón, pero
+  // alguien con lector de pantalla necesita un `aria-live` explícito —
+  // los botones no navegan de sitio, así que el foco no se mueve solo.
+  const [announcement, setAnnouncement] = useState("");
 
   function matchesFilter(message: Message): boolean {
     if (hiddenIds.has(message.id)) return false;
@@ -105,6 +118,7 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
 
     const sourceEstado = current.estado;
     applyLocalUpdate(messageId, { estado: targetEstado, hecho: targetEstado === "HECHO" });
+    setAnnouncement(`«${current.resumen}» movida a ${ESTADO_PRESENTATION[targetEstado].label}.`);
 
     updateTaskStatus(messageId, targetEstado).catch((err) => {
       console.error("No se pudo mover la tarjeta:", err);
@@ -118,6 +132,7 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
     const target = nextEstado(current.estado);
 
     applyLocalUpdate(messageId, { estado: target, hecho: target === "HECHO" });
+    setAnnouncement(`«${current.resumen}» ahora está ${ESTADO_PRESENTATION[target].label}.`);
     updateTaskStatus(messageId, target).catch((err) => {
       console.error("No se pudo cambiar el estado:", err);
       applyLocalUpdate(messageId, { estado: current.estado, hecho: current.hecho });
@@ -130,6 +145,7 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
     const target = nextPriority(current.prioridad);
 
     applyLocalUpdate(messageId, { prioridad: target });
+    setAnnouncement(`«${current.resumen}» ahora tiene prioridad ${PRIORIDAD_PRESENTATION[target].label}.`);
     updateTaskPriority(messageId, target).catch((err) => {
       console.error("No se pudo cambiar la prioridad:", err);
       applyLocalUpdate(messageId, { prioridad: current.prioridad });
@@ -142,6 +158,9 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
 
   return (
     <div className="flex flex-col gap-3">
+      <div aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={filtroCategoria}

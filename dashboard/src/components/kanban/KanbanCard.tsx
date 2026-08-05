@@ -58,12 +58,35 @@ export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(funct
     onCycleEstado(message.id);
   }
 
+  /**
+   * dnd-kit le da a la tarjeta `role="button"` y `tabIndex=0` (para que el
+   * arrastre por PUNTERO sea anunciable), pero sin un `KeyboardSensor`
+   * configurado eso deja un callejón sin salida real: un lector de
+   * pantalla la anuncia como activable y Enter/Espacio no hacen nada.
+   * En vez de añadir arrastre por teclado (más complejo y ya cubierto por
+   * el botón "Cambiar estado" de abajo, que sí es un `<button>` normal),
+   * se hace que Enter/Espacio en el CUERPO de la tarjeta abran el modal de
+   * detalle — mismo destino que un clic, spread ya trae el `onClick` que
+   * inyecta `DialogTrigger asChild`.
+   */
+  function handleCardKeyDown(e: React.KeyboardEvent<HTMLLIElement>) {
+    if (e.target !== e.currentTarget) return; // no interceptar Enter/Espacio de los botones internos
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.currentTarget.click();
+    }
+  }
+
   return (
     <li
       ref={setRefs}
       {...listeners}
       {...attributes}
       {...rest}
+      onKeyDown={(e) => {
+        rest.onKeyDown?.(e);
+        handleCardKeyDown(e);
+      }}
       style={{ transform: CSS.Translate.toString(transform) }}
       className={cn(
         "fade-in touch-none rounded-xl border border-paper-line bg-paper-raised p-3 shadow-sm transition-shadow hover:shadow-md",
