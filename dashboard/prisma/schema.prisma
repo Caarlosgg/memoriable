@@ -49,6 +49,7 @@ model User {
   exchanges     AssistantExchange[]
   conversations Conversation[]
   eventos       Evento[]
+  cuentasAhorro CuentaAhorro[]
 
   @@map("users")
 }
@@ -133,6 +134,36 @@ model Evento {
   @@index([userId])
   @@index([fechaInicio])
   @@map("eventos")
+}
+
+/// Ver ../../prisma/schema.prisma: cuenta/bucket de ahorro (Fase K).
+model CuentaAhorro {
+  id               String   @id @default(cuid())
+  nombre           String
+  objetivoCentimos Int?
+  createdAt        DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  movimientos MovimientoAhorro[]
+
+  @@index([userId])
+  @@map("cuentas_ahorro")
+}
+
+/// Ver ../../prisma/schema.prisma: movimiento de una cuenta de ahorro (Fase K).
+model MovimientoAhorro {
+  id       String   @id @default(cuid())
+  centimos Int
+  concepto String?
+  fecha    DateTime @default(now())
+
+  cuentaId String
+  cuenta   CuentaAhorro @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+
+  @@index([cuentaId])
+  @@map("movimientos_ahorro")
 }
 
 /// Ver ../../prisma/schema.prisma: fusible de coste propio del Asistente,

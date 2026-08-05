@@ -64,6 +64,7 @@ model User {
   exchanges     AssistantExchange[]
   conversations Conversation[]
   eventos       Evento[]
+  cuentasAhorro CuentaAhorro[]
 
   @@map("users")
 }
@@ -180,6 +181,44 @@ model Evento {
   @@index([userId])
   @@index([fechaInicio])
   @@map("eventos")
+}
+
+/// Cuenta/bucket de ahorro (Fase K): "diversificar cuentas" — varios sitios
+/// con nombre propio (fondo de emergencia, vacaciones, una cuenta real...)
+/// en vez de un único número. El saldo NUNCA se guarda como campo propio:
+/// se calcula sumando `MovimientoAhorro.centimos` al leer — así nunca puede
+/// desincronizarse del historial que lo explica.
+model CuentaAhorro {
+  id        String   @id @default(cuid())
+  nombre    String
+  /// Objetivo de ahorro, en céntimos — opcional, solo para la barra de progreso.
+  objetivoCentimos Int?
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  movimientos MovimientoAhorro[]
+
+  @@index([userId])
+  @@map("cuentas_ahorro")
+}
+
+/// Un ingreso o retirada de una `CuentaAhorro`. Dinero siempre en céntimos
+/// (entero): Float/Decimal para dinero es la fuente número uno de errores
+/// de redondeo tontos — un entero no tiene ese problema.
+model MovimientoAhorro {
+  id       String   @id @default(cuid())
+  /// Céntimos: positivo = ingreso, negativo = retirada.
+  centimos Int
+  concepto String?
+  fecha    DateTime @default(now())
+
+  cuentaId String
+  cuenta   CuentaAhorro @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+
+  @@index([cuentaId])
+  @@map("movimientos_ahorro")
 }
 
 /// Fusible de coste propio del Asistente conversacional del dashboard
