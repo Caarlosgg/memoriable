@@ -92,14 +92,58 @@ Herramientas:
 - Tienes la herramienta \`crearNota\` para guardar notas, tareas o
   recordatorios nuevos, con el mismo pipeline que la captura rápida del
   dashboard. Cuando el usuario pida crear, apuntar, anotar o recordar
-  algo, LLÁMALA directamente en el mismo turno — nunca respondas "no
-  puedo crear cosas" ni "¿quieres que lo haga?" primero. Solo pregunta
-  antes de llamarla si de verdad falta un dato imprescindible para que
-  la nota tenga sentido (p. ej. piden un recordatorio pero no dicen de
-  qué). Después de llamarla, confirma en un par de frases lo que
-  guardaste, con naturalidad.`;
+  algo SIN fecha/hora concreta, LLÁMALA directamente en el mismo turno —
+  nunca respondas "no puedo crear cosas" ni "¿quieres que lo haga?"
+  primero. Solo pregunta antes de llamarla si de verdad falta un dato
+  imprescindible para que la nota tenga sentido (p. ej. piden un
+  recordatorio pero no dicen de qué).
+- Tienes la herramienta \`crearEvento\` para citas y eventos con fecha y
+  hora CONCRETA ("quedar el jueves a las 5", "cita con el médico el 12 a
+  las 10"). Calcula la fecha/hora exacta en ISO 8601 a partir de la fecha
+  actual de más abajo — la hora que te dé el usuario es SIEMPRE hora de
+  España, así que el ISO 8601 que generes para fechaInicio/fechaFin debe
+  llevar el desfase de España indicado más abajo, nunca "Z" ni UTC directo
+  (p. ej. si te dan "las 5 de la tarde" y el desfase es +02:00, el valor es
+  "...T17:00:00+02:00", NO "...T17:00:00Z" ni "...T15:00:00Z"). Si falta la
+  hora o el día es ambiguo, pregunta antes de llamarla — nunca inventes una
+  hora que no te han dado.
+- Después de llamar a cualquiera de las dos, confirma en un par de frases
+  lo que guardaste, con naturalidad.`;
 
-/** System prompt completo (reglas + contexto). Pura. */
-export function buildSystemPrompt(contextBlock: string): string {
-  return `${SYSTEM_PROMPT_BASE}\n\nContexto (notas guardadas relevantes para esta pregunta):\n${contextBlock}`;
+const NOW_FORMATTER = new Intl.DateTimeFormat("es-ES", {
+  weekday: "long",
+  day: "2-digit",
+  month: "long",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Europe/Madrid",
+});
+
+/**
+ * Desfase actual de España respecto a UTC ("+01:00" en invierno/CET,
+ * "+02:00" en verano/CEST). Se calcula con `Intl` en vez de pedirle al
+ * modelo que razone sobre el horario de verano — un LLM adivinando cuándo
+ * cambia el DST es una fuente de errores tonta y evitable; esto es
+ * determinista. Sin esto, la tool `crearEvento` guardaba "las 5 de la
+ * tarde" como 17:00 UTC (= 19:00 en España) en vez de 17:00 en España.
+ */
+function madridUtcOffset(now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Madrid", timeZoneName: "shortOffset" })
+    .formatToParts(now);
+  const raw = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+1";
+  const match = /GMT([+-])(\d+)/.exec(raw);
+  if (!match) return "+01:00";
+  return `${match[1]}${match[2]!.padStart(2, "0")}:00`;
+}
+
+/** System prompt completo (reglas + fecha actual + contexto). Pura salvo por `now`, que por defecto es "ahora mismo". */
+export function buildSystemPrompt(contextBlock: string, now: Date = new Date()): string {
+  const offset = madridUtcOffset(now);
+  return `${SYSTEM_PROMPT_BASE}
+
+Fecha y hora actuales en España: ${NOW_FORMATTER.format(now)} (desfase respecto a UTC: ${offset}) — usa esto para calcular cualquier fecha relativa ("mañana", "el jueves", "en dos semanas") y para el desfase que le corresponde a fechaInicio/fechaFin en crearEvento.
+
+Contexto (notas guardadas relevantes para esta pregunta):
+${contextBlock}`;
 }

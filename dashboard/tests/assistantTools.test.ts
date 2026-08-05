@@ -28,11 +28,30 @@ vi.mock("../src/lib/pipeline", () => ({
 const revalidatePath = vi.fn();
 vi.mock("next/cache", () => ({ revalidatePath: (path: string) => revalidatePath(path) }));
 
+const fakeEvento = {
+  id: "e1",
+  titulo: "Cita con el médico",
+  descripcion: null,
+  fechaInicio: new Date("2026-08-12T10:00:00.000Z"),
+  fechaFin: null,
+  ubicacion: null,
+  participantes: [] as string[],
+  createdAt: new Date("2026-08-05T00:00:00.000Z"),
+  userId: "u1",
+  messageId: null,
+};
+const eventoCreate = vi.fn();
+vi.mock("../src/lib/prisma", () => ({
+  prisma: { evento: { create: (...args: unknown[]) => eventoCreate(...args) } },
+}));
+
 describe("createAssistantTools", () => {
   beforeEach(() => {
     captureMessage.mockReset();
     captureMessage.mockResolvedValue(fakeSaved);
     revalidatePath.mockReset();
+    eventoCreate.mockReset();
+    eventoCreate.mockResolvedValue(fakeEvento);
   });
 
   it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión, e invalida Tablero/Categorías", async () => {
@@ -83,5 +102,61 @@ describe("createAssistantTools", () => {
     );
     // La nota se guardó: se devuelve la fuente igualmente.
     expect(result).toMatchObject({ id: "m1", label: "Recordatorios" });
+  });
+
+  it("crearEvento guarda la cita ligada al usuario de la sesión e invalida /calendario", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.crearEvento.execute!(
+      { titulo: "Cita con el médico", fechaInicio: "2026-08-12T10:00:00.000Z" },
+      { toolCallId: "call-1", messages: [], context: undefined },
+    );
+
+    expect(eventoCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ userId: "u1", titulo: "Cita con el médico" }) }),
+    );
+    expect(result).toMatchObject({ id: "e1", titulo: "Cita con el médico" });
+    expect(revalidatePath).toHaveBeenCalledWith("/calendario");
+  });
+
+  it("crearEvento rechaza una fecha de inicio que no se puede interpretar", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.crearEvento.execute!(
+        { titulo: "Algo", fechaInicio: "no-es-una-fecha" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he entendido bien la fecha/);
+    expect(eventoCreate).not.toHaveBeenCalled();
+  });
+
+  it("crearEvento: ante un fallo al guardar, lanza un mensaje en español sin detalles internos", async () => {
+    eventoCreate.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.crearEvento.execute!(
+        { titulo: "Algo", fechaInicio: "2026-08-12T10:00:00.000Z" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No se ha podido guardar el evento/);
+  });
+
+  it("crearEvento: un fallo al invalidar la caché NO tumba un guardado correcto", async () => {
+    revalidatePath.mockImplementation(() => {
+      throw new Error("revalidatePath fuera de contexto de petición");
+    });
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.crearEvento.execute!(
+      { titulo: "Cita con el médico", fechaInicio: "2026-08-12T10:00:00.000Z" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+    expect(result).toMatchObject({ id: "e1" });
   });
 });

@@ -4,6 +4,14 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { captureMessage } from "./pipeline";
 import { toAssistantSource } from "./assistantContext";
+import { prisma } from "./prisma";
+
+export interface CrearEventoResult {
+  id: string;
+  titulo: string;
+  fechaInicio: string;
+  ubicacion: string | null;
+}
 
 /**
  * Herramientas que dejan al Asistente actuar de verdad (no solo responder).
@@ -20,7 +28,7 @@ export function createAssistantTools(userId: string) {
   return {
     crearNota: tool({
       description:
-        "Crea y guarda una nota, tarea o recordatorio nuevo, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas.",
+        "Crea y guarda una nota, tarea o recordatorio nuevo, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas. Si lo que pide tiene fecha y hora concretas (una cita, quedar con alguien), usa crearEvento en su lugar.",
       inputSchema: z.object({
         contenido: z
           .string()
@@ -49,6 +57,65 @@ export function createAssistantTools(userId: string) {
           console.error("No se pudo invalidar la caché tras crear la nota (no crítico):", err);
         }
         return toAssistantSource(saved);
+      },
+    }),
+    crearEvento: tool({
+      description:
+        "Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara (\"quedar el jueves a las 5\", \"cita con el médico el 12 a las 10\"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado.",
+      inputSchema: z.object({
+        titulo: z.string().min(1).describe("Título corto del evento."),
+        fechaInicio: z
+          .string()
+          .describe("Fecha y hora de inicio en formato ISO 8601 (con zona horaria si se conoce)."),
+        fechaFin: z.string().optional().describe("Fecha y hora de fin, solo si el usuario la menciona."),
+        descripcion: z.string().optional(),
+        ubicacion: z.string().optional(),
+        participantes: z
+          .array(z.string())
+          .optional()
+          .describe("Nombres de las personas mencionadas, si las hay."),
+      }),
+      execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes }) => {
+        const fecha = new Date(fechaInicio);
+        if (Number.isNaN(fecha.getTime())) {
+          throw new Error("No he entendido bien la fecha. ¿Puedes decírmela de otra forma (día y hora)?");
+        }
+        const fin = fechaFin ? new Date(fechaFin) : null;
+        if (fin && Number.isNaN(fin.getTime())) {
+          throw new Error("No he entendido bien la fecha de fin.");
+        }
+
+        let evento;
+        try {
+          evento = await prisma.evento.create({
+            data: {
+              userId,
+              titulo,
+              fechaInicio: fecha,
+              fechaFin: fin,
+              descripcion: descripcion ?? null,
+              ubicacion: ubicacion ?? null,
+              participantes: participantes ?? [],
+            },
+          });
+        } catch (err) {
+          console.error("La tool crearEvento no pudo guardar el evento:", err);
+          throw new Error("No se ha podido guardar el evento. Inténtalo de nuevo en un momento.");
+        }
+
+        try {
+          revalidatePath("/calendario");
+        } catch (err) {
+          console.error("No se pudo invalidar la caché tras crear el evento (no crítico):", err);
+        }
+
+        const result: CrearEventoResult = {
+          id: evento.id,
+          titulo: evento.titulo,
+          fechaInicio: evento.fechaInicio.toISOString(),
+          ubicacion: evento.ubicacion,
+        };
+        return result;
       },
     }),
   } satisfies ToolSet;

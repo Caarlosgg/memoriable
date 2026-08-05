@@ -46,7 +46,16 @@ export interface ButtonProps
   asChild?: boolean;
 }
 
-export function Button({ className, variant, size, asChild = false, ...props }: ButtonProps) {
+/**
+ * `forwardRef`: necesario para poder usar `Button` como disparador de un
+ * `Dialog` (`DialogTrigger asChild`, ver CalendarView.tsx) — Radix clona el
+ * hijo e inyecta un `ref`, que un componente función normal no puede
+ * recibir. No cambia nada para los usos existentes (ninguno pasaba `ref`).
+ */
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant, size, asChild = false, ...props },
+  ref,
+) {
   const Comp = asChild ? Slot : "button";
-  return <Comp className={cn(buttonVariants({ variant, size, className }))} {...props} />;
-}
+  return <Comp ref={ref} className={cn(buttonVariants({ variant, size, className }))} {...props} />;
+});

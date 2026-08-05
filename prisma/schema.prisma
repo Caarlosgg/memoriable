@@ -63,6 +63,7 @@ model User {
   messages      Message[]
   exchanges     AssistantExchange[]
   conversations Conversation[]
+  eventos       Evento[]
 
   @@map("users")
 }
@@ -137,12 +138,48 @@ model Message {
   /// tipado — todo acceso a esta columna es vía $queryRaw/$executeRaw.
   embedding Unsupported("vector(768)")?
 
+  /// Eventos del calendario (Fase I) que el Asistente creó a partir de
+  /// esta nota (p. ej. un recordatorio con fecha clara). Casi siempre
+  /// vacío: la mayoría de notas no generan un evento.
+  eventos Evento[]
+
   @@index([categoria])
   @@index([fecha])
   @@index([hecho])
   @@index([userId])
   @@index([estado])
   @@map("messages")
+}
+
+/// Evento del calendario (Fase I): cita/recordatorio con fecha y hora,
+/// creado a mano desde /calendario o por el Asistente cuando el usuario
+/// describe algo con fecha clara ("quedar el jueves a las 5"). Distinto
+/// de un `Message` con categoría "recordatorio": ese vive en el tablero
+/// (estado/prioridad, sin hora concreta), esto vive en el calendario
+/// (fecha y hora concretas, sin estado de kanban).
+model Evento {
+  id          String   @id @default(cuid())
+  titulo      String
+  descripcion String?
+  fechaInicio DateTime
+  fechaFin    DateTime?
+  ubicacion   String?
+  /// Lista libre de nombres/emails sueltos — no un sistema de contactos,
+  /// proporcional al uso de una app de notas personal.
+  participantes String[] @default([])
+  createdAt   DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  /// Nota que originó este evento (si lo creó el Asistente a partir de
+  /// una de tus notas). Null si se creó directamente desde /calendario.
+  messageId String?
+  message   Message? @relation(fields: [messageId], references: [id])
+
+  @@index([userId])
+  @@index([fechaInicio])
+  @@map("eventos")
 }
 
 /// Fusible de coste propio del Asistente conversacional del dashboard

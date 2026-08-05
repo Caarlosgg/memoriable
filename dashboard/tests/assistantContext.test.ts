@@ -92,4 +92,26 @@ describe("buildSystemPrompt", () => {
     const prompt = buildSystemPrompt("x");
     expect(prompt).toContain("Categoría (fecha): contenido");
   });
+
+  it("menciona la herramienta crearEvento para citas con fecha/hora concreta", () => {
+    const prompt = buildSystemPrompt("x");
+    expect(prompt).toContain("crearEvento");
+  });
+
+  it("incluye la fecha/hora actual (pasada explícitamente), para poder calcular fechas relativas", () => {
+    const now = new Date("2026-08-12T15:30:00.000Z");
+    const prompt = buildSystemPrompt("x", now);
+    expect(prompt).toContain("2026");
+    expect(prompt.toLowerCase()).toContain("miércoles");
+  });
+
+  it("incluye el desfase de España respecto a UTC, en verano (+02:00, CEST)", () => {
+    const prompt = buildSystemPrompt("x", new Date("2026-08-12T12:00:00.000Z"));
+    expect(prompt).toContain("+02:00");
+  });
+
+  it("incluye el desfase de España respecto a UTC, en invierno (+01:00, CET)", () => {
+    const prompt = buildSystemPrompt("x", new Date("2026-01-15T12:00:00.000Z"));
+    expect(prompt).toContain("+01:00");
+  });
 });

@@ -48,6 +48,7 @@ model User {
   messages      Message[]
   exchanges     AssistantExchange[]
   conversations Conversation[]
+  eventos       Evento[]
 
   @@map("users")
 }
@@ -101,12 +102,37 @@ model Message {
   /// cliente tipado).
   embedding Unsupported("vector(768)")?
 
+  /// Ver ../../prisma/schema.prisma: eventos del calendario (Fase I).
+  eventos Evento[]
+
   @@index([categoria])
   @@index([fecha])
   @@index([hecho])
   @@index([userId])
   @@index([estado])
   @@map("messages")
+}
+
+/// Ver ../../prisma/schema.prisma: evento del calendario (Fase I).
+model Evento {
+  id            String    @id @default(cuid())
+  titulo        String
+  descripcion   String?
+  fechaInicio   DateTime
+  fechaFin      DateTime?
+  ubicacion     String?
+  participantes String[]  @default([])
+  createdAt     DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  messageId String?
+  message   Message? @relation(fields: [messageId], references: [id])
+
+  @@index([userId])
+  @@index([fechaInicio])
+  @@map("eventos")
 }
 
 /// Ver ../../prisma/schema.prisma: fusible de coste propio del Asistente,
