@@ -25,9 +25,24 @@ export function CalendarView({ eventos }: { eventos: Evento[] }) {
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   });
+  // Borrado con margen de deshacer (Tier 1.3), mismo patrón que KanbanBoard.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  function handleDeleted(id: string) {
+    setHiddenIds((prev) => new Set(prev).add(id));
+  }
+  function handleUndoDelete(id: string) {
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
 
   const grid = buildMonthGrid(cursor.getUTCFullYear(), cursor.getUTCMonth());
-  const byDay = groupByDay(eventos, (e) => e.fechaInicio);
+  const byDay = groupByDay(
+    eventos.filter((e) => !hiddenIds.has(e.id)),
+    (e) => e.fechaInicio,
+  );
 
   function goToMonth(delta: number) {
     setCursor((prev) => new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth() + delta, 1)));
@@ -93,7 +108,13 @@ export function CalendarView({ eventos }: { eventos: Evento[] }) {
               </span>
               <div className="flex flex-col gap-0.5">
                 {dayEventos.slice(0, MAX_CHIPS_PER_DAY).map((evento) => (
-                  <EventDetailDialog key={evento.id} evento={evento} onChanged={() => router.refresh()}>
+                  <EventDetailDialog
+                    key={evento.id}
+                    evento={evento}
+                    onChanged={() => router.refresh()}
+                    onDeleted={handleDeleted}
+                    onUndoDelete={handleUndoDelete}
+                  >
                     <button
                       type="button"
                       className="truncate rounded bg-accent-soft px-1 py-0.5 text-left text-[11px] font-medium text-accent-strong transition-[filter] hover:brightness-95"

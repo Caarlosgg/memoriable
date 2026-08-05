@@ -82,6 +82,17 @@ export function NotesExplorer({
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [fetchState, setFetchState] = useState<FetchState>(INITIAL_FETCH_STATE);
   const [attempt, setAttempt] = useState(0);
+  // Borrado con margen de deshacer (Tier 1.3): mientras un id está aquí, se
+  // oculta de toda vista (agrupada y filtrada) — vuelve si se deshace, se
+  // queda oculto para siempre si el margen expira y se borra de verdad.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const hideMessage = (id: string) => setHiddenIds((prev) => new Set(prev).add(id));
+  const unhideMessage = (id: string) =>
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   const query = useDebouncedValue(input, DEBOUNCE_MS).trim();
   const etiqueta = useDebouncedValue(etiquetaInput, DEBOUNCE_MS).trim();
 
@@ -239,7 +250,14 @@ export function NotesExplorer({
       {!hasActiveFilters && hasAnyMessages && (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {initialGroups.map((group) => (
-            <CategoryColumn key={group.categoria} group={group} highlightId={highlightId} />
+            <CategoryColumn
+              key={group.categoria}
+              group={group}
+              highlightId={highlightId}
+              hiddenIds={hiddenIds}
+              onDeleted={hideMessage}
+              onUndoDelete={unhideMessage}
+            />
           ))}
         </div>
       )}
@@ -275,18 +293,38 @@ export function NotesExplorer({
 
       {hasActiveFilters && status === "done" && fetchState.results.length > 0 && (
         <ul className="flex flex-col gap-3">
-          {fetchState.results.map((message) => (
-            <MessageDetailDialog key={message.id} message={message}>
-              <MessageCard message={message} highlightQuery={query} className="cursor-pointer" />
-            </MessageDetailDialog>
-          ))}
+          {fetchState.results
+            .filter((message) => !hiddenIds.has(message.id))
+            .map((message) => (
+              <MessageDetailDialog
+                key={message.id}
+                message={message}
+                onDeleted={hideMessage}
+                onUndoDelete={unhideMessage}
+              >
+                <MessageCard message={message} highlightQuery={query} className="cursor-pointer" />
+              </MessageDetailDialog>
+            ))}
         </ul>
       )}
     </section>
   );
 }
 
-function CategoryColumn({ group, highlightId }: { group: CategoryGroup; highlightId?: string }) {
+function CategoryColumn({
+  group,
+  highlightId,
+  hiddenIds,
+  onDeleted,
+  onUndoDelete,
+}: {
+  group: CategoryGroup;
+  highlightId?: string;
+  hiddenIds: Set<string>;
+  onDeleted: (id: string) => void;
+  onUndoDelete: (id: string) => void;
+}) {
+  const messages = group.messages.filter((m) => !hiddenIds.has(m.id));
   const { Icon, label, color, colorSoft } = presentCategory(group.categoria);
   const headingId = `categoria-${group.categoria}`;
 
@@ -302,14 +340,14 @@ function CategoryColumn({ group, highlightId }: { group: CategoryGroup; highligh
         </span>
       </h3>
 
-      {group.messages.length === 0 ? (
+      {messages.length === 0 ? (
         <p className="rounded-lg border border-dashed border-paper-line p-4 text-sm text-muted">
           Nada por aquí todavía.
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {group.messages.map((message) => (
-            <MessageDetailDialog key={message.id} message={message}>
+          {messages.map((message) => (
+            <MessageDetailDialog key={message.id} message={message} onDeleted={onDeleted} onUndoDelete={onUndoDelete}>
               <MessageCard
                 message={message}
                 showCategory={false}

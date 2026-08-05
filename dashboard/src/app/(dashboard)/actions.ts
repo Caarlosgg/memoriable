@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 import type { EstadoTarea, Prioridad, Prisma } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
@@ -86,6 +87,31 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
   } catch (err) {
     console.error("Error al editar la nota:", err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
+  }
+}
+
+export interface DeleteMessageResult {
+  error?: string;
+}
+
+/**
+ * Borra una nota/tarea. Mismo criterio de dueño que el resto: `deleteMany`
+ * con userId en el where. El margen de deshacer (unos segundos antes de
+ * llamar a esto de verdad) vive en el cliente, ver UndoToast.tsx — esta
+ * acción SIEMPRE borra de verdad, no sabe nada de "deshacer".
+ */
+export async function deleteMessage(id: string): Promise<DeleteMessageResult> {
+  const userId = await verifySession();
+  try {
+    const result = await prisma.message.deleteMany({ where: { id, userId } });
+    if (result.count === 0) return { error: "No se ha encontrado la nota." };
+    revalidatePath("/categorias");
+    revalidatePath("/pendientes");
+    return {};
+  } catch (err) {
+    console.error("Error al borrar la nota:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido borrar. Puede que tenga un evento del calendario enlazado." };
   }
 }
 

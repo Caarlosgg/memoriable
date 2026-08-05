@@ -28,7 +28,22 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
   const [filtroPrioridad, setFiltroPrioridad] = useState<Prioridad | "todas">("todas");
   const hasFilters = filtroCategoria !== "todas" || filtroPrioridad !== "todas";
 
+  // Borrado con margen de deshacer (Tier 1.3): igual que el filtro, no toca
+  // `byEstado` — solo lo que se renderiza. Ver MessageDetailDialog.tsx.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  function handleDeleted(messageId: string) {
+    setHiddenIds((prev) => new Set(prev).add(messageId));
+  }
+  function handleUndoDelete(messageId: string) {
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.delete(messageId);
+      return next;
+    });
+  }
+
   function matchesFilter(message: Message): boolean {
+    if (hiddenIds.has(message.id)) return false;
     if (filtroCategoria !== "todas" && message.categoria !== filtroCategoria) return false;
     if (filtroPrioridad !== "todas" && message.prioridad !== filtroPrioridad) return false;
     return true;
@@ -178,6 +193,8 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
               onCycleEstado={handleCycleEstado}
               onCyclePrioridad={handleCyclePrioridad}
               onSaved={handleSaved}
+              onDeleted={handleDeleted}
+              onUndoDelete={handleUndoDelete}
             />
           ))}
         </div>

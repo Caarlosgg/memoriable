@@ -2,12 +2,13 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import type { Message } from "@prisma/client";
-import { Pencil, Clock, Tag, X, Plus } from "lucide-react";
+import { Pencil, Clock, Tag, X, Plus, Trash2 } from "lucide-react";
 import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION } from "@/lib/categories";
 import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
-import { updateMessage } from "@/app/(dashboard)/actions";
+import { updateMessage, deleteMessage } from "@/app/(dashboard)/actions";
 import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtraJson } from "@/lib/camposExtra";
+import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -57,6 +58,8 @@ export function MessageDetailDialog({
   children,
   defaultEditing = false,
   onSaved,
+  onDeleted,
+  onUndoDelete,
 }: {
   message: Message;
   /** Lo que abre el modal al hacer clic — se envuelve con `DialogTrigger asChild`. */
@@ -72,8 +75,13 @@ export function MessageDetailDialog({
    * Component y se refresca sola).
    */
   onSaved?: (id: string, patch: EditableFields) => void;
+  /** Se llama AL INSTANTE al pulsar "Borrar" — el padre debe ocultar la tarjeta ya, antes de que el borrado real ocurra. */
+  onDeleted?: (id: string) => void;
+  /** Se llama si el usuario pulsa "Deshacer" en el toast — el padre debe volver a mostrar la tarjeta. */
+  onUndoDelete?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { scheduleDelete } = useUndoToast();
   const [editing, setEditing] = useState(defaultEditing);
   const [fields, setFields] = useState<EditableFields>(() => fieldsFrom(message));
   // Aparte de `fields`: un array derivado de un `<input>` de texto en cada
@@ -136,6 +144,28 @@ export function MessageDetailDialog({
     });
   }
 
+  /**
+   * Borrado con margen de deshacer (Tier 1.3): oculta la tarjeta y cierra
+   * el modal de inmediato, y programa el borrado real en el servidor para
+   * dentro de unos segundos — si el usuario pulsa "Deshacer" en el toast,
+   * `onUndoDelete` la vuelve a mostrar y `deleteMessage` nunca se llama.
+   */
+  function handleDelete() {
+    setOpen(false);
+    onDeleted?.(message.id);
+    scheduleDelete({
+      label: `«${message.resumen || "Nota"}» eliminada`,
+      onUndo: () => onUndoDelete?.(message.id),
+      onConfirm: async () => {
+        const result = await deleteMessage(message.id);
+        if (result.error) {
+          console.error("No se pudo completar el borrado de la nota:", result.error);
+          onUndoDelete?.(message.id);
+        }
+      },
+    });
+  }
+
   const { Icon: CategoryIcon, label: categoryLabel, color } = presentCategory(message.categoria);
 
   return (
@@ -181,7 +211,10 @@ export function MessageDetailDialog({
               <span>{ESTADO_PRESENTATION[message.estado].label}</span>
               <span>Prioridad {PRIORIDAD_PRESENTATION[message.prioridad].label}</span>
             </div>
-            <DialogFooter className="mt-0">
+            <DialogFooter className="mt-0 justify-between sm:justify-between">
+              <Button type="button" variant="outline" onClick={handleDelete} className="text-danger">
+                <Trash2 aria-hidden size={15} /> Borrar
+              </Button>
               <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
                 <Pencil aria-hidden size={15} /> Editar
               </Button>

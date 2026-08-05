@@ -12,12 +12,16 @@ export function KanbanColumn({
   onCycleEstado,
   onCyclePrioridad,
   onSaved,
+  onDeleted,
+  onUndoDelete,
 }: {
   estado: EstadoTarea;
   messages: Message[];
   onCycleEstado: (messageId: string) => void;
   onCyclePrioridad: (messageId: string) => void;
   onSaved: (id: string, patch: EditableFields) => void;
+  onDeleted: (id: string) => void;
+  onUndoDelete: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: estado });
   const { label, Icon } = ESTADO_PRESENTATION[estado];
@@ -47,7 +51,14 @@ export function KanbanColumn({
           </li>
         ) : (
           messages.map((message) => (
-            <MessageDetailDialog key={message.id} message={message} defaultEditing onSaved={onSaved}>
+            <MessageDetailDialog
+              key={message.id}
+              message={message}
+              defaultEditing
+              onSaved={onSaved}
+              onDeleted={onDeleted}
+              onUndoDelete={onUndoDelete}
+            >
               <KanbanCard
                 message={message}
                 className="cursor-pointer"

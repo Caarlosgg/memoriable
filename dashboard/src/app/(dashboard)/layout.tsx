@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/nav/Sidebar";
 import { BottomTabs } from "@/components/nav/BottomTabs";
 import { MobileHeader } from "@/components/nav/MobileHeader";
 import { CommandPalette } from "@/components/CommandPalette";
+import { UndoToastProvider } from "@/components/UndoToast";
 
 export default async function DashboardLayout({
   children,
@@ -14,17 +15,19 @@ export default async function DashboardLayout({
   await verifySession();
 
   return (
-    <div className="flex min-h-screen flex-1">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <MobileHeader />
-        {/* pb-20 en móvil: deja hueco para la barra de pestañas fija (BottomTabs). */}
-        <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 pb-24 sm:px-6 sm:pb-6">
-          {children}
-        </main>
+    <UndoToastProvider>
+      <div className="flex min-h-screen flex-1">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <MobileHeader />
+          {/* pb-20 en móvil: deja hueco para la barra de pestañas fija (BottomTabs). */}
+          <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 pb-24 sm:px-6 sm:pb-6">
+            {children}
+          </main>
+        </div>
+        <BottomTabs />
+        <CommandPalette />
       </div>
-      <BottomTabs />
-      <CommandPalette />
-    </div>
+    </UndoToastProvider>
   );
 }

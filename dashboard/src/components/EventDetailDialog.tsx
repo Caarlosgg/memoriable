@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Pencil, Trash2, Clock, MapPin, Users, FileText } from "lucide-react";
 import { formatEventDate } from "@/lib/format";
 import { createEvento, updateEvento, deleteEvento, type EventoInput } from "@/app/(dashboard)/calendario/actions";
+import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -63,12 +64,18 @@ export function EventDetailDialog({
   evento,
   children,
   onChanged,
+  onDeleted,
+  onUndoDelete,
 }: {
   /** `null`/ausente = modal de creación (arranca en modo edición vacío). */
   evento?: Evento | null;
   children: ReactNode;
-  /** Se llama tras crear, guardar o borrar con éxito, para refrescar la lista del padre. */
+  /** Se llama tras crear o guardar con éxito, para refrescar la lista del padre. */
   onChanged?: () => void;
+  /** Se llama AL INSTANTE al pulsar "Borrar" — el padre debe ocultar el evento ya. */
+  onDeleted?: (id: string) => void;
+  /** Se llama si el usuario pulsa "Deshacer" en el toast. */
+  onUndoDelete?: (id: string) => void;
 }) {
   const isNew = !evento;
   const [open, setOpen] = useState(false);
@@ -76,6 +83,7 @@ export function EventDetailDialog({
   const [fields, setFields] = useState<EditableEvento>(() => fieldsFrom(evento ?? null));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const { scheduleDelete } = useUndoToast();
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -111,17 +119,22 @@ export function EventDetailDialog({
     });
   }
 
+  /** Igual que MessageDetailDialog (Tier 1.3): oculta y cierra ya, borra de verdad tras el margen de deshacer. */
   function handleDelete() {
     if (!evento) return;
-    setError(null);
-    startTransition(async () => {
-      const result = await deleteEvento(evento.id);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      onChanged?.();
-      setOpen(false);
+    const eventoId = evento.id;
+    setOpen(false);
+    onDeleted?.(eventoId);
+    scheduleDelete({
+      label: `«${evento.titulo}» eliminado`,
+      onUndo: () => onUndoDelete?.(eventoId),
+      onConfirm: async () => {
+        const result = await deleteEvento(eventoId);
+        if (result.error) {
+          console.error("No se pudo completar el borrado del evento:", result.error);
+          onUndoDelete?.(eventoId);
+        }
+      },
     });
   }
 
