@@ -18,8 +18,15 @@ const fakeSaved: StoredMessage = {
 const captureMessage = vi.fn<(userId: string, contenido: string) => Promise<StoredMessage>>(
   async () => fakeSaved,
 );
+const embedQuery = vi.fn();
 vi.mock("../src/lib/pipeline", () => ({
   captureMessage: (userId: string, contenido: string) => captureMessage(userId, contenido),
+  resolveEmbedder: () => ({ embedQuery: (q: string) => embedQuery(q) }),
+}));
+
+const findSimilarMessages = vi.fn();
+vi.mock("../src/lib/vectorSearch", () => ({
+  findSimilarMessages: (...args: unknown[]) => findSimilarMessages(...args),
 }));
 
 // `revalidatePath` exige contexto de petición de Next real (Route Handler en
@@ -41,9 +48,35 @@ const fakeEvento = {
   messageId: null,
 };
 const eventoCreate = vi.fn();
+const messageFindFirst = vi.fn();
+const messageUpdate = vi.fn();
 vi.mock("../src/lib/prisma", () => ({
-  prisma: { evento: { create: (...args: unknown[]) => eventoCreate(...args) } },
+  prisma: {
+    evento: { create: (...args: unknown[]) => eventoCreate(...args) },
+    message: {
+      findFirst: (...args: unknown[]) => messageFindFirst(...args),
+      update: (...args: unknown[]) => messageUpdate(...args),
+    },
+  },
 }));
+
+function fakePendiente(overrides: Partial<import("@prisma/client").Message> = {}) {
+  return {
+    id: "p1",
+    tipo: "text",
+    contenido: "Llamar al fontanero para revisar la caldera",
+    categoria: "tarea",
+    resumen: "Llamar al fontanero",
+    hecho: false,
+    estado: "POR_HACER",
+    prioridad: "MEDIA",
+    etiquetas: [] as string[],
+    camposExtra: {},
+    fecha: new Date("2026-08-01T00:00:00.000Z"),
+    userId: "u1",
+    ...overrides,
+  };
+}
 
 describe("createAssistantTools", () => {
   beforeEach(() => {
@@ -52,6 +85,14 @@ describe("createAssistantTools", () => {
     revalidatePath.mockReset();
     eventoCreate.mockReset();
     eventoCreate.mockResolvedValue(fakeEvento);
+    embedQuery.mockReset();
+    embedQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    findSimilarMessages.mockReset();
+    findSimilarMessages.mockResolvedValue([]);
+    messageFindFirst.mockReset();
+    messageFindFirst.mockResolvedValue(null);
+    messageUpdate.mockReset();
+    messageUpdate.mockResolvedValue({});
   });
 
   it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión, e invalida Tablero/Categorías", async () => {
@@ -158,5 +199,82 @@ describe("createAssistantTools", () => {
       { toolCallId: "c", messages: [], context: undefined },
     );
     expect(result).toMatchObject({ id: "e1" });
+  });
+
+  it("completarTarea encuentra la pendiente por similitud semántica (aunque no repita el texto exacto) y la marca hecha", async () => {
+    findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1", resumen: "Llamar al fontanero" })]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.completarTarea.execute!(
+      { descripcion: "ya he llamado al fontanero" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(embedQuery).toHaveBeenCalledWith("ya he llamado al fontanero");
+    expect(messageUpdate).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { estado: "HECHO", hecho: true },
+    });
+    expect(result).toMatchObject({ id: "p1", resumen: "Llamar al fontanero" });
+  });
+
+  it("completarTarea ignora candidatos semánticos que ya están hechos o no son accionables", async () => {
+    findSimilarMessages.mockResolvedValue([
+      fakePendiente({ id: "ya-hecha", estado: "HECHO" }),
+      fakePendiente({ id: "no-accionable", categoria: "idea" }),
+      fakePendiente({ id: "la-buena" }),
+    ]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.completarTarea.execute!(
+      { descripcion: "algo" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+    expect(result).toMatchObject({ id: "la-buena" });
+  });
+
+  it("completarTarea cae a búsqueda de texto si no hay embedder (embedQuery devuelve null)", async () => {
+    embedQuery.mockResolvedValue(null);
+    messageFindFirst.mockResolvedValue(fakePendiente({ id: "p2" }));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.completarTarea.execute!(
+      { descripcion: "fontanero" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+    expect(findSimilarMessages).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ id: "p2" });
+  });
+
+  it("completarTarea lanza (en español) si no encuentra ninguna coincidencia", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.completarTarea.execute!(
+        { descripcion: "algo que no existe" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he encontrado ninguna tarea pendiente/);
+    expect(messageUpdate).not.toHaveBeenCalled();
+  });
+
+  it("completarTarea: un fallo al invalidar la caché NO tumba una tarea ya marcada como hecha", async () => {
+    findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p3" })]);
+    revalidatePath.mockImplementation(() => {
+      throw new Error("revalidatePath fuera de contexto de petición");
+    });
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.completarTarea.execute!(
+      { descripcion: "algo" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+    expect(messageUpdate).toHaveBeenCalled();
+    expect(result).toMatchObject({ id: "p3" });
   });
 });

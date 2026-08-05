@@ -27,6 +27,11 @@ export function CuentaDetailDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [movimientos, setMovimientos] = useState<MovimientoAhorro[] | null>(null);
+  // Aparte de `movimientos`: un fallo de red no es lo mismo que "esta cuenta
+  // no tiene movimientos todavía" — confundirlos hacía parecer vacía una
+  // cuenta cuyo historial en realidad no se pudo cargar.
+  const [historialError, setHistorialError] = useState(false);
+  const [historialAttempt, setHistorialAttempt] = useState(0);
   const [concepto, setConcepto] = useState("");
   const [importe, setImporte] = useState("");
   const [tipo, setTipo] = useState<"ingreso" | "retirada">("ingreso");
@@ -40,13 +45,22 @@ export function CuentaDetailDialog({
     // es del mismo historial — se ve un instante mientras llega lo nuevo,
     // en vez de un salto a "cargando" cada vez que se reabre.
     if (!open) return;
+    let cancelado = false;
     listMovimientos(cuenta.id)
-      .then(setMovimientos)
+      .then((data) => {
+        if (cancelado) return;
+        setMovimientos(data);
+        setHistorialError(false);
+      })
       .catch((err) => {
+        if (cancelado) return;
         console.error("No se pudo cargar el historial:", err);
-        setMovimientos([]);
+        setHistorialError(true);
       });
-  }, [open, cuenta.id]);
+    return () => {
+      cancelado = true;
+    };
+  }, [open, cuenta.id, historialAttempt]);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -78,7 +92,15 @@ export function CuentaDetailDialog({
     setImporte("");
     onChanged();
     // Refresca el historial dentro del propio modal, sin cerrarlo.
-    listMovimientos(cuenta.id).then(setMovimientos);
+    listMovimientos(cuenta.id)
+      .then((data) => {
+        setMovimientos(data);
+        setHistorialError(false);
+      })
+      .catch((err) => {
+        console.error("No se pudo refrescar el historial:", err);
+        setHistorialError(true);
+      });
   }
 
   async function handleDelete() {
@@ -177,7 +199,20 @@ export function CuentaDetailDialog({
 
           <div className="flex flex-col gap-1">
             <p className="text-xs font-semibold text-muted uppercase">Historial</p>
-            {movimientos === null ? (
+            {historialError ? (
+              <div className="rounded-lg border border-danger/30 bg-danger-soft p-3 text-sm text-danger">
+                <p>No se ha podido cargar el historial.</p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setHistorialAttempt((n) => n + 1)}
+                  className="mt-2 focus-visible:ring-danger"
+                >
+                  Reintentar
+                </Button>
+              </div>
+            ) : movimientos === null ? (
               <div className="skeleton h-16 rounded-lg" />
             ) : movimientos.length === 0 ? (
               <p className="text-sm text-muted">Sin movimientos todavía.</p>

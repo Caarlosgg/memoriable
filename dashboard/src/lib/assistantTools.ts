@@ -2,8 +2,11 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import { captureMessage } from "./pipeline";
+import type { Message } from "@prisma/client";
+import { captureMessage, resolveEmbedder } from "./pipeline";
 import { toAssistantSource } from "./assistantContext";
+import { ACTIONABLE_CATEGORIES } from "./categories";
+import { findSimilarMessages } from "./vectorSearch";
 import { prisma } from "./prisma";
 
 export interface CrearEventoResult {
@@ -11,6 +14,51 @@ export interface CrearEventoResult {
   titulo: string;
   fechaInicio: string;
   ubicacion: string | null;
+}
+
+export interface CompletarTareaResult {
+  id: string;
+  resumen: string;
+  categoria: string;
+}
+
+function isPendienteAccionable(m: Message): boolean {
+  return (ACTIONABLE_CATEGORIES as readonly string[]).includes(m.categoria) && m.estado !== "HECHO";
+}
+
+/**
+ * Busca, entre las tareas/recordatorios pendientes del usuario, la que
+ * mejor coincide con una descripción libre. Semántica primero (misma
+ * infraestructura que las fuentes citadas del propio Asistente) porque el
+ * usuario rara vez repite el texto exacto de la nota original ("ya he
+ * llamado al fontanero" vs. "Llamar al fontanero para revisar la
+ * caldera") — un ILIKE de texto exacto fallaría casi siempre. Cae a texto
+ * si no hay embedder configurado o no encontró nada.
+ */
+async function encontrarTareaPendiente(userId: string, descripcion: string): Promise<Message | null> {
+  try {
+    const embedding = await resolveEmbedder().embedQuery(descripcion);
+    if (embedding) {
+      const similares = await findSimilarMessages(userId, embedding, { limit: 8 });
+      const match = similares.find(isPendienteAccionable);
+      if (match) return match;
+    }
+  } catch (err) {
+    console.error("No se pudo buscar la tarea semánticamente (se prueba con texto):", err);
+  }
+
+  return prisma.message.findFirst({
+    where: {
+      userId,
+      categoria: { in: [...ACTIONABLE_CATEGORIES] },
+      estado: { not: "HECHO" },
+      OR: [
+        { contenido: { contains: descripcion, mode: "insensitive" } },
+        { resumen: { contains: descripcion, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { fecha: "desc" },
+  });
 }
 
 /**
@@ -115,6 +163,45 @@ export function createAssistantTools(userId: string) {
           fechaInicio: evento.fechaInicio.toISOString(),
           ubicacion: evento.ubicacion,
         };
+        return result;
+      },
+    }),
+    completarTarea: tool({
+      description:
+        "Marca como hecha una tarea o recordatorio pendiente que el usuario dice haber terminado (\"ya he llamado al fontanero\", \"acabé lo del informe\", \"hecho lo de comprar el regalo\"). Busca entre sus pendientes la que mejor coincide con la descripción. Si no hay ninguna coincidencia razonable, dilo con naturalidad — no la llames de nuevo adivinando otra cosa.",
+      inputSchema: z.object({
+        descripcion: z
+          .string()
+          .min(1)
+          .describe("Descripción de la tarea tal como la menciona el usuario, para buscarla entre sus pendientes."),
+      }),
+      execute: async ({ descripcion }) => {
+        let tarea: Message | null;
+        try {
+          tarea = await encontrarTareaPendiente(userId, descripcion);
+        } catch (err) {
+          console.error("La tool completarTarea no pudo buscar la tarea:", err);
+          throw new Error("No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.");
+        }
+        if (!tarea) {
+          throw new Error("No he encontrado ninguna tarea pendiente que coincida con eso.");
+        }
+
+        try {
+          await prisma.message.update({ where: { id: tarea.id }, data: { estado: "HECHO", hecho: true } });
+        } catch (err) {
+          console.error("La tool completarTarea no pudo marcarla como hecha:", err);
+          throw new Error("No se ha podido marcar como hecha. Inténtalo de nuevo en un momento.");
+        }
+
+        try {
+          revalidatePath("/pendientes");
+          revalidatePath("/categorias");
+        } catch (err) {
+          console.error("No se pudo invalidar la caché tras completar la tarea (no crítico):", err);
+        }
+
+        const result: CompletarTareaResult = { id: tarea.id, resumen: tarea.resumen, categoria: tarea.categoria };
         return result;
       },
     }),

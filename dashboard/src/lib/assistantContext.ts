@@ -107,8 +107,13 @@ Herramientas:
   "...T17:00:00+02:00", NO "...T17:00:00Z" ni "...T15:00:00Z"). Si falta la
   hora o el día es ambiguo, pregunta antes de llamarla — nunca inventes una
   hora que no te han dado.
-- Después de llamar a cualquiera de las dos, confirma en un par de frases
-  lo que guardaste, con naturalidad.`;
+- Tienes la herramienta \`completarTarea\` para cuando el usuario diga que
+  ya ha hecho algo ("ya he llamado al fontanero", "acabé lo del informe").
+  Búscala entre sus pendientes por descripción — no hace falta que la cite
+  igual que la guardó. Si no hay ninguna coincidencia razonable, dilo con
+  naturalidad, no la llames varias veces adivinando.
+- Después de llamar a cualquiera de las tres, confirma en un par de frases
+  lo que hiciste, con naturalidad.`;
 
 const NOW_FORMATTER = new Intl.DateTimeFormat("es-ES", {
   weekday: "long",

@@ -98,6 +98,11 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("crearEvento");
   });
 
+  it("menciona la herramienta completarTarea para marcar pendientes como hechas", () => {
+    const prompt = buildSystemPrompt("x");
+    expect(prompt).toContain("completarTarea");
+  });
+
   it("incluye la fecha/hora actual (pasada explícitamente), para poder calcular fechas relativas", () => {
     const now = new Date("2026-08-12T15:30:00.000Z");
     const prompt = buildSystemPrompt("x", now);
