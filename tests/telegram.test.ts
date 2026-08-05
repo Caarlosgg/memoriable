@@ -16,6 +16,7 @@ import {
   launchWithRetry,
   registerCommands,
 } from '../src/telegram/bot.js';
+import { createLinkAttemptLimiter } from '../src/telegram/linkRateLimit.js';
 import { describeTelegramError, isValidTokenFormat } from '../src/telegram/errors.js';
 
 const TOKEN_VALIDO = '123456789:AAEabcdefghijklmnopqrstuvwxyz012345';
@@ -246,21 +247,21 @@ describe('handlePendingCommand', () => {
 describe('handleLinkCommand', () => {
   it('pide el código si viene vacío', async () => {
     const linkChat = vi.fn();
-    const reply = await handleLinkCommand('   ', 123, linkChat);
+    const reply = await handleLinkCommand('   ', 123, linkChat, undefined, createLinkAttemptLimiter());
     expect(reply).toBe(REPLIES.linkUsage);
     expect(linkChat).not.toHaveBeenCalled();
   });
 
   it('confirma cuando el código es válido', async () => {
     const linkChat = vi.fn().mockResolvedValue('linked');
-    const reply = await handleLinkCommand('123456', 987, linkChat);
+    const reply = await handleLinkCommand('123456', 987, linkChat, undefined, createLinkAttemptLimiter());
     expect(reply).toBe(REPLIES.linkSuccess);
     expect(linkChat).toHaveBeenCalledWith('123456', 987);
   });
 
   it('avisa con naturalidad si el código no es válido o caducó', async () => {
     const linkChat = vi.fn().mockResolvedValue('invalid_or_expired');
-    const reply = await handleLinkCommand('000000', 987, linkChat);
+    const reply = await handleLinkCommand('000000', 987, linkChat, undefined, createLinkAttemptLimiter());
     expect(reply).toBe(REPLIES.linkInvalid);
   });
 
@@ -268,10 +269,42 @@ describe('handleLinkCommand', () => {
     const { logger, records } = createMemoryLogger();
     const linkChat = vi.fn().mockRejectedValue(new Error('db caída'));
 
-    const reply = await handleLinkCommand('123456', 987, linkChat, logger);
+    const reply = await handleLinkCommand('123456', 987, linkChat, logger, createLinkAttemptLimiter());
 
     expect(reply).toBe(REPLIES.error);
     expect(records.find((r) => r.event === 'telegram.link_failed')).toMatchObject({ level: 'error' });
+  });
+
+  it('bloquea tras varios códigos incorrectos seguidos, sin volver a consultar la BD', async () => {
+    const linkChat = vi.fn().mockResolvedValue('invalid_or_expired');
+    const limiter = createLinkAttemptLimiter(3, 10 * 60 * 1000);
+
+    for (let i = 0; i < 3; i++) {
+      const reply = await handleLinkCommand('000000', 555, linkChat, undefined, limiter);
+      expect(reply).toBe(REPLIES.linkInvalid);
+    }
+
+    const blockedReply = await handleLinkCommand('000000', 555, linkChat, undefined, limiter);
+    expect(blockedReply).toBe(REPLIES.linkRateLimited);
+    expect(linkChat).toHaveBeenCalledTimes(3);
+  });
+
+  it('un código correcto limpia los fallos anteriores', async () => {
+    const linkChat = vi.fn().mockResolvedValueOnce('invalid_or_expired').mockResolvedValueOnce('linked');
+    const limiter = createLinkAttemptLimiter(2, 10 * 60 * 1000);
+
+    await handleLinkCommand('000000', 321, linkChat, undefined, limiter);
+    const reply = await handleLinkCommand('123456', 321, linkChat, undefined, limiter);
+    expect(reply).toBe(REPLIES.linkSuccess);
+    expect(limiter.isBlocked(321)).toBe(false);
+  });
+
+  it('no cuenta un fallo si la BD no está disponible (no_database)', async () => {
+    const linkChat = vi.fn().mockResolvedValue('no_database');
+    const limiter = createLinkAttemptLimiter(1, 10 * 60 * 1000);
+
+    await handleLinkCommand('123456', 741, linkChat, undefined, limiter);
+    expect(limiter.isBlocked(741)).toBe(false);
   });
 });
 

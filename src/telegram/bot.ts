@@ -6,6 +6,7 @@ import { InvalidMessageError } from '../pipeline/sanitize.js';
 import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
 import { resolvePipeline } from '../pipeline/factory.js';
 import { resolveChatOwner, linkTelegramChat } from '../db/users.js';
+import { linkAttemptLimiter, type LinkAttemptLimiter } from './linkRateLimit.js';
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
@@ -23,6 +24,8 @@ export const REPLIES = {
   linkUsage: 'ℹ️ Escribe el código que te da el dashboard. Ejemplo: <code>/vincular 123456</code>',
   linkSuccess: '✅ ¡Chat vinculado! A partir de ahora, lo que me mandes se guarda en tu cuenta.',
   linkInvalid: '⚠️ Ese código no es válido o ha caducado. Genera uno nuevo desde "Cuenta" en el dashboard.',
+  linkRateLimited:
+    '⏳ Demasiados códigos incorrectos seguidos. Espera unos minutos y genera un código nuevo desde "Cuenta" en el dashboard.',
 } as const;
 
 /**
@@ -151,20 +154,32 @@ export async function handleTextMessage(
  * desde el dashboard (sección "Cuenta") y liga este chat a esa cuenta.
  * **Nunca lanza**: ante un fallo interno devuelve un mensaje de error y lo
  * registra.
+ *
+ * Freno de fuerza bruta (ver `linkRateLimit.ts`): tras varios códigos
+ * incorrectos seguidos desde el mismo chat, se deja de consultar la BD y se
+ * responde directamente que hay que esperar. Los códigos correctos
+ * (`no_database` incluido) no cuentan como fallo.
  */
 export async function handleLinkCommand(
   code: string,
   chatId: number,
   linkChat: typeof linkTelegramChat = linkTelegramChat,
   logger?: Logger,
+  limiter: LinkAttemptLimiter = linkAttemptLimiter,
 ): Promise<string> {
   const trimmed = code.trim();
   if (trimmed === '') return REPLIES.linkUsage;
 
+  if (limiter.isBlocked(chatId)) return REPLIES.linkRateLimited;
+
   try {
     const result = await linkChat(trimmed, chatId);
-    if (result === 'linked') return REPLIES.linkSuccess;
+    if (result === 'linked') {
+      limiter.clear(chatId);
+      return REPLIES.linkSuccess;
+    }
     if (result === 'no_database') return REPLIES.error;
+    limiter.registerFailure(chatId);
     return REPLIES.linkInvalid;
   } catch (err) {
     logger?.error('telegram.link_failed', errorContext(err));
