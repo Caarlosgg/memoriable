@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
-import { ChevronsLeft, ChevronsRight, LogOut } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, LogOut, Search } from "lucide-react";
 import { logout } from "@/app/actions";
 import { NAV_ITEMS } from "./navItems";
 
@@ -63,6 +63,23 @@ export function Sidebar() {
           className="ml-auto rounded-full p-1.5 text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-accent-soft"
         >
           {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+        </button>
+      </div>
+
+      <div className="p-3 pb-0">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+          title={collapsed ? "Buscar (Ctrl+K)" : undefined}
+          className="flex w-full items-center gap-3 rounded-lg border border-paper-line px-3 py-2 text-sm text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <Search aria-hidden size={16} className="shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Buscar</span>
+              <kbd className="rounded border border-paper-line px-1.5 py-0.5 font-mono text-[10px]">Ctrl K</kbd>
+            </>
+          )}
         </button>
       </div>
 

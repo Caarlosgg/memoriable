@@ -2,6 +2,7 @@ import { verifySession } from "@/lib/dal";
 import { Sidebar } from "@/components/nav/Sidebar";
 import { BottomTabs } from "@/components/nav/BottomTabs";
 import { MobileHeader } from "@/components/nav/MobileHeader";
+import { CommandPalette } from "@/components/CommandPalette";
 
 export default async function DashboardLayout({
   children,
@@ -23,6 +24,7 @@ export default async function DashboardLayout({
         </main>
       </div>
       <BottomTabs />
+      <CommandPalette />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
 import { isCategory } from "@/lib/categories";
+import { searchAcrossAll, type QuickSearchResult } from "@/lib/quickSearch";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 
 /**
@@ -86,6 +87,12 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
     console.error("Error al editar la nota:", err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
   }
+}
+
+/** Búsqueda de la paleta de comandos (Ctrl/Cmd+K) — ver lib/quickSearch.ts. */
+export async function quickSearch(query: string): Promise<QuickSearchResult[]> {
+  const userId = await verifySession();
+  return searchAcrossAll(userId, query);
 }
 
 export interface CaptureState {
