@@ -126,7 +126,7 @@ describe("createAssistantTools", () => {
     cuentaAhorroFindMany.mockResolvedValue([]);
     cuentaAhorroCreate.mockReset();
     movimientoAhorroCreate.mockReset();
-    movimientoAhorroCreate.mockResolvedValue({});
+    movimientoAhorroCreate.mockResolvedValue({ fecha: new Date("2026-08-04T10:00:00.000Z") });
     eventoFindMany.mockReset();
     eventoFindMany.mockResolvedValue([]);
     eventoUpdate.mockReset();
@@ -197,8 +197,33 @@ describe("createAssistantTools", () => {
     expect(eventoCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ userId: "u1", titulo: "Cita con el médico" }) }),
     );
-    expect(result).toMatchObject({ id: "e1", titulo: "Cita con el médico" });
+    expect(result).toMatchObject({ eventos: [{ id: "e1", titulo: "Cita con el médico" }] });
     expect(revalidatePath).toHaveBeenCalledWith("/calendario");
+  });
+
+  it("crearEvento con repetir crea toda la serie en una sola llamada a la tool", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.crearEvento.execute!(
+      {
+        titulo: "Hacer transacción",
+        fechaInicio: "2026-08-06T09:00:00+02:00",
+        repetir: { frecuencia: "SEMANAL", veces: 5 },
+      },
+      { toolCallId: "call-1", messages: [], context: undefined },
+    );
+
+    expect(eventoCreate).toHaveBeenCalledTimes(5);
+    expect((result as { eventos: unknown[] }).eventos).toHaveLength(5);
+    const fechas = eventoCreate.mock.calls.map((c) => c[0].data.fechaInicio.toISOString());
+    expect(fechas).toEqual([
+      "2026-08-06T07:00:00.000Z",
+      "2026-08-13T07:00:00.000Z",
+      "2026-08-20T07:00:00.000Z",
+      "2026-08-27T07:00:00.000Z",
+      "2026-09-03T07:00:00.000Z",
+    ]);
   });
 
   it("crearEvento rechaza una fecha de inicio que no se puede interpretar", async () => {
@@ -238,7 +263,7 @@ describe("createAssistantTools", () => {
       { titulo: "Cita con el médico", fechaInicio: "2026-08-12T10:00:00.000Z" },
       { toolCallId: "c", messages: [], context: undefined },
     );
-    expect(result).toMatchObject({ id: "e1" });
+    expect(result).toMatchObject({ eventos: [{ id: "e1" }] });
   });
 
   it("completarTarea encuentra la pendiente por similitud semántica (aunque no repita el texto exacto) y la marca hecha", async () => {
@@ -330,10 +355,26 @@ describe("createAssistantTools", () => {
 
     expect(cuentaAhorroCreate).not.toHaveBeenCalled();
     expect(movimientoAhorroCreate).toHaveBeenCalledWith({
-      data: { cuentaId: "c1", centimos: 5000, concepto: null },
+      data: { cuentaId: "c1", centimos: 5000, concepto: null, fecha: expect.any(Date) },
     });
-    expect(result).toMatchObject({ cuentaId: "c1", cuentaNombre: "Fondo de emergencia", centimos: 5000, cuentaCreada: false });
+    expect(result).toMatchObject({
+      movimientos: [{ cuentaId: "c1", cuentaNombre: "Fondo de emergencia", centimos: 5000, cuentaCreada: false }],
+    });
     expect(revalidatePath).toHaveBeenCalledWith("/ahorros");
+  });
+
+  it("registrarAhorro con repetir registra toda la serie en una sola llamada a la tool", async () => {
+    cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "PruebaTrade", userId: "u1" }]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.registrarAhorro.execute!(
+      { cuenta: "PruebaTrade", importe: 400, repetir: { frecuencia: "SEMANAL", veces: 5 } },
+      { toolCallId: "call-1", messages: [], context: undefined },
+    );
+
+    expect(movimientoAhorroCreate).toHaveBeenCalledTimes(5);
+    expect((result as { movimientos: unknown[] }).movimientos).toHaveLength(5);
   });
 
   it("registrarAhorro crea la cuenta sobre la marcha si no hay ninguna parecida", async () => {
@@ -349,9 +390,11 @@ describe("createAssistantTools", () => {
 
     expect(cuentaAhorroCreate).toHaveBeenCalledWith({ data: { userId: "u1", nombre: "Viaje a Japón" } });
     expect(movimientoAhorroCreate).toHaveBeenCalledWith({
-      data: { cuentaId: "c2", centimos: 2000, concepto: "paga extra" },
+      data: { cuentaId: "c2", centimos: 2000, concepto: "paga extra", fecha: expect.any(Date) },
     });
-    expect(result).toMatchObject({ cuentaId: "c2", cuentaNombre: "Viaje a Japón", centimos: 2000, cuentaCreada: true });
+    expect(result).toMatchObject({
+      movimientos: [{ cuentaId: "c2", cuentaNombre: "Viaje a Japón", centimos: 2000, cuentaCreada: true }],
+    });
   });
 
   it("registrarAhorro acepta un importe negativo como retirada", async () => {
@@ -365,9 +408,9 @@ describe("createAssistantTools", () => {
     );
 
     expect(movimientoAhorroCreate).toHaveBeenCalledWith({
-      data: { cuentaId: "c1", centimos: -1500, concepto: null },
+      data: { cuentaId: "c1", centimos: -1500, concepto: null, fecha: expect.any(Date) },
     });
-    expect(result).toMatchObject({ centimos: -1500 });
+    expect(result).toMatchObject({ movimientos: [{ centimos: -1500 }] });
   });
 
   it("registrarAhorro rechaza un importe que redondea a cero", async () => {
@@ -424,7 +467,7 @@ describe("createAssistantTools", () => {
       { toolCallId: "c", messages: [], context: undefined },
     );
     expect(movimientoAhorroCreate).toHaveBeenCalled();
-    expect(result).toMatchObject({ cuentaId: "c1" });
+    expect(result).toMatchObject({ movimientos: [{ cuentaId: "c1" }] });
   });
 
   it("editarEvento busca solo entre eventos futuros (hoy incluido) y cambia los campos dados", async () => {

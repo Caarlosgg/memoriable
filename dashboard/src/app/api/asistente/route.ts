@@ -11,12 +11,26 @@ import { toAssistantSources, buildContextBlock, buildSystemPrompt, type Assistan
 import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
 
-export const maxDuration = 30;
+// Verificado en vivo: una petición con dos llamadas a herramienta con
+// `repetir` (crearEvento + registrarAhorro, 5 repeticiones cada una) tardó
+// 37s de punta a punta — por encima de los 30s que tenía antes. 60s es el
+// límite disponible en el plan gratuito de Vercel (Hobby) sin activar nada
+// de pago, y deja margen de sobra para ese caso real.
+export const maxDuration = 60;
 
 const DEFAULT_MAX_QUESTIONS_PER_DAY = 30;
 const SOURCES_PER_ANSWER = 5;
-/** Turnos de herramienta que se dejan encadenar antes de forzar la respuesta final. */
-const MAX_TOOL_STEPS = 4;
+// Turnos de herramienta que se dejan encadenar antes de forzar la respuesta
+// final. Ya no es la defensa principal contra peticiones repetidas ("todos
+// los jueves durante 5 semanas") — para eso, crearEvento/registrarAhorro
+// tienen su propio parámetro `repetir` que crea toda la serie en UNA
+// llamada (ver assistantTools.ts). Subir esto mucho para compensar un
+// bucle de llamadas manual resultó contraproducente: cada llamada a
+// herramienta es una ida y vuelta completa a Groq, y con varias seguidas
+// se verificó en vivo que la respuesta podía quedarse colgada mucho más
+// allá de `maxDuration`. 8 deja margen para combinar un puñado de
+// acciones distintas en un turno sin ese riesgo.
+const MAX_TOOL_STEPS = 8;
 
 type AssistantMessage = UIMessage<
   { sources?: AssistantSource[]; conversationId?: string },

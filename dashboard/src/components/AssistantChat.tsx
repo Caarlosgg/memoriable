@@ -1,43 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
 import Link from "next/link";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import type { UIMessage, InferUITools, UIDataTypes } from "ai";
 import { MessageCircle, Send, CircleCheck, CalendarDays, PiggyBank, Pencil, Trash2 } from "lucide-react";
-import type { AssistantSource } from "@/lib/assistantContext";
-import type { AssistantTools } from "@/lib/assistantTools";
-import type { AssistantExchangeRecord, ConversationSummary } from "@/lib/assistantHistory";
 import { presentCategory } from "@/lib/categories";
-import { titleFromQuestion } from "@/lib/conversationTitle";
 import { formatEventDate } from "@/lib/format";
 import { formatCentimos } from "@/lib/money";
-import { loadConversation } from "@/app/(dashboard)/asistente/actions";
+import { useAssistant, type AssistantMessage } from "./AssistantProvider";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { AssistantMarkdown } from "./AssistantMarkdown";
 import { ConversationSidebar } from "./ConversationSidebar";
-
-type AssistantMessage = UIMessage<
-  { sources?: AssistantSource[]; conversationId?: string },
-  UIDataTypes,
-  InferUITools<AssistantTools>
->;
-
-/**
- * Reconstruye los intercambios guardados de una conversación como la
- * secuencia de mensajes que `useChat` espera, en orden. No lleva
- * `metadata.sources`: el historial solo guarda pregunta+respuesta en
- * texto, no qué notas se usaron — al recuperarlo no se muestra el
- * desplegable de fuentes (aceptable: son respuestas ya dadas).
- */
-function exchangesToMessages(exchanges: AssistantExchangeRecord[]): AssistantMessage[] {
-  return exchanges.flatMap((exchange) => [
-    { id: `${exchange.id}-q`, role: "user" as const, parts: [{ type: "text" as const, text: exchange.pregunta }] },
-    { id: `${exchange.id}-a`, role: "assistant" as const, parts: [{ type: "text" as const, text: exchange.respuesta }] },
-  ]);
-}
 
 const SUGGESTED_QUESTIONS = [
   "¿Qué tengo pendiente?",
@@ -106,17 +78,20 @@ function CrearEventoResult({ part }: { part: CrearEventoPart }) {
     return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Guardando…</div>;
   }
 
-  const e = part.output;
+  const { eventos } = part.output;
   return (
     <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
       <p className="flex items-center gap-1.5 font-medium text-ink">
         <CircleCheck aria-hidden size={14} className="text-accent" />
-        <CalendarDays aria-hidden size={13} className="text-accent-strong" /> Evento guardado
+        <CalendarDays aria-hidden size={13} className="text-accent-strong" />
+        {eventos.length > 1 ? `${eventos.length} eventos guardados` : "Evento guardado"}
       </p>
-      <p className="mt-0.5 text-muted">
-        {e.titulo} · {formatEventDate(e.fechaInicio)}
-        {e.ubicacion ? ` · ${e.ubicacion}` : ""}
-      </p>
+      {eventos.map((e) => (
+        <p key={e.id} className="mt-0.5 text-muted">
+          {e.titulo} · {formatEventDate(e.fechaInicio)}
+          {e.ubicacion ? ` · ${e.ubicacion}` : ""}
+        </p>
+      ))}
     </div>
   );
 }
@@ -174,19 +149,29 @@ function RegistrarAhorroResultCard({ part }: { part: RegistrarAhorroPart }) {
     return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Guardando…</div>;
   }
 
-  const r = part.output;
-  const esIngreso = r.centimos >= 0;
+  const { movimientos } = part.output;
+  const esIngreso = movimientos[0]!.centimos >= 0;
+  const totalCentimos = movimientos.reduce((sum, m) => sum + m.centimos, 0);
   return (
     <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
       <p className="flex items-center gap-1.5 font-medium text-ink">
         <CircleCheck aria-hidden size={14} className="text-accent" />
-        <PiggyBank aria-hidden size={13} className="text-accent-strong" /> Movimiento guardado
+        <PiggyBank aria-hidden size={13} className="text-accent-strong" />
+        {movimientos.length > 1 ? `${movimientos.length} movimientos guardados` : "Movimiento guardado"}
       </p>
-      <p className="mt-0.5 text-muted">
-        {esIngreso ? "+" : ""}
-        {formatCentimos(r.centimos)} en {r.cuentaNombre}
-        {r.cuentaCreada ? " (cuenta nueva)" : ""}
-      </p>
+      {movimientos.length > 1 ? (
+        <p className="mt-0.5 text-muted">
+          {esIngreso ? "+" : ""}
+          {formatCentimos(totalCentimos)} en total en {movimientos[0]!.cuentaNombre}
+          {movimientos[0]!.cuentaCreada ? " (cuenta nueva)" : ""}
+        </p>
+      ) : (
+        <p className="mt-0.5 text-muted">
+          {esIngreso ? "+" : ""}
+          {formatCentimos(movimientos[0]!.centimos)} en {movimientos[0]!.cuentaNombre}
+          {movimientos[0]!.cuentaCreada ? " (cuenta nueva)" : ""}
+        </p>
+      )}
     </div>
   );
 }
@@ -289,56 +274,26 @@ function ConsultarAhorrosResultCard({ part }: { part: ConsultarAhorrosPart }) {
   );
 }
 
-export function AssistantChat({ initialConversations = [] }: { initialConversations?: ConversationSummary[] }) {
-  const [input, setInput] = useState("");
-  const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID());
-  const [conversations, setConversations] = useState<ConversationSummary[]>(initialConversations);
-  // La pregunta que se acaba de mandar: se usa para titular la conversación
-  // localmente en cuanto la respuesta termina, sin esperar a recargar.
-  const pendingQuestionRef = useRef("");
-
-  const { messages, sendMessage, setMessages, status, error, clearError } = useChat<AssistantMessage>({
-    transport: new DefaultChatTransport({ api: "/api/asistente", body: { conversationId } }),
-    onFinish: ({ message }) => {
-      const savedId = message.metadata?.conversationId ?? conversationId;
-      const question = pendingQuestionRef.current;
-      if (!question) return;
-
-      setConversations((prev) => {
-        const rest = prev.filter((c) => c.id !== savedId);
-        const existing = prev.find((c) => c.id === savedId);
-        return [
-          { id: savedId, titulo: existing?.titulo ?? titleFromQuestion(question), updatedAt: new Date() },
-          ...rest,
-        ];
-      });
-    },
-  });
-
-  const isBusy = status === "submitted" || status === "streaming";
-
-  function handleSend(text: string) {
-    const trimmed = text.trim();
-    if (trimmed === "" || isBusy) return;
-    clearError();
-    pendingQuestionRef.current = trimmed;
-    sendMessage({ text: trimmed });
-    setInput("");
-  }
-
-  function handleNewConversation() {
-    setConversationId(crypto.randomUUID());
-    setMessages([]);
-    clearError();
-  }
-
-  async function handleSelectConversation(id: string) {
-    if (id === conversationId) return;
-    clearError();
-    const exchanges = await loadConversation(id);
-    setConversationId(id);
-    setMessages(exchangesToMessages(exchanges));
-  }
+/**
+ * Puramente presentacional: todo el estado (useChat, conversación activa,
+ * lista de conversaciones) vive en `AssistantProvider`, montado en el
+ * layout del dashboard — así sobrevive a navegar a otra pantalla mientras
+ * el Asistente sigue respondiendo (ver el comentario allí).
+ */
+export function AssistantChat() {
+  const {
+    messages,
+    isBusy,
+    error,
+    clearError,
+    conversationId,
+    conversations,
+    input,
+    setInput,
+    handleSend,
+    handleNewConversation,
+    handleSelectConversation,
+  } = useAssistant();
 
   return (
     <section aria-labelledby="asistente-heading" className="flex flex-col gap-4">

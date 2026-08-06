@@ -33,6 +33,10 @@ export interface CrearEventoResult {
   ubicacion: string | null;
 }
 
+export interface CrearEventoToolResult {
+  eventos: CrearEventoResult[];
+}
+
 export interface CompletarTareaResult {
   id: string;
   resumen: string;
@@ -43,8 +47,13 @@ export interface RegistrarAhorroResult {
   cuentaId: string;
   cuentaNombre: string;
   centimos: number;
+  fecha: string;
   /** Si no existía ninguna cuenta parecida y se creó una nueva sobre la marcha. */
   cuentaCreada: boolean;
+}
+
+export interface RegistrarAhorroToolResult {
+  movimientos: RegistrarAhorroResult[];
 }
 
 export interface EditarEventoResult {
@@ -62,6 +71,49 @@ export interface BorrarEventoResult {
 export interface ConsultarAhorrosResult {
   cuentas: { nombre: string; saldoCentimos: number }[];
   totalCentimos: number;
+}
+
+const FRECUENCIAS = ["DIARIA", "SEMANAL", "QUINCENAL", "MENSUAL"] as const;
+type Frecuencia = (typeof FRECUENCIAS)[number];
+
+/**
+ * Parámetro opcional compartido por `crearEvento` y `registrarAhorro` para
+ * peticiones repetidas/periódicas ("todos los jueves durante 5 semanas").
+ * Antes, esto se dejaba en manos del modelo: llamar a la tool N veces
+ * seguidas en el mismo turno. En la práctica, con N grande (5-10 llamadas)
+ * el modelo se quedaba a medias o incluso colgaba la respuesta entera
+ * (verificado en vivo) — cada llamada a herramienta es un turno completo de
+ * ida y vuelta a Groq, y encadenar muchos es lento y frágil. Con esto, UNA
+ * sola llamada crea toda la serie de una vez, en el propio servidor.
+ */
+const RepetirSchema = z.object({
+  frecuencia: z.enum(FRECUENCIAS).describe("Cada cuánto se repite: diaria, semanal, quincenal o mensual."),
+  veces: z
+    .number()
+    .int()
+    .min(2)
+    .max(20)
+    .describe("Número total de repeticiones, incluyendo la primera (p. ej. 5 para \"durante 5 semanas\")."),
+});
+
+/** Fecha de la repetición número `i` (0 = la primera, sin desplazar) a partir de una fecha base. */
+function fechaRepeticion(base: Date, frecuencia: Frecuencia, i: number): Date {
+  const d = new Date(base);
+  switch (frecuencia) {
+    case "DIARIA":
+      d.setDate(d.getDate() + i);
+      break;
+    case "SEMANAL":
+      d.setDate(d.getDate() + i * 7);
+      break;
+    case "QUINCENAL":
+      d.setDate(d.getDate() + i * 14);
+      break;
+    case "MENSUAL":
+      d.setMonth(d.getMonth() + i);
+      break;
+  }
+  return d;
 }
 
 function isPendienteAccionable(m: Message): boolean {
@@ -169,7 +221,7 @@ export function createAssistantTools(userId: string) {
   return {
     crearNota: tool({
       description:
-        "Crea y guarda una nota, tarea o recordatorio nuevo, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas. Si lo que pide tiene fecha y hora concretas (una cita, quedar con alguien), usa crearEvento en su lugar.",
+        "Crea y guarda una nota, tarea o recordatorio nuevo SIN fecha/hora concreta, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas. NO la uses si lo que pide tiene fecha/hora concreta (una cita, quedar con alguien) o se repite periódicamente ('todos los jueves', 'cada semana') — para eso usa crearEvento (con su parámetro repetir si se repite), aunque suene a 'tarea'.",
       inputSchema: z.object({
         contenido: z
           .string()
@@ -203,21 +255,24 @@ export function createAssistantTools(userId: string) {
     }),
     crearEvento: tool({
       description:
-        "Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara (\"quedar el jueves a las 5\", \"cita con el médico el 12 a las 10\"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado.",
+        "Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara (\"quedar el jueves a las 5\", \"cita con el médico el 12 a las 10\"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado. Si es algo que se repite en el tiempo (\"todos los jueves durante 5 semanas\", \"cada día esta semana\"), usa el parámetro `repetir` en ESTA MISMA llamada para crear toda la serie de una vez — no llames a la tool varias veces seguidas para eso.",
       inputSchema: z.object({
         titulo: z.string().min(1).describe("Título corto del evento."),
         fechaInicio: z
           .string()
-          .describe("Fecha y hora de inicio en formato ISO 8601 (con zona horaria si se conoce)."),
-        fechaFin: z.string().optional().describe("Fecha y hora de fin, solo si el usuario la menciona."),
+          .describe("Fecha y hora de inicio de la PRIMERA ocurrencia, en formato ISO 8601 (con zona horaria si se conoce)."),
+        fechaFin: z.string().optional().describe("Fecha y hora de fin de la primera ocurrencia, solo si el usuario la menciona."),
         descripcion: z.string().optional(),
         ubicacion: z.string().optional(),
         participantes: z
           .array(z.string())
           .optional()
           .describe("Nombres de las personas mencionadas, si las hay."),
+        repetir: RepetirSchema.optional().describe(
+          "Solo si el evento se repite periódicamente. Crea `veces` eventos en total, uno por cada `frecuencia` a partir de fechaInicio/fechaFin.",
+        ),
       }),
-      execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes }) => {
+      execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes, repetir }) => {
         const fecha = new Date(fechaInicio);
         if (Number.isNaN(fecha.getTime())) {
           throw new Error("No he entendido bien la fecha. ¿Puedes decírmela de otra forma (día y hora)?");
@@ -227,23 +282,40 @@ export function createAssistantTools(userId: string) {
           throw new Error("No he entendido bien la fecha de fin.");
         }
 
-        let evento;
+        const repeticiones = repetir?.veces ?? 1;
+        const eventos: CrearEventoResult[] = [];
         try {
-          evento = await prisma.evento.create({
-            data: {
-              userId,
-              titulo,
-              fechaInicio: fecha,
-              fechaFin: fin,
-              descripcion: descripcion ?? null,
-              ubicacion: ubicacion ?? null,
-              participantes: participantes ?? [],
-            },
-          });
+          // Secuencial (no Promise.all): son pocas filas (máx. 20) y así el
+          // pool de conexiones de Postgres (PgBouncer en modo transacción,
+          // ver DATABASE_URL) no recibe una ráfaga simultánea por una sola
+          // petición del Asistente.
+          for (let i = 0; i < repeticiones; i++) {
+            const evento = await prisma.evento.create({
+              data: {
+                userId,
+                titulo,
+                fechaInicio: repetir ? fechaRepeticion(fecha, repetir.frecuencia, i) : fecha,
+                fechaFin: fin ? (repetir ? fechaRepeticion(fin, repetir.frecuencia, i) : fin) : null,
+                descripcion: descripcion ?? null,
+                ubicacion: ubicacion ?? null,
+                participantes: participantes ?? [],
+              },
+            });
+            eventos.push({
+              id: evento.id,
+              titulo: evento.titulo,
+              fechaInicio: evento.fechaInicio.toISOString(),
+              ubicacion: evento.ubicacion,
+            });
+          }
         } catch (err) {
           console.error("La tool crearEvento no pudo guardar el evento:", err);
           Sentry.captureException(err);
-          throw new Error("No se ha podido guardar el evento. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            eventos.length > 0
+              ? `Se guardaron ${eventos.length} de ${repeticiones} eventos, pero hubo un error con el resto. Inténtalo de nuevo en un momento.`
+              : "No se ha podido guardar el evento. Inténtalo de nuevo en un momento.",
+          );
         }
 
         try {
@@ -252,12 +324,7 @@ export function createAssistantTools(userId: string) {
           console.error("No se pudo invalidar la caché tras crear el evento (no crítico):", err);
         }
 
-        const result: CrearEventoResult = {
-          id: evento.id,
-          titulo: evento.titulo,
-          fechaInicio: evento.fechaInicio.toISOString(),
-          ubicacion: evento.ubicacion,
-        };
+        const result: CrearEventoToolResult = { eventos };
         return result;
       },
     }),
@@ -304,7 +371,7 @@ export function createAssistantTools(userId: string) {
     }),
     registrarAhorro: tool({
       description:
-        "Apunta un ingreso o retirada en una cuenta de ahorro del usuario (\"he ahorrado 50€ en el fondo de emergencia\", \"he sacado 20€ del viaje\"). Si no existe ninguna cuenta con ese nombre, se crea sobre la marcha — no hace falta preguntar primero. Importe positivo para ingresos, negativo para retiradas.",
+        "Apunta un ingreso o retirada en una cuenta de ahorro del usuario (\"he ahorrado 50€ en el fondo de emergencia\", \"he sacado 20€ del viaje\"). Si no existe ninguna cuenta con ese nombre, se crea sobre la marcha — no hace falta preguntar primero. Importe positivo para ingresos, negativo para retiradas. Si el usuario pide que se repita periódicamente (\"que se me añadan 400€ todos los jueves durante 5 semanas\"), usa el parámetro `repetir` en ESTA MISMA llamada para registrar toda la serie de una vez — no llames a la tool varias veces seguidas para eso.",
       inputSchema: z.object({
         cuenta: z
           .string()
@@ -314,8 +381,11 @@ export function createAssistantTools(userId: string) {
           .number()
           .describe("Cantidad en euros. Positiva si es un ingreso/ahorro, negativa si es una retirada/gasto."),
         concepto: z.string().optional().describe("Breve descripción del movimiento, si se menciona."),
+        repetir: RepetirSchema.optional().describe(
+          "Solo si el movimiento se repite periódicamente. Registra `veces` movimientos idénticos en total, uno por cada `frecuencia` a partir de hoy.",
+        ),
       }),
-      execute: async ({ cuenta: nombreCuenta, importe, concepto }) => {
+      execute: async ({ cuenta: nombreCuenta, importe, concepto, repetir }) => {
         const centimos = Math.round(importe * 100);
         if (!Number.isFinite(centimos) || centimos === 0) {
           throw new Error("No he entendido el importe. ¿Cuánto es, en euros?");
@@ -333,14 +403,33 @@ export function createAssistantTools(userId: string) {
           throw new Error("No he podido buscar tus cuentas de ahorro. Inténtalo de nuevo en un momento.");
         }
 
+        const repeticiones = repetir?.veces ?? 1;
+        const ahora = new Date();
+        const movimientos: RegistrarAhorroResult[] = [];
         try {
-          await prisma.movimientoAhorro.create({
-            data: { cuentaId: cuenta.id, centimos, concepto: concepto?.trim() || null },
-          });
+          // Secuencial por el mismo motivo que en crearEvento: pocas filas,
+          // sin ráfaga simultánea contra el pool de PgBouncer.
+          for (let i = 0; i < repeticiones; i++) {
+            const fecha = repetir ? fechaRepeticion(ahora, repetir.frecuencia, i) : ahora;
+            const movimiento = await prisma.movimientoAhorro.create({
+              data: { cuentaId: cuenta.id, centimos, concepto: concepto?.trim() || null, fecha },
+            });
+            movimientos.push({
+              cuentaId: cuenta.id,
+              cuentaNombre: cuenta.nombre,
+              centimos,
+              fecha: movimiento.fecha.toISOString(),
+              cuentaCreada: cuentaCreada && i === 0,
+            });
+          }
         } catch (err) {
           console.error("La tool registrarAhorro no pudo guardar el movimiento:", err);
           Sentry.captureException(err);
-          throw new Error("No se ha podido guardar el movimiento. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            movimientos.length > 0
+              ? `Se guardaron ${movimientos.length} de ${repeticiones} movimientos, pero hubo un error con el resto. Inténtalo de nuevo en un momento.`
+              : "No se ha podido guardar el movimiento. Inténtalo de nuevo en un momento.",
+          );
         }
 
         try {
@@ -349,12 +438,7 @@ export function createAssistantTools(userId: string) {
           console.error("No se pudo invalidar la caché tras registrar el ahorro (no crítico):", err);
         }
 
-        const result: RegistrarAhorroResult = {
-          cuentaId: cuenta.id,
-          cuentaNombre: cuenta.nombre,
-          centimos,
-          cuentaCreada,
-        };
+        const result: RegistrarAhorroToolResult = { movimientos };
         return result;
       },
     }),
