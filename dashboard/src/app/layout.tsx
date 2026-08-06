@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import "./globals.css";
@@ -58,6 +60,10 @@ export default function RootLayout({
         <OfflineBanner />
         {children}
         <ServiceWorkerRegister />
+        {/* Gratis en el plan de Vercel ya usado; no necesitan ninguna clave —
+            se activan solas al desplegar. Sin efecto ni coste en local/dev. */}
+        <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
