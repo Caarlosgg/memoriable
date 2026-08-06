@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { verifySession } from "@/lib/dal";
-import { getCuentasConSaldo } from "@/lib/ahorros";
+import { getCuentasConSaldo, getTendenciasPorCuenta, describeTrend } from "@/lib/ahorros";
 import { AhorrosSection } from "@/components/ahorros/AhorrosSection";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 
@@ -9,8 +9,12 @@ export const metadata: Metadata = { title: "Ahorros · MemorIAble" };
 
 async function AhorrosData() {
   const userId = await verifySession();
-  const cuentas = await getCuentasConSaldo(userId);
-  return <AhorrosSection cuentas={cuentas} />;
+  const [cuentas, tendencias] = await Promise.all([getCuentasConSaldo(userId), getTendenciasPorCuenta(userId)]);
+  const cuentasConTendencia = cuentas.map((c) => ({
+    ...c,
+    tendencia: describeTrend(tendencias.get(c.id) ?? { esteMesCentimos: 0, mesAnteriorCentimos: 0 }),
+  }));
+  return <AhorrosSection cuentas={cuentasConTendencia} />;
 }
 
 function AhorrosSkeleton() {

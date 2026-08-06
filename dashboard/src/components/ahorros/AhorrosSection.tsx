@@ -16,7 +16,7 @@ import { CuentaDetailDialog } from "./CuentaDetailDialog";
  * cada una se calcula del historial de movimientos (ver lib/ahorros.ts),
  * nunca se guarda suelto.
  */
-export function AhorrosSection({ cuentas }: { cuentas: CuentaConSaldo[] }) {
+export function AhorrosSection({ cuentas }: { cuentas: (CuentaConSaldo & { tendencia: string | null })[] }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [nombre, setNombre] = useState("");
@@ -98,6 +98,13 @@ export function AhorrosSection({ cuentas }: { cuentas: CuentaConSaldo[] }) {
                         <Target aria-hidden size={10} /> {progreso.toFixed(0)}% de {formatCentimos(cuenta.objetivoCentimos!)}
                       </p>
                     </div>
+                  )}
+                  {cuenta.tendencia && (
+                    <p
+                      className={`text-[11px] font-medium ${cuenta.tendencia.startsWith("↑") ? "text-accent-strong" : "text-muted"}`}
+                    >
+                      {cuenta.tendencia}
+                    </p>
                   )}
                 </button>
               </CuentaDetailDialog>
