@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Evento } from "@prisma/client";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { buildMonthGrid, dateKey, groupByDay } from "@/lib/calendar";
+import { buildMonthGrid, dateKey, groupByDayRange } from "@/lib/calendar";
 import { Button } from "../ui/button";
 import { EventDetailDialog } from "../EventDetailDialog";
 
@@ -39,9 +39,13 @@ export function CalendarView({ eventos }: { eventos: Evento[] }) {
   }
 
   const grid = buildMonthGrid(cursor.getUTCFullYear(), cursor.getUTCMonth());
-  const byDay = groupByDay(
+  // "Calendario por periodos": un evento con fechaFin en otro día aparece
+  // en TODOS los días que ocupa, no solo el primero — antes solo se veía
+  // el día de inicio, así que una actividad de varios días "desaparecía"
+  // el resto del periodo.
+  const byDay = groupByDayRange(
     eventos.filter((e) => !hiddenIds.has(e.id)),
-    (e) => e.fechaInicio,
+    (e) => ({ from: e.fechaInicio, to: e.fechaFin ?? e.fechaInicio }),
   );
 
   function goToMonth(delta: number) {

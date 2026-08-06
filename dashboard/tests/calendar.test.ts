@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateKey, groupByDay, buildMonthGrid, upcomingRange, dayLabel } from "../src/lib/calendar";
+import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, upcomingRange, dayLabel } from "../src/lib/calendar";
 
 describe("dateKey", () => {
   it("da la fecha en formato YYYY-MM-DD en UTC", () => {
@@ -22,6 +22,48 @@ describe("groupByDay", () => {
 
   it("devuelve un Map vacío para una lista vacía", () => {
     expect(groupByDay([], (i: { fecha: Date }) => i.fecha).size).toBe(0);
+  });
+});
+
+describe("groupByDayRange", () => {
+  it("un item de un solo día (from === to) aparece solo bajo esa clave", () => {
+    const items = [{ id: "a", from: new Date("2026-08-05T10:00:00.000Z"), to: new Date("2026-08-05T10:00:00.000Z") }];
+    const grouped = groupByDayRange(items, (i) => ({ from: i.from, to: i.to }));
+    expect([...grouped.keys()]).toEqual(["2026-08-05"]);
+  });
+
+  it("un item de varios días aparece bajo CADA día del rango, inclusive", () => {
+    const items = [{ id: "vacaciones", from: new Date("2026-08-10T00:00:00.000Z"), to: new Date("2026-08-13T00:00:00.000Z") }];
+    const grouped = groupByDayRange(items, (i) => ({ from: i.from, to: i.to }));
+    expect([...grouped.keys()]).toEqual(["2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13"]);
+    for (const key of grouped.keys()) {
+      expect(grouped.get(key)!.map((i) => i.id)).toEqual(["vacaciones"]);
+    }
+  });
+
+  it("varios items pueden compartir el mismo día, conservando orden de inserción", () => {
+    const items = [
+      { id: "a", from: new Date("2026-08-05T00:00:00.000Z"), to: new Date("2026-08-06T00:00:00.000Z") },
+      { id: "b", from: new Date("2026-08-06T00:00:00.000Z"), to: new Date("2026-08-06T00:00:00.000Z") },
+    ];
+    const grouped = groupByDayRange(items, (i) => ({ from: i.from, to: i.to }));
+    expect(grouped.get("2026-08-06")!.map((i) => i.id)).toEqual(["a", "b"]);
+  });
+
+  it("un rango invertido (to antes que from, dato mal introducido) se trata como un solo día en vez de desaparecer", () => {
+    const items = [{ id: "a", from: new Date("2026-08-10T00:00:00.000Z"), to: new Date("2026-08-01T00:00:00.000Z") }];
+    const grouped = groupByDayRange(items, (i) => ({ from: i.from, to: i.to }));
+    expect([...grouped.keys()]).toEqual(["2026-08-10"]);
+  });
+
+  it("un rango disparatadamente largo se recorta a un techo defensivo (no cuelga el render)", () => {
+    const items = [{ id: "a", from: new Date("2020-01-01T00:00:00.000Z"), to: new Date("2030-01-01T00:00:00.000Z") }];
+    const grouped = groupByDayRange(items, (i) => ({ from: i.from, to: i.to }));
+    expect(grouped.size).toBeLessThanOrEqual(366);
+  });
+
+  it("devuelve un Map vacío para una lista vacía", () => {
+    expect(groupByDayRange([], (i: { from: Date; to: Date }) => i).size).toBe(0);
   });
 });
 

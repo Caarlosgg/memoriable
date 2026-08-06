@@ -22,6 +22,39 @@ export function groupByDay<T>(items: T[], getDate: (item: T) => Date): Map<strin
   return map;
 }
 
+/** Techo defensivo al expandir un rango de días — un dato mal introducido (fechaFin años después) no debe colgar el render. */
+const MAX_RANGE_SPAN_DAYS = 366;
+
+/**
+ * Igual que `groupByDay`, pero para actividades que ocupan un RANGO de
+ * días (Tier "calendario por periodos"): el item aparece bajo la clave de
+ * CADA día que ocupa, de `from` a `to` inclusive — no solo el primero.
+ * `to < from` (dato mal introducido) se trata como un rango de un solo
+ * día en vez de desaparecer silenciosamente.
+ */
+export function groupByDayRange<T>(
+  items: readonly T[],
+  getRange: (item: T) => { from: Date; to: Date },
+): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const { from, to: rawTo } = getRange(item);
+    const to = rawTo < from ? from : rawTo;
+
+    const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+    const endKey = dateKey(to);
+    for (let i = 0; i < MAX_RANGE_SPAN_DAYS; i++) {
+      const key = dateKey(cursor);
+      const arr = map.get(key);
+      if (arr) arr.push(item);
+      else map.set(key, [item]);
+      if (key >= endKey) break;
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+  return map;
+}
+
 export interface MonthDay {
   date: Date;
   /** Falso para los días de relleno del mes anterior/siguiente que completan la cuadrícula. */
