@@ -214,6 +214,44 @@ describe("createAssistantTools", () => {
     expect(eventoCreate).not.toHaveBeenCalled();
   });
 
+  it("crearEvento sin mencionar repetición, guarda recurrencia como null", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await tools.crearEvento.execute!(
+      { titulo: "Cita con el médico", fechaInicio: "2026-08-12T10:00:00.000Z" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ recurrencia: null, recurrenciaHasta: null }) }),
+    );
+  });
+
+  it("crearEvento con recurrencia, la guarda junto con recurrenciaHasta", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await tools.crearEvento.execute!(
+      {
+        titulo: "Reunión de equipo",
+        fechaInicio: "2026-08-12T10:00:00.000Z",
+        recurrencia: "SEMANAL",
+        recurrenciaHasta: "2026-12-31T00:00:00.000Z",
+      },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recurrencia: "SEMANAL",
+          recurrenciaHasta: new Date("2026-12-31T00:00:00.000Z"),
+        }),
+      }),
+    );
+  });
+
   it("crearEvento: ante un fallo al guardar, lanza un mensaje en español sin detalles internos", async () => {
     eventoCreate.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
     const { createAssistantTools } = await import("../src/lib/assistantTools");
@@ -490,6 +528,34 @@ describe("createAssistantTools", () => {
       ),
     ).rejects.toThrow(/qué cambiar/);
     expect(eventoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("editarEvento cambia la recurrencia cuando se pide", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    eventoUpdate.mockResolvedValue({ ...fakeEvento, recurrencia: "SEMANAL" });
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await tools.editarEvento.execute!(
+      { descripcion: "cita con el médico", recurrenciaNueva: "SEMANAL" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoUpdate).toHaveBeenCalledWith({ where: { id: "e1" }, data: { recurrencia: "SEMANAL" } });
+  });
+
+  it("editarEvento con recurrenciaNueva NINGUNA, quita la repetición", async () => {
+    eventoFindMany.mockResolvedValue([{ ...fakeEvento, recurrencia: "SEMANAL" }]);
+    eventoUpdate.mockResolvedValue({ ...fakeEvento, recurrencia: null });
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await tools.editarEvento.execute!(
+      { descripcion: "cita con el médico", recurrenciaNueva: "NINGUNA" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoUpdate).toHaveBeenCalledWith({ where: { id: "e1" }, data: { recurrencia: null } });
   });
 
   it("editarEvento rechaza una fecha nueva que no se puede interpretar", async () => {

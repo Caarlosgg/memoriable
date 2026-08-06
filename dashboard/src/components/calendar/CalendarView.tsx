@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Evento } from "@prisma/client";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { buildMonthGrid, dateKey, groupByDayRange } from "@/lib/calendar";
+import { ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
+import { buildMonthGrid, dateKey, groupByDayRange, expandRecurrence } from "@/lib/calendar";
 import { Button } from "../ui/button";
 import { EventDetailDialog } from "../EventDetailDialog";
 
@@ -39,14 +39,30 @@ export function CalendarView({ eventos }: { eventos: Evento[] }) {
   }
 
   const grid = buildMonthGrid(cursor.getUTCFullYear(), cursor.getUTCMonth());
+  const rangeStart = grid[0]!.date;
+  const rangeEnd = new Date(grid[41]!.date);
+  rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1); // exclusivo: cubre también el último día de la cuadrícula
+
+  // Cada evento se "expande" a sus ocurrencias reales dentro de la
+  // cuadrícula visible (una sola si no repite, ver expandRecurrence) y
+  // cada ocurrencia conserva la duración original (fechaFin - fechaInicio)
+  // — así un evento recurrente que además dura varios días sigue
+  // "rellenando" cada uno de esos días en cada repetición.
+  const occurrences = eventos
+    .filter((e) => !hiddenIds.has(e.id))
+    .flatMap((evento) => {
+      const duracionMs = evento.fechaFin ? evento.fechaFin.getTime() - evento.fechaInicio.getTime() : 0;
+      return expandRecurrence(evento, rangeStart, rangeEnd).map((inicio) => ({
+        evento,
+        from: inicio,
+        to: duracionMs > 0 ? new Date(inicio.getTime() + duracionMs) : inicio,
+      }));
+    });
   // "Calendario por periodos": un evento con fechaFin en otro día aparece
   // en TODOS los días que ocupa, no solo el primero — antes solo se veía
   // el día de inicio, así que una actividad de varios días "desaparecía"
   // el resto del periodo.
-  const byDay = groupByDayRange(
-    eventos.filter((e) => !hiddenIds.has(e.id)),
-    (e) => ({ from: e.fechaInicio, to: e.fechaFin ?? e.fechaInicio }),
-  );
+  const byDay = groupByDayRange(occurrences, (o) => ({ from: o.from, to: o.to }));
 
   function goToMonth(delta: number) {
     setCursor((prev) => new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth() + delta, 1)));
@@ -111,19 +127,20 @@ export function CalendarView({ eventos }: { eventos: Evento[] }) {
                 {day.date.getUTCDate()}
               </span>
               <div className="flex flex-col gap-0.5">
-                {dayEventos.slice(0, MAX_CHIPS_PER_DAY).map((evento) => (
+                {dayEventos.slice(0, MAX_CHIPS_PER_DAY).map((occurrence) => (
                   <EventDetailDialog
-                    key={evento.id}
-                    evento={evento}
+                    key={`${occurrence.evento.id}-${dateKey(occurrence.from)}`}
+                    evento={occurrence.evento}
                     onChanged={() => router.refresh()}
                     onDeleted={handleDeleted}
                     onUndoDelete={handleUndoDelete}
                   >
                     <button
                       type="button"
-                      className="truncate rounded bg-accent-soft px-1 py-0.5 text-left text-[11px] font-medium text-accent-strong transition-[filter] hover:brightness-95"
+                      className="flex w-full items-center gap-1 truncate rounded bg-accent-soft px-1 py-0.5 text-left text-[11px] font-medium text-accent-strong transition-[filter] hover:brightness-95"
                     >
-                      {evento.titulo}
+                      {occurrence.evento.recurrencia && <Repeat aria-hidden size={10} className="shrink-0" />}
+                      <span className="truncate">{occurrence.evento.titulo}</span>
                     </button>
                   </EventDetailDialog>
                 ))}

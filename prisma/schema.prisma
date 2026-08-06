@@ -152,6 +152,18 @@ model Message {
   @@map("messages")
 }
 
+/// Frecuencia de repetición de un evento (calendario por periodos/tareas
+/// recurrentes). La quincenal es "cada 2 semanas", no "dos veces al mes"
+/// (esa ambigüedad de "quincenal" existe en español — se elige la lectura
+/// de intervalo fijo porque es la que se puede calcular sin casos
+/// especiales de fin de mes).
+enum Recurrencia {
+  DIARIA
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+}
+
 /// Evento del calendario (Fase I): cita/recordatorio con fecha y hora,
 /// creado a mano desde /calendario o por el Asistente cuando el usuario
 /// describe algo con fecha clara ("quedar el jueves a las 5"). Distinto
@@ -169,6 +181,20 @@ model Evento {
   /// proporcional al uso de una app de notas personal.
   participantes String[] @default([])
   createdAt   DateTime @default(now())
+
+  /// Recurrencia (calendario por periodos): null = evento suelto, sin
+  /// repetir (comportamiento de siempre). Con ella, las repeticiones NO se
+  /// guardan como filas aparte — se calculan al vuelo a partir de esta
+  /// fila "plantilla" (ver `lib/calendar.ts: expandRecurrence`). Editar
+  /// esta fila (título, hora, recurrencia) cambia TODA la serie a la vez;
+  /// no hay "solo esta repetición" en v1 — desproporcionado para uso
+  /// personal, y sin filas por repetición no hay dónde guardar esa
+  /// excepción sin complicar el modelo.
+  recurrencia      Recurrencia?
+  /// Última fecha (inclusive) hasta la que se generan repeticiones. Null =
+  /// sin fecha límite — `expandRecurrence` igualmente para en el borde del
+  /// rango visible (el mes que se está pintando), nunca genera infinitas.
+  recurrenciaHasta DateTime?
 
   userId String
   user   User   @relation(fields: [userId], references: [id])

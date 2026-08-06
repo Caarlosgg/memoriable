@@ -203,7 +203,7 @@ export function createAssistantTools(userId: string) {
     }),
     crearEvento: tool({
       description:
-        "Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara (\"quedar el jueves a las 5\", \"cita con el médico el 12 a las 10\"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado.",
+        "Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara (\"quedar el jueves a las 5\", \"cita con el médico el 12 a las 10\"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado. Si además dice que se repite (\"todos los días\", \"cada semana\", \"cada 15 días\", \"una vez al mes\"), rellena recurrencia — si no dice nada de repetirse, deja recurrencia sin poner.",
       inputSchema: z.object({
         titulo: z.string().min(1).describe("Título corto del evento."),
         fechaInicio: z
@@ -216,8 +216,16 @@ export function createAssistantTools(userId: string) {
           .array(z.string())
           .optional()
           .describe("Nombres de las personas mencionadas, si las hay."),
+        recurrencia: z
+          .enum(["DIARIA", "SEMANAL", "QUINCENAL", "MENSUAL"])
+          .optional()
+          .describe("Solo si el usuario dice explícitamente que se repite. QUINCENAL = cada 2 semanas."),
+        recurrenciaHasta: z
+          .string()
+          .optional()
+          .describe("Fecha (ISO 8601) hasta la que repetir, solo si el usuario la menciona (\"hasta final de mes\", \"hasta diciembre\"). Solo tiene efecto junto con recurrencia."),
       }),
-      execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes }) => {
+      execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes, recurrencia, recurrenciaHasta }) => {
         const fecha = new Date(fechaInicio);
         if (Number.isNaN(fecha.getTime())) {
           throw new Error("No he entendido bien la fecha. ¿Puedes decírmela de otra forma (día y hora)?");
@@ -225,6 +233,11 @@ export function createAssistantTools(userId: string) {
         const fin = fechaFin ? new Date(fechaFin) : null;
         if (fin && Number.isNaN(fin.getTime())) {
           throw new Error("No he entendido bien la fecha de fin.");
+        }
+        let hasta: Date | null = null;
+        if (recurrencia && recurrenciaHasta) {
+          hasta = new Date(recurrenciaHasta);
+          if (Number.isNaN(hasta.getTime())) throw new Error("No he entendido bien hasta cuándo se repite.");
         }
 
         let evento;
@@ -238,6 +251,8 @@ export function createAssistantTools(userId: string) {
               descripcion: descripcion ?? null,
               ubicacion: ubicacion ?? null,
               participantes: participantes ?? [],
+              recurrencia: recurrencia ?? null,
+              recurrenciaHasta: hasta,
             },
           });
         } catch (err) {
@@ -360,7 +375,7 @@ export function createAssistantTools(userId: string) {
     }),
     editarEvento: tool({
       description:
-        "Modifica un evento/cita ya existente del calendario del usuario (cambiar la hora, el título o la ubicación — \"cambia la cita del médico al jueves a las 5\", \"la reunión es en la sala 2, no en mi despacho\"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad — no la llames de nuevo adivinando otro.",
+        "Modifica un evento/cita ya existente del calendario del usuario (cambiar la hora, el título, la ubicación o cómo se repite — \"cambia la cita del médico al jueves a las 5\", \"la reunión es en la sala 2, no en mi despacho\", \"que la reunión semanal deje de repetirse\"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Editar la recurrencia cambia TODA la serie, no solo una repetición. Si no encuentra ninguno que coincida, dilo con naturalidad — no la llames de nuevo adivinando otro.",
       inputSchema: z.object({
         descripcion: z
           .string()
@@ -373,8 +388,21 @@ export function createAssistantTools(userId: string) {
           .describe("Nueva fecha/hora de inicio en ISO 8601 (con el desfase de España), solo si cambia."),
         fechaFinNueva: z.string().optional().describe("Nueva fecha/hora de fin en ISO 8601, solo si cambia."),
         ubicacionNueva: z.string().optional().describe("Nueva ubicación, solo si cambia."),
+        recurrenciaNueva: z
+          .enum(["DIARIA", "SEMANAL", "QUINCENAL", "MENSUAL", "NINGUNA"])
+          .optional()
+          .describe("Nueva frecuencia, solo si el usuario pide cambiarla. NINGUNA = que deje de repetirse."),
+        recurrenciaHastaNueva: z.string().optional().describe("Nueva fecha (ISO 8601) hasta la que repetir, solo si cambia."),
       }),
-      execute: async ({ descripcion, tituloNuevo, fechaInicioNueva, fechaFinNueva, ubicacionNueva }) => {
+      execute: async ({
+        descripcion,
+        tituloNuevo,
+        fechaInicioNueva,
+        fechaFinNueva,
+        ubicacionNueva,
+        recurrenciaNueva,
+        recurrenciaHastaNueva,
+      }) => {
         let evento: Evento | null;
         try {
           evento = await encontrarEvento(userId, descripcion);
@@ -387,7 +415,14 @@ export function createAssistantTools(userId: string) {
           throw new Error("No he encontrado ningún evento próximo que coincida con eso.");
         }
 
-        const data: { titulo?: string; fechaInicio?: Date; fechaFin?: Date; ubicacion?: string } = {};
+        const data: {
+          titulo?: string;
+          fechaInicio?: Date;
+          fechaFin?: Date;
+          ubicacion?: string;
+          recurrencia?: Evento["recurrencia"];
+          recurrenciaHasta?: Date | null;
+        } = {};
         if (tituloNuevo) data.titulo = tituloNuevo;
         if (ubicacionNueva) data.ubicacion = ubicacionNueva;
         if (fechaInicioNueva) {
@@ -399,6 +434,14 @@ export function createAssistantTools(userId: string) {
           const fin = new Date(fechaFinNueva);
           if (Number.isNaN(fin.getTime())) throw new Error("No he entendido bien la nueva fecha de fin.");
           data.fechaFin = fin;
+        }
+        if (recurrenciaNueva) {
+          data.recurrencia = recurrenciaNueva === "NINGUNA" ? null : recurrenciaNueva;
+        }
+        if (recurrenciaHastaNueva) {
+          const hasta = new Date(recurrenciaHastaNueva);
+          if (Number.isNaN(hasta.getTime())) throw new Error("No he entendido bien hasta cuándo se repite.");
+          data.recurrenciaHasta = hasta;
         }
         if (Object.keys(data).length === 0) {
           throw new Error("No me has dicho qué cambiar del evento.");

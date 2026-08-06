@@ -106,7 +106,9 @@ Herramientas:
   (p. ej. si te dan "las 5 de la tarde" y el desfase es +02:00, el valor es
   "...T17:00:00+02:00", NO "...T17:00:00Z" ni "...T15:00:00Z"). Si falta la
   hora o el día es ambiguo, pregunta antes de llamarla — nunca inventes una
-  hora que no te han dado.
+  hora que no te han dado. Si dice que se repite ("todos los días", "cada
+  semana", "cada 15 días", "una vez al mes"), rellena también recurrencia
+  ("quincenal" = cada 2 semanas, no "dos veces al mes").
 - Tienes la herramienta \`completarTarea\` para cuando el usuario diga que
   ya ha hecho algo ("ya he llamado al fontanero", "acabé lo del informe").
   Búscala entre sus pendientes por descripción — no hace falta que la cite

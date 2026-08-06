@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
+import type { Recurrencia } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 
@@ -13,13 +14,28 @@ export interface EventoInput {
   fechaFin?: string;
   ubicacion?: string;
   participantes: string[];
+  /** Calendario por periodos (Tier P4): repetición. `undefined`/vacío = evento suelto, sin repetir. */
+  recurrencia?: Recurrencia;
+  /** Última fecha (inclusive) hasta la que repetir. Solo tiene efecto si `recurrencia` está puesta. */
+  recurrenciaHasta?: string;
 }
 
 export interface EventoResult {
   error?: string;
 }
 
-function parseEventoInput(input: EventoInput): { data: Omit<EventoInput, "fechaInicio" | "fechaFin"> & { fechaInicio: Date; fechaFin: Date | null } } | { error: string } {
+interface ParsedEvento {
+  titulo: string;
+  descripcion?: string;
+  fechaInicio: Date;
+  fechaFin: Date | null;
+  ubicacion?: string;
+  participantes: string[];
+  recurrencia: Recurrencia | null;
+  recurrenciaHasta: Date | null;
+}
+
+function parseEventoInput(input: EventoInput): { data: ParsedEvento } | { error: string } {
   const titulo = input.titulo.trim();
   if (!titulo) return { error: "Escribe un título." };
 
@@ -33,6 +49,15 @@ function parseEventoInput(input: EventoInput): { data: Omit<EventoInput, "fechaI
     if (fechaFin < fechaInicio) return { error: "La fecha de fin no puede ser antes que la de inicio." };
   }
 
+  let recurrenciaHasta: Date | null = null;
+  if (input.recurrencia && input.recurrenciaHasta) {
+    recurrenciaHasta = new Date(input.recurrenciaHasta);
+    if (Number.isNaN(recurrenciaHasta.getTime())) return { error: "La fecha de fin de la repetición no es válida." };
+    if (recurrenciaHasta < fechaInicio) {
+      return { error: "La repetición no puede terminar antes de que empiece el evento." };
+    }
+  }
+
   return {
     data: {
       titulo,
@@ -41,6 +66,9 @@ function parseEventoInput(input: EventoInput): { data: Omit<EventoInput, "fechaI
       fechaFin,
       ubicacion: input.ubicacion?.trim() || undefined,
       participantes: input.participantes.map((p) => p.trim()).filter(Boolean),
+      recurrencia: input.recurrencia ?? null,
+      // Sin recurrencia, "hasta" no tiene sentido — se ignora aunque venga rellena.
+      recurrenciaHasta: input.recurrencia ? recurrenciaHasta : null,
     },
   };
 }
@@ -61,6 +89,8 @@ export async function createEvento(input: EventoInput): Promise<EventoResult> {
         fechaFin: parsed.data.fechaFin,
         ubicacion: parsed.data.ubicacion ?? null,
         participantes: parsed.data.participantes,
+        recurrencia: parsed.data.recurrencia,
+        recurrenciaHasta: parsed.data.recurrenciaHasta,
       },
     });
     revalidatePath("/calendario");
@@ -88,6 +118,8 @@ export async function updateEvento(id: string, input: EventoInput): Promise<Even
         fechaFin: parsed.data.fechaFin,
         ubicacion: parsed.data.ubicacion ?? null,
         participantes: parsed.data.participantes,
+        recurrencia: parsed.data.recurrencia,
+        recurrenciaHasta: parsed.data.recurrenciaHasta,
       },
     });
     if (result.count === 0) return { error: "No se ha encontrado el evento." };

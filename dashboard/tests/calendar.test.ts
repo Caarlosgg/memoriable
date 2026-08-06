@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, upcomingRange, dayLabel } from "../src/lib/calendar";
+import {
+  dateKey,
+  groupByDay,
+  groupByDayRange,
+  buildMonthGrid,
+  upcomingRange,
+  dayLabel,
+  expandRecurrence,
+} from "../src/lib/calendar";
 
 describe("dateKey", () => {
   it("da la fecha en formato YYYY-MM-DD en UTC", () => {
@@ -117,5 +125,92 @@ describe("upcomingRange", () => {
     const { desde, hasta } = upcomingRange(7, today);
     expect(desde.toISOString()).toBe("2026-08-05T00:00:00.000Z");
     expect(hasta.toISOString()).toBe("2026-08-12T00:00:00.000Z");
+  });
+});
+
+describe("expandRecurrence", () => {
+  const rangeStart = new Date("2026-08-01T00:00:00.000Z");
+  const rangeEnd = new Date("2026-09-01T00:00:00.000Z"); // el mes de agosto 2026
+
+  it("sin recurrencia, devuelve solo la fecha original si cae en el rango", () => {
+    const evento = { fechaInicio: new Date("2026-08-10T10:00:00.000Z"), recurrencia: null, recurrenciaHasta: null };
+    expect(expandRecurrence(evento, rangeStart, rangeEnd)).toEqual([evento.fechaInicio]);
+  });
+
+  it("sin recurrencia, vacío si la fecha original cae fuera del rango", () => {
+    const evento = { fechaInicio: new Date("2026-07-10T10:00:00.000Z"), recurrencia: null, recurrenciaHasta: null };
+    expect(expandRecurrence(evento, rangeStart, rangeEnd)).toEqual([]);
+  });
+
+  it("DIARIA genera una ocurrencia por día dentro del rango", () => {
+    const evento = {
+      fechaInicio: new Date("2026-08-28T09:00:00.000Z"),
+      recurrencia: "DIARIA" as const,
+      recurrenciaHasta: null,
+    };
+    const result = expandRecurrence(evento, rangeStart, rangeEnd);
+    expect(result.map((d) => dateKey(d))).toEqual(["2026-08-28", "2026-08-29", "2026-08-30", "2026-08-31"]);
+  });
+
+  it("SEMANAL salta de 7 en 7 días", () => {
+    const evento = {
+      fechaInicio: new Date("2026-08-03T09:00:00.000Z"), // lunes
+      recurrencia: "SEMANAL" as const,
+      recurrenciaHasta: null,
+    };
+    const result = expandRecurrence(evento, rangeStart, rangeEnd);
+    expect(result.map((d) => dateKey(d))).toEqual(["2026-08-03", "2026-08-10", "2026-08-17", "2026-08-24", "2026-08-31"]);
+  });
+
+  it("QUINCENAL salta de 14 en 14 días", () => {
+    const evento = {
+      fechaInicio: new Date("2026-08-01T09:00:00.000Z"),
+      recurrencia: "QUINCENAL" as const,
+      recurrenciaHasta: null,
+    };
+    const result = expandRecurrence(evento, rangeStart, rangeEnd);
+    expect(result.map((d) => dateKey(d))).toEqual(["2026-08-01", "2026-08-15", "2026-08-29"]);
+  });
+
+  it("MENSUAL mantiene el día del mes", () => {
+    const evento = {
+      fechaInicio: new Date("2026-06-15T09:00:00.000Z"),
+      recurrencia: "MENSUAL" as const,
+      recurrenciaHasta: null,
+    };
+    const result = expandRecurrence(evento, rangeStart, rangeEnd);
+    expect(result.map((d) => dateKey(d))).toEqual(["2026-08-15"]);
+  });
+
+  it("una recurrencia empezada mucho antes del rango sigue generando ocurrencias dentro de él", () => {
+    const evento = {
+      fechaInicio: new Date("2025-08-03T09:00:00.000Z"), // un año antes, mismo día de la semana
+      recurrencia: "SEMANAL" as const,
+      recurrenciaHasta: null,
+    };
+    const result = expandRecurrence(evento, rangeStart, rangeEnd);
+    expect(result.length).toBeGreaterThan(0);
+    for (const d of result) {
+      expect(d >= rangeStart && d < rangeEnd).toBe(true);
+    }
+  });
+
+  it("recurrenciaHasta corta la serie antes de que acabe el rango pedido", () => {
+    const evento = {
+      fechaInicio: new Date("2026-08-01T09:00:00.000Z"),
+      recurrencia: "DIARIA" as const,
+      recurrenciaHasta: new Date("2026-08-03T23:59:59.000Z"),
+    };
+    const result = expandRecurrence(evento, rangeStart, rangeEnd);
+    expect(result.map((d) => dateKey(d))).toEqual(["2026-08-01", "2026-08-02", "2026-08-03"]);
+  });
+
+  it("recurrenciaHasta anterior al rango pedido no genera nada", () => {
+    const evento = {
+      fechaInicio: new Date("2026-07-01T09:00:00.000Z"),
+      recurrencia: "SEMANAL" as const,
+      recurrenciaHasta: new Date("2026-07-20T00:00:00.000Z"),
+    };
+    expect(expandRecurrence(evento, rangeStart, rangeEnd)).toEqual([]);
   });
 });

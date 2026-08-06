@@ -114,6 +114,14 @@ model Message {
   @@map("messages")
 }
 
+/// Ver ../../prisma/schema.prisma: frecuencia de repetición de un evento.
+enum Recurrencia {
+  DIARIA
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+}
+
 /// Ver ../../prisma/schema.prisma: evento del calendario (Fase I).
 model Evento {
   id            String    @id @default(cuid())
@@ -124,6 +132,10 @@ model Evento {
   ubicacion     String?
   participantes String[]  @default([])
   createdAt     DateTime  @default(now())
+
+  /// Ver ../../prisma/schema.prisma: calendario por periodos/recurrencia.
+  recurrencia      Recurrencia?
+  recurrenciaHasta DateTime?
 
   userId String
   user   User   @relation(fields: [userId], references: [id])

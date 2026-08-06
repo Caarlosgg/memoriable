@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import type { Evento } from "@prisma/client";
+import type { Evento, Recurrencia } from "@prisma/client";
 import Link from "next/link";
-import { Pencil, Trash2, Clock, MapPin, Users, FileText } from "lucide-react";
+import { Pencil, Trash2, Clock, MapPin, Users, FileText, Repeat } from "lucide-react";
 import { formatEventDate } from "@/lib/format";
 import { createEvento, updateEvento, deleteEvento, type EventoInput } from "@/app/(dashboard)/calendario/actions";
 import { useUndoToast } from "./UndoToast";
@@ -11,6 +11,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+
+const RECURRENCIA_LABEL: Record<Recurrencia, string> = {
+  DIARIA: "Cada día",
+  SEMANAL: "Cada semana",
+  QUINCENAL: "Cada 2 semanas",
+  MENSUAL: "Cada mes",
+};
+
+/** Mismas clases que el resto de selects del modal, para que se vean iguales. */
+const SELECT_CLASSNAME =
+  "rounded-lg border border-paper-line bg-paper px-3 py-2.5 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
 
 /** `<input type="datetime-local">` no acepta un `Date` directo — quiere `YYYY-MM-DDTHH:mm` en hora LOCAL del navegador. */
 function toDatetimeLocalValue(date: Date | null): string {
@@ -26,6 +37,16 @@ interface EditableEvento {
   fechaFin: string;
   ubicacion: string;
   participantesTexto: string;
+  /** "" = sin repetir (evento suelto, comportamiento de siempre). */
+  recurrencia: Recurrencia | "";
+  /** `<input type="date">` — solo tiene efecto si `recurrencia` no está vacía. */
+  recurrenciaHasta: string;
+}
+
+function toDateInputValue(date: Date | null): string {
+  if (!date) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function fieldsFrom(evento: Partial<Evento> | null): EditableEvento {
@@ -36,6 +57,8 @@ function fieldsFrom(evento: Partial<Evento> | null): EditableEvento {
     fechaFin: toDatetimeLocalValue(evento?.fechaFin ?? null),
     ubicacion: evento?.ubicacion ?? "",
     participantesTexto: (evento?.participantes ?? []).join(", "),
+    recurrencia: evento?.recurrencia ?? "",
+    recurrenciaHasta: toDateInputValue(evento?.recurrenciaHasta ?? null),
   };
 }
 
@@ -50,6 +73,8 @@ function toInput(fields: EditableEvento): EventoInput {
       .split(",")
       .map((p) => p.trim())
       .filter(Boolean),
+    recurrencia: fields.recurrencia || undefined,
+    recurrenciaHasta: fields.recurrencia && fields.recurrenciaHasta ? fields.recurrenciaHasta : undefined,
   };
 }
 
@@ -163,6 +188,13 @@ export function EventDetailDialog({
                 <Users aria-hidden size={14} className="shrink-0" /> {evento.participantes.join(", ")}
               </p>
             )}
+            {evento.recurrencia && (
+              <p className="flex items-center gap-1.5 text-sm text-muted">
+                <Repeat aria-hidden size={14} className="shrink-0" />
+                {RECURRENCIA_LABEL[evento.recurrencia]}
+                {evento.recurrenciaHasta ? ` hasta el ${formatEventDate(evento.recurrenciaHasta)}` : ""}
+              </p>
+            )}
             {evento.descripcion && (
               <p className="flex items-start gap-1.5 text-sm text-ink">
                 <FileText aria-hidden size={14} className="mt-0.5 shrink-0 text-muted" />
@@ -235,6 +267,39 @@ export function EventDetailDialog({
                   onChange={(e) => setFields((f) => ({ ...f, fechaFin: e.target.value }))}
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="evento-recurrencia" className="text-sm font-medium text-ink">
+                  Repetir
+                </label>
+                <select
+                  id="evento-recurrencia"
+                  className={SELECT_CLASSNAME}
+                  value={fields.recurrencia}
+                  onChange={(e) => setFields((f) => ({ ...f, recurrencia: e.target.value as Recurrencia | "" }))}
+                >
+                  <option value="">No se repite</option>
+                  {(Object.keys(RECURRENCIA_LABEL) as Recurrencia[]).map((r) => (
+                    <option key={r} value={r}>
+                      {RECURRENCIA_LABEL[r]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {fields.recurrencia && (
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="evento-recurrencia-hasta" className="text-sm font-medium text-ink">
+                    Repetir hasta (opcional)
+                  </label>
+                  <Input
+                    id="evento-recurrencia-hasta"
+                    type="date"
+                    value={fields.recurrenciaHasta}
+                    onChange={(e) => setFields((f) => ({ ...f, recurrenciaHasta: e.target.value }))}
+                  />
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="evento-ubicacion" className="text-sm font-medium text-ink">

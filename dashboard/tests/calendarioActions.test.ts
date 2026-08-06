@@ -86,6 +86,46 @@ describe("createEvento", () => {
     const result = await createEvento(baseInput);
     expect(result.error).toMatch(/No se ha podido guardar/);
   });
+
+  it("sin recurrencia, guarda recurrencia y recurrenciaHasta como null (comportamiento de siempre)", async () => {
+    const { createEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    await createEvento(baseInput);
+    expect(eventoCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ recurrencia: null, recurrenciaHasta: null }) }),
+    );
+  });
+
+  it("con recurrencia, la guarda junto con recurrenciaHasta", async () => {
+    const { createEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    await createEvento({ ...baseInput, recurrencia: "SEMANAL", recurrenciaHasta: "2026-12-31T00:00:00.000Z" });
+    expect(eventoCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recurrencia: "SEMANAL",
+          recurrenciaHasta: new Date("2026-12-31T00:00:00.000Z"),
+        }),
+      }),
+    );
+  });
+
+  it("recurrenciaHasta sin recurrencia se ignora (no tiene sentido sin repetición)", async () => {
+    const { createEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    await createEvento({ ...baseInput, recurrenciaHasta: "2026-12-31T00:00:00.000Z" });
+    expect(eventoCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ recurrencia: null, recurrenciaHasta: null }) }),
+    );
+  });
+
+  it("rechaza una recurrenciaHasta anterior al inicio del evento", async () => {
+    const { createEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    const result = await createEvento({
+      ...baseInput,
+      recurrencia: "MENSUAL",
+      recurrenciaHasta: "2026-01-01T00:00:00.000Z",
+    });
+    expect(result.error).toMatch(/no puede terminar antes/);
+    expect(eventoCreate).not.toHaveBeenCalled();
+  });
 });
 
 describe("updateEvento", () => {

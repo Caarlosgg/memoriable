@@ -108,6 +108,8 @@ describe("toExportMarkdown", () => {
             ubicacion: null,
             participantes: [],
             createdAt: new Date(),
+            recurrencia: null,
+            recurrenciaHasta: null,
             userId: "u1",
             messageId: null,
           },

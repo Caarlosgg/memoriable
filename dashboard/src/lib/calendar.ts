@@ -5,6 +5,8 @@
  * de verdad la resuelve el navegador al formatear (`formatDate`/`Intl`).
  */
 
+import type { Recurrencia } from "@prisma/client";
+
 /** Clave `YYYY-MM-DD` (UTC) — la unidad para agrupar "por día". */
 export function dateKey(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -108,4 +110,57 @@ export function dayLabel(key: string, today: Date = new Date()): string {
   if (key === dateKey(tomorrow)) return "Mañana";
 
   return WEEKDAY_FORMATTER.format(new Date(`${key}T00:00:00.000Z`));
+}
+
+/** Techo de seguridad al expandir una recurrencia — de sobra para uso personal (5000 días diarios ≈ 13 años; 5000 meses ≈ 4 siglos) sin arriesgar un bucle caro. */
+const MAX_RECURRENCE_ITERATIONS = 5000;
+
+function stepRecurrence(date: Date, recurrencia: Recurrencia): Date {
+  const next = new Date(date);
+  switch (recurrencia) {
+    case "DIARIA":
+      next.setUTCDate(next.getUTCDate() + 1);
+      break;
+    case "SEMANAL":
+      next.setUTCDate(next.getUTCDate() + 7);
+      break;
+    case "QUINCENAL":
+      next.setUTCDate(next.getUTCDate() + 14);
+      break;
+    case "MENSUAL":
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      break;
+  }
+  return next;
+}
+
+export interface RecurrentEventLike {
+  fechaInicio: Date;
+  recurrencia: Recurrencia | null;
+  /** Última fecha (inclusive) hasta la que repetir. Null = sin límite propio (el rango pedido ya acota). */
+  recurrenciaHasta: Date | null;
+}
+
+/**
+ * Genera las fechas de inicio de cada repetición de un evento que caen en
+ * `[rangeStart, rangeEnd)` (p. ej. el mes que se está pintando) — nunca
+ * genera filas de verdad, son ocurrencias "virtuales" solo para mostrar
+ * (ver el comentario de diseño en `schema.prisma: Evento.recurrencia`).
+ * Sin recurrencia, se comporta como antes: la propia `fechaInicio` si cae
+ * en el rango, si no un array vacío. Pura.
+ */
+export function expandRecurrence(evento: RecurrentEventLike, rangeStart: Date, rangeEnd: Date): Date[] {
+  if (!evento.recurrencia) {
+    return evento.fechaInicio >= rangeStart && evento.fechaInicio < rangeEnd ? [evento.fechaInicio] : [];
+  }
+  if (evento.recurrenciaHasta && evento.recurrenciaHasta < rangeStart) return [];
+
+  const occurrences: Date[] = [];
+  let cursor = evento.fechaInicio;
+  for (let i = 0; i < MAX_RECURRENCE_ITERATIONS && cursor < rangeEnd; i++) {
+    if (evento.recurrenciaHasta && cursor > evento.recurrenciaHasta) break;
+    if (cursor >= rangeStart) occurrences.push(cursor);
+    cursor = stepRecurrence(cursor, evento.recurrencia);
+  }
+  return occurrences;
 }
