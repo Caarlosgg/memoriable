@@ -15,9 +15,11 @@ import {
   handleTextMessage,
   launchWithRetry,
   registerCommands,
+  tryAnswerFocus,
 } from '../src/telegram/bot.js';
 import { createLinkAttemptLimiter } from '../src/telegram/linkRateLimit.js';
 import { describeTelegramError, isValidTokenFormat } from '../src/telegram/errors.js';
+import { InMemoryFocusStateStore } from '../src/summary/focusState.js';
 
 const TOKEN_VALIDO = '123456789:AAEabcdefghijklmnopqrstuvwxyz012345';
 
@@ -145,6 +147,57 @@ describe('handleTextMessage', () => {
     expect(followUp).toBe('¿Para qué día lo recuerdo?');
     // Nunca bloquea el guardado: se guarda igual, con la mejor categoría posible.
     expect(repository.all()).toHaveLength(1);
+  });
+});
+
+describe('tryAnswerFocus', () => {
+  const now = new Date(2026, 6, 29, 10, 0); // 29 jul
+
+  it('sin focusStore, no hace nada (compatible con el bot sin ese estado)', () => {
+    expect(tryAnswerFocus(undefined, 123, 'Pagar la luz', now)).toBeNull();
+  });
+
+  it('sin ninguna marca para ese chat, no hace nada', () => {
+    const store = new InMemoryFocusStateStore();
+    expect(tryAnswerFocus(store, 123, 'Pagar la luz', now)).toBeNull();
+  });
+
+  it('si ya se contestó (awaitingAnswer=false), no vuelve a interceptar', () => {
+    const store = new InMemoryFocusStateStore();
+    store.setAwaiting(123, '2026-07-29');
+    store.setAnswer(123, '2026-07-29', 'Ya contestado');
+    expect(tryAnswerFocus(store, 123, 'Otra cosa', now)).toBeNull();
+  });
+
+  it('si la marca es de OTRO día (p. ej. de ayer, nunca contestada), no la intercepta', () => {
+    const store = new InMemoryFocusStateStore();
+    store.setAwaiting(123, '2026-07-28');
+    expect(tryAnswerFocus(store, 123, 'Pagar la luz', now)).toBeNull();
+  });
+
+  it('esperando respuesta de HOY, la consume: guarda el texto y confirma', () => {
+    const store = new InMemoryFocusStateStore();
+    store.setAwaiting(123, '2026-07-29');
+
+    const reply = tryAnswerFocus(store, 123, '  Pagar la luz  ', now);
+
+    expect(reply).toContain('Pagar la luz');
+    expect(store.get(123)).toEqual({ day: '2026-07-29', awaitingAnswer: false, text: 'Pagar la luz' });
+  });
+
+  it('escapa HTML en la respuesta (el texto viene del usuario, se manda con parse_mode HTML)', () => {
+    const store = new InMemoryFocusStateStore();
+    store.setAwaiting(123, '2026-07-29');
+    const reply = tryAnswerFocus(store, 123, '<script>alert(1)</script>', now);
+    expect(reply).not.toContain('<script>');
+    expect(reply).toContain('&lt;script&gt;');
+  });
+
+  it('un texto vacío no cuenta como respuesta (deja la marca intacta)', () => {
+    const store = new InMemoryFocusStateStore();
+    store.setAwaiting(123, '2026-07-29');
+    expect(tryAnswerFocus(store, 123, '   ', now)).toBeNull();
+    expect(store.get(123)).toEqual({ day: '2026-07-29', awaitingAnswer: true });
   });
 });
 

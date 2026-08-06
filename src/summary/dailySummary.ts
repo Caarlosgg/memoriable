@@ -1,10 +1,16 @@
 import type { MessageRepository, StoredMessage } from '../db/repository.js';
+import type { EventRepository, EventSummary } from '../db/eventRepository.js';
 import { formatResponseCard } from '../telegram/formatResponseCard.js';
 import type { Logger } from '../logging/logger.js';
 import type { SummaryStateStore } from './summaryState.js';
+import type { FocusStateStore } from './focusState.js';
 
 /** Separador visual entre tarjetas, igual que en las listas del bot. */
 const CARD_SEPARATOR = '\n\n➖➖➖\n\n';
+
+/** Máximo de candidatas a "foco del día" (Tier 2.6) — más de 3 deja de ser un vistazo rápido. */
+const MAX_FOCUS_CANDIDATES = 3;
+const MAX_FOCUS_EVENTS = 2;
 
 const DAY_LABEL_FORMATTER = new Intl.DateTimeFormat('es-ES', {
   weekday: 'long',
@@ -36,6 +42,13 @@ export function yesterdayRange(now: Date): { from: Date; to: Date } {
   return { from: startOfYesterday, to: startOfToday };
 }
 
+/** Rango semiabierto `[from, to)` que cubre el día natural de `now` — eventos "de hoy" para el foco del día. */
+export function todayRange(now: Date): { from: Date; to: Date } {
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return { from: startOfToday, to: startOfTomorrow };
+}
+
 /** ¿Es `now` igual o posterior a la hora `hour` (0-23) de su propio día? */
 export function isAtOrAfterHour(now: Date, hour: number): boolean {
   return now.getHours() >= hour;
@@ -49,17 +62,46 @@ function section(title: string, messages: readonly StoredMessage[], emptyNote: s
 }
 
 /**
+ * Elige hasta 3 candidatas a "foco del día" (Tier 2.6): primero los eventos
+ * de hoy (ya tienen hora fija, son la señal más fuerte de "esto toca hoy"),
+ * y se rellena el resto con los pendientes más recientes. Pura: no sabe
+ * nada de Telegram ni de persistencia, solo elige y ordena texto.
+ */
+export function pickFocusCandidates(
+  pending: readonly StoredMessage[],
+  eventosHoy: readonly EventSummary[],
+): string[] {
+  const fromEvents = eventosHoy.slice(0, MAX_FOCUS_EVENTS).map((e) => e.titulo);
+  const remaining = Math.max(0, MAX_FOCUS_CANDIDATES - fromEvents.length);
+  const fromPending = pending
+    .slice(0, remaining)
+    .map((m) => m.resumen)
+    .filter((label) => label.trim() !== '');
+  return [...fromEvents, ...fromPending].slice(0, MAX_FOCUS_CANDIDATES);
+}
+
+/** Construye la pregunta de seguimiento con las candidatas, o `''` si no hay ninguna (no fuerza la conversación). */
+function focusPrompt(candidates: readonly string[]): string {
+  if (candidates.length === 0) return '';
+  const numbered = candidates.map((c, i) => `${i + 1}. ${c}`).join('\n');
+  return `🎯 <b>¿Cuál es tu foco de hoy?</b>\n\n${numbered}\n\nRespóndeme cuál te importa más y la marco como tu foco de hoy.`;
+}
+
+/**
  * Compone el texto (HTML de Telegram) del resumen diario: encabezado con la
- * fecha, los pendientes actuales y lo guardado ayer. Función pura de
- * presentación, sin I/O.
+ * fecha, los pendientes actuales, lo guardado ayer y, si hay algo que
+ * proponer, la pregunta del foco del día. Función pura de presentación,
+ * sin I/O.
  */
 export function formatDailySummary({
   pending,
   savedYesterday,
+  focusCandidates = [],
   now,
 }: {
   pending: readonly StoredMessage[];
   savedYesterday: readonly StoredMessage[];
+  focusCandidates?: readonly string[];
   now: Date;
 }): string {
   const header = `☀️ <b>Resumen diario</b> · ${DAY_LABEL_FORMATTER.format(now)}`;
@@ -73,24 +115,41 @@ export function formatDailySummary({
     savedYesterday,
     '🌙 Ayer no guardaste nada.',
   );
-  return [header, pendingSection, yesterdaySection].join('\n\n');
+  const parts = [header, pendingSection, yesterdaySection];
+  const prompt = focusPrompt(focusCandidates);
+  if (prompt) parts.push(prompt);
+  return parts.join('\n\n');
+}
+
+export interface DailySummaryContent {
+  text: string;
+  /** Candidatas propuestas para el foco del día — vacío si no había nada que proponer. */
+  focusCandidates: string[];
 }
 
 /**
- * Reúne los datos (pendientes + lo de ayer) y compone el resumen. Recibe el
- * repositorio por inyección, de modo que es testeable con uno en memoria.
+ * Reúne los datos (pendientes + lo de ayer + eventos de hoy) y compone el
+ * resumen. Recibe los repositorios por inyección, de modo que es testeable
+ * con implementaciones en memoria. `eventRepository` es opcional: sin él
+ * (p. ej. en tests que no les interesa el calendario), el resumen sigue
+ * funcionando igual que antes, solo sin la sección de eventos.
  */
 export async function buildDailySummary(
   repository: MessageRepository,
   userId: string,
   now: Date,
-): Promise<string> {
+  eventRepository?: EventRepository,
+): Promise<DailySummaryContent> {
   const { from, to } = yesterdayRange(now);
-  const [pending, savedYesterday] = await Promise.all([
+  const todayRangeValue = todayRange(now);
+  const [pending, savedYesterday, eventosHoy] = await Promise.all([
     repository.pending(userId),
     repository.savedBetween(userId, from, to),
+    eventRepository ? eventRepository.eventsBetween(userId, todayRangeValue.from, todayRangeValue.to) : Promise.resolve([]),
   ]);
-  return formatDailySummary({ pending, savedYesterday, now });
+  const focusCandidates = pickFocusCandidates(pending, eventosHoy);
+  const text = formatDailySummary({ pending, savedYesterday, focusCandidates, now });
+  return { text, focusCandidates };
 }
 
 export interface DailySummaryTickDeps {
@@ -98,6 +157,11 @@ export interface DailySummaryTickDeps {
   /** Cuenta dueña del chat al que se envía el resumen (Fase 2, multiusuario). */
   userId: string;
   store: SummaryStateStore;
+  /** Chat de Telegram al que se manda — necesario para marcar el foco del día en `focusStore`. */
+  chatId: number;
+  /** Estado del "ritual matutino" (Tier 2.6). Opcional: sin él, no se propone foco del día. */
+  focusStore?: FocusStateStore;
+  eventRepository?: EventRepository;
   /** Envía el texto al chat del usuario. Inyectado para testear sin red. */
   send: (text: string) => Promise<void>;
   /** Hora local (0-23) a partir de la cual procede enviar. */
@@ -117,6 +181,10 @@ export type DailySummaryTickResult = 'sent' | 'already_sent_today' | 'before_hou
  * La marca se escribe SOLO tras un envío correcto, así un fallo de red se
  * reintenta en el siguiente tick en vez de perder el resumen del día. Sirve
  * tanto para el disparo programado como para la puesta al día tras un reinicio.
+ *
+ * Si el resumen trae candidatas a foco del día, marca el chat como
+ * "esperando respuesta" en `focusStore` — el handler de texto del bot
+ * (`telegram/bot.ts`) es quien consume esa marca en el siguiente mensaje.
  */
 export async function runDailySummaryTick(
   deps: DailySummaryTickDeps,
@@ -128,9 +196,10 @@ export async function runDailySummaryTick(
   const key = dayKey(now);
   if (deps.store.lastSentDay() === key) return 'already_sent_today';
 
-  const text = await buildDailySummary(deps.repository, deps.userId, now);
+  const { text, focusCandidates } = await buildDailySummary(deps.repository, deps.userId, now, deps.eventRepository);
   await deps.send(text);
   deps.store.markSent(key);
-  deps.logger?.info('summary.sent', { day: key });
+  if (focusCandidates.length > 0) deps.focusStore?.setAwaiting(deps.chatId, key);
+  deps.logger?.info('summary.sent', { day: key, focusCandidates: focusCandidates.length });
   return 'sent';
 }

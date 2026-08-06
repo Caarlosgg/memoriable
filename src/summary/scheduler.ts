@@ -3,12 +3,14 @@ import type { Telegraf } from 'telegraf';
 import { env } from '../config/env.js';
 import { errorContext, logger as rootLogger, type Logger } from '../logging/index.js';
 import type { MessageRepository } from '../db/repository.js';
+import type { EventRepository } from '../db/eventRepository.js';
 import { resolveChatOwner } from '../db/users.js';
 import {
   runDailySummaryTick,
   type DailySummaryTickDeps,
 } from './dailySummary.js';
 import { DEFAULT_SUMMARY_STATE_FILE, FileSummaryStateStore } from './summaryState.js';
+import type { FocusStateStore } from './focusState.js';
 
 export interface DailySummaryHandle {
   /** Detiene el cron (para apagados ordenados y tests). */
@@ -32,6 +34,9 @@ export function startDailySummary(
   bot: Telegraf,
   repository: MessageRepository,
   logger: Logger = rootLogger,
+  /** Estado del "ritual matutino" (Tier 2.6): sin él, el resumen se manda igual pero no propone foco del día. */
+  focusStore?: FocusStateStore,
+  eventRepository?: EventRepository,
 ): DailySummaryHandle | null {
   const chatId = env.TELEGRAM_CHAT_ID;
   if (!chatId) {
@@ -52,6 +57,9 @@ export function startDailySummary(
   const baseDeps: Omit<DailySummaryTickDeps, 'userId'> = {
     repository,
     store,
+    chatId: Number(chatId),
+    focusStore,
+    eventRepository,
     hour,
     logger,
     send: (text) => bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' }).then(() => {}),

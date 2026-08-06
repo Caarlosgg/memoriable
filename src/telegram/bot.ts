@@ -11,6 +11,9 @@ import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
 import { startDailySummary } from '../summary/scheduler.js';
+import { dayKey } from '../summary/dailySummary.js';
+import { FileFocusStateStore, type FocusStateStore } from '../summary/focusState.js';
+import { PrismaEventRepository } from '../db/eventRepository.js';
 
 /** Respuestas al usuario, centralizadas para poder testearlas. */
 export const REPLIES = {
@@ -150,6 +153,33 @@ export async function handleTextMessage(
 }
 
 /**
+ * Si el chat está esperando la respuesta del "foco del día" (Tier 2.6,
+ * ritual matutino) y el mensaje llega el MISMO día en que se propuso, lo
+ * consume como esa respuesta — no se guarda como una nota nueva — y
+ * devuelve el texto de confirmación. `null` si no aplica: el llamante debe
+ * seguir con el flujo normal de captura (`handleTextMessage`).
+ *
+ * Pura salvo por `focusStore` (inyectado, mismo criterio que el resto del
+ * bot): comprobable sin Telegraf ni reloj real.
+ */
+export function tryAnswerFocus(
+  focusStore: FocusStateStore | undefined,
+  chatId: number,
+  text: string,
+  now: Date = new Date(),
+): string | null {
+  if (!focusStore) return null;
+  const state = focusStore.get(chatId);
+  if (!state || !state.awaitingAnswer || state.day !== dayKey(now)) return null;
+
+  const trimmed = text.trim();
+  if (trimmed === '') return null;
+
+  focusStore.setAnswer(chatId, state.day, trimmed);
+  return `📌 Foco de hoy: <b>${escapeHtml(trimmed)}</b>. ¡A por ello!`;
+}
+
+/**
  * Maneja `/vincular <código>`: consume el código de un solo uso generado
  * desde el dashboard (sección "Cuenta") y liga este chat a esa cuenta.
  * **Nunca lanza**: ante un fallo interno devuelve un mensaje de error y lo
@@ -197,6 +227,8 @@ export function createBot(
   token: string | undefined = env.TELEGRAM_BOT_TOKEN,
   pipeline: Pipeline = resolvePipeline(),
   logger: Logger = pipeline.logger ?? rootLogger,
+  /** Estado del "ritual matutino" (Tier 2.6) — sin él, el bot funciona igual pero no hay foco del día. */
+  focusStore?: FocusStateStore,
 ): Telegraf | null {
   if (!token) return null;
 
@@ -268,6 +300,16 @@ export function createBot(
   });
 
   bot.on(message('text'), async (ctx) => {
+    // Ritual matutino (Tier 2.6): si este chat está esperando la respuesta
+    // del foco del día y llega HOY, se consume aquí — nunca llega a
+    // guardarse como una nota nueva. Antes de `ownerFor` a propósito: si el
+    // resumen ya se mandó a este chat, es porque ya estaba vinculado.
+    const focusReply = tryAnswerFocus(focusStore, ctx.chat.id, ctx.message.text);
+    if (focusReply) {
+      await ctx.reply(focusReply, { parse_mode: 'HTML' });
+      return;
+    }
+
     const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
     if (!userId) return;
     const { reply, followUp } = await handleTextMessage(ctx.message.text, userId, pipeline, logger);
@@ -365,7 +407,13 @@ export function startBot(
   pipeline: Pipeline = resolvePipeline(),
   logger: Logger = pipeline.logger ?? rootLogger,
 ): Telegraf | null {
-  const bot = createBot(env.TELEGRAM_BOT_TOKEN, pipeline, logger);
+  // Un único store para todo el proceso: lo consultan tanto el disparo del
+  // resumen (marca "esperando respuesta") como el handler de texto general
+  // (consume esa marca). Ver summary/focusState.ts.
+  const focusStore = new FileFocusStateStore(undefined, (err) =>
+    logger.warn('summary.focus_store_error', errorContext(err)),
+  );
+  const bot = createBot(env.TELEGRAM_BOT_TOKEN, pipeline, logger, focusStore);
 
   if (!bot) {
     logger.warn('telegram.disabled', {
@@ -387,7 +435,7 @@ export function startBot(
   void registerCommands(bot, logger);
 
   // Resumen diario proactivo (si hay TELEGRAM_CHAT_ID configurado).
-  const dailySummary = startDailySummary(bot, pipeline.repository, logger);
+  const dailySummary = startDailySummary(bot, pipeline.repository, logger, focusStore, new PrismaEventRepository());
 
   const stop = (signal: string) => {
     logger.info('telegram.stopping', { signal });
