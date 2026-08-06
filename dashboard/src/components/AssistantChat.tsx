@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage, InferUITools, UIDataTypes } from "ai";
-import { MessageCircle, Send, CircleCheck, CalendarDays, PiggyBank } from "lucide-react";
+import { MessageCircle, Send, CircleCheck, CalendarDays, PiggyBank, Pencil, Trash2 } from "lucide-react";
 import type { AssistantSource } from "@/lib/assistantContext";
 import type { AssistantTools } from "@/lib/assistantTools";
 import type { AssistantExchangeRecord, ConversationSummary } from "@/lib/assistantHistory";
@@ -191,6 +191,104 @@ function RegistrarAhorroResultCard({ part }: { part: RegistrarAhorroPart }) {
   );
 }
 
+type EditarEventoPart = Extract<AssistantMessage["parts"][number], { type: "tool-editarEvento" }>;
+
+function isEditarEventoPart(part: AssistantMessage["parts"][number]): part is EditarEventoPart {
+  return part.type === "tool-editarEvento";
+}
+
+/** Tarjeta de confirmación cuando el Asistente edita un evento existente. */
+function EditarEventoResult({ part }: { part: EditarEventoPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        No se ha podido editar el evento: {part.errorText || "error desconocido"}.
+      </div>
+    );
+  }
+
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Buscando…</div>;
+  }
+
+  const e = part.output;
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <CircleCheck aria-hidden size={14} className="text-accent" />
+        <Pencil aria-hidden size={13} className="text-accent-strong" /> Evento actualizado
+      </p>
+      <p className="mt-0.5 text-muted">
+        {e.titulo} · {formatEventDate(e.fechaInicio)}
+        {e.ubicacion ? ` · ${e.ubicacion}` : ""}
+      </p>
+    </div>
+  );
+}
+
+type BorrarEventoPart = Extract<AssistantMessage["parts"][number], { type: "tool-borrarEvento" }>;
+
+function isBorrarEventoPart(part: AssistantMessage["parts"][number]): part is BorrarEventoPart {
+  return part.type === "tool-borrarEvento";
+}
+
+/** Tarjeta de confirmación cuando el Asistente borra un evento. */
+function BorrarEventoResult({ part }: { part: BorrarEventoPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        {part.errorText || "No he encontrado ese evento."}
+      </div>
+    );
+  }
+
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Buscando…</div>;
+  }
+
+  const e = part.output;
+  return (
+    <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs">
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <Trash2 aria-hidden size={13} className="text-danger" /> Evento borrado
+      </p>
+      <p className="mt-0.5 text-muted">{e.titulo}</p>
+    </div>
+  );
+}
+
+type ConsultarAhorrosPart = Extract<AssistantMessage["parts"][number], { type: "tool-consultarAhorros" }>;
+
+function isConsultarAhorrosPart(part: AssistantMessage["parts"][number]): part is ConsultarAhorrosPart {
+  return part.type === "tool-consultarAhorros";
+}
+
+/** Tarjeta con el dato consultado (de solo lectura, no cambia nada). */
+function ConsultarAhorrosResultCard({ part }: { part: ConsultarAhorrosPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        {part.errorText || "No he podido consultar tus ahorros."}
+      </div>
+    );
+  }
+
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Consultando…</div>;
+  }
+
+  const r = part.output;
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <PiggyBank aria-hidden size={13} className="text-accent-strong" />
+        {r.cuentas.length === 1 ? r.cuentas[0]!.nombre : "Total ahorrado"}
+      </p>
+      <p className="mt-0.5 text-muted">{formatCentimos(r.totalCentimos)}</p>
+    </div>
+  );
+}
+
 export function AssistantChat({ initialConversations = [] }: { initialConversations?: ConversationSummary[] }) {
   const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID());
@@ -288,11 +386,17 @@ export function AssistantChat({ initialConversations = [] }: { initialConversati
             const crearEventoParts = message.parts.filter(isCrearEventoPart);
             const completarTareaParts = message.parts.filter(isCompletarTareaPart);
             const registrarAhorroParts = message.parts.filter(isRegistrarAhorroPart);
+            const editarEventoParts = message.parts.filter(isEditarEventoPart);
+            const borrarEventoParts = message.parts.filter(isBorrarEventoPart);
+            const consultarAhorrosParts = message.parts.filter(isConsultarAhorrosPart);
             const hasToolResults =
               crearNotaParts.length > 0 ||
               crearEventoParts.length > 0 ||
               completarTareaParts.length > 0 ||
-              registrarAhorroParts.length > 0;
+              registrarAhorroParts.length > 0 ||
+              editarEventoParts.length > 0 ||
+              borrarEventoParts.length > 0 ||
+              consultarAhorrosParts.length > 0;
 
             return (
               <li key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
@@ -313,6 +417,15 @@ export function AssistantChat({ initialConversations = [] }: { initialConversati
                     ))}
                     {registrarAhorroParts.map((part) => (
                       <RegistrarAhorroResultCard key={part.toolCallId} part={part} />
+                    ))}
+                    {editarEventoParts.map((part) => (
+                      <EditarEventoResult key={part.toolCallId} part={part} />
+                    ))}
+                    {borrarEventoParts.map((part) => (
+                      <BorrarEventoResult key={part.toolCallId} part={part} />
+                    ))}
+                    {consultarAhorrosParts.map((part) => (
+                      <ConsultarAhorrosResultCard key={part.toolCallId} part={part} />
                     ))}
                     {(text || isBusy || !hasToolResults) && (
                       <div className="fade-in rounded-2xl rounded-bl-sm border border-paper-line bg-paper-raised px-4 py-2.5 text-sm text-ink">

@@ -108,6 +108,17 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("registrarAhorro");
   });
 
+  it("menciona las herramientas editarEvento y borrarEvento para gestionar citas existentes", () => {
+    const prompt = buildSystemPrompt("x");
+    expect(prompt).toContain("editarEvento");
+    expect(prompt).toContain("borrarEvento");
+  });
+
+  it("menciona la herramienta consultarAhorros, de solo lectura", () => {
+    const prompt = buildSystemPrompt("x");
+    expect(prompt).toContain("consultarAhorros");
+  });
+
   it("incluye la fecha/hora actual (pasada explícitamente), para poder calcular fechas relativas", () => {
     const now = new Date("2026-08-12T15:30:00.000Z");
     const prompt = buildSystemPrompt("x", now);

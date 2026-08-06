@@ -56,6 +56,9 @@ const fakeEvento = {
   messageId: null,
 };
 const eventoCreate = vi.fn();
+const eventoFindMany = vi.fn();
+const eventoUpdate = vi.fn();
+const eventoDelete = vi.fn();
 const messageFindFirst = vi.fn();
 const messageUpdate = vi.fn();
 const cuentaAhorroFindMany = vi.fn();
@@ -63,7 +66,12 @@ const cuentaAhorroCreate = vi.fn();
 const movimientoAhorroCreate = vi.fn();
 vi.mock("../src/lib/prisma", () => ({
   prisma: {
-    evento: { create: (...args: unknown[]) => eventoCreate(...args) },
+    evento: {
+      create: (...args: unknown[]) => eventoCreate(...args),
+      findMany: (...args: unknown[]) => eventoFindMany(...args),
+      update: (...args: unknown[]) => eventoUpdate(...args),
+      delete: (...args: unknown[]) => eventoDelete(...args),
+    },
     message: {
       findFirst: (...args: unknown[]) => messageFindFirst(...args),
       update: (...args: unknown[]) => messageUpdate(...args),
@@ -74,6 +82,11 @@ vi.mock("../src/lib/prisma", () => ({
     },
     movimientoAhorro: { create: (...args: unknown[]) => movimientoAhorroCreate(...args) },
   },
+}));
+
+const getCuentasConSaldo = vi.fn();
+vi.mock("../src/lib/ahorros", () => ({
+  getCuentasConSaldo: (...args: unknown[]) => getCuentasConSaldo(...args),
 }));
 
 function fakePendiente(overrides: Partial<import("@prisma/client").Message> = {}) {
@@ -114,6 +127,12 @@ describe("createAssistantTools", () => {
     cuentaAhorroCreate.mockReset();
     movimientoAhorroCreate.mockReset();
     movimientoAhorroCreate.mockResolvedValue({});
+    eventoFindMany.mockReset();
+    eventoFindMany.mockResolvedValue([]);
+    eventoUpdate.mockReset();
+    eventoDelete.mockReset();
+    getCuentasConSaldo.mockReset();
+    getCuentasConSaldo.mockResolvedValue([]);
   });
 
   it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión, e invalida Tablero/Categorías", async () => {
@@ -406,5 +425,178 @@ describe("createAssistantTools", () => {
     );
     expect(movimientoAhorroCreate).toHaveBeenCalled();
     expect(result).toMatchObject({ cuentaId: "c1" });
+  });
+
+  it("editarEvento busca solo entre eventos futuros (hoy incluido) y cambia los campos dados", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    eventoUpdate.mockResolvedValue({ ...fakeEvento, titulo: "Cita con el médico", fechaInicio: new Date("2026-08-13T17:00:00.000Z") });
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.editarEvento.execute!(
+      { descripcion: "cita con el médico", fechaInicioNueva: "2026-08-13T17:00:00.000Z" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ userId: "u1" }) }),
+    );
+    expect(eventoUpdate).toHaveBeenCalledWith({
+      where: { id: "e1" },
+      data: { fechaInicio: new Date("2026-08-13T17:00:00.000Z") },
+    });
+    expect(result).toMatchObject({ id: "e1", fechaInicio: "2026-08-13T17:00:00.000Z" });
+    expect(revalidatePath).toHaveBeenCalledWith("/calendario");
+  });
+
+  it("editarEvento encuentra el evento aunque las tildes no coincidan (guardado con tilde, descripción sin ella o al revés)", async () => {
+    eventoFindMany.mockResolvedValue([{ ...fakeEvento, titulo: "Reunión de seguimiento" }]);
+    eventoUpdate.mockResolvedValue({ ...fakeEvento, titulo: "Reunión de seguimiento" });
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.editarEvento.execute!(
+      { descripcion: "la reunion de seguimiento", tituloNuevo: "Reunión de seguimiento (aplazada)" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoUpdate).toHaveBeenCalled();
+    expect(result).toMatchObject({ id: "e1" });
+  });
+
+  it("editarEvento lanza si no encuentra ningún evento que coincida", async () => {
+    eventoFindMany.mockResolvedValue([]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.editarEvento.execute!(
+        { descripcion: "algo que no existe", tituloNuevo: "X" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he encontrado ningún evento/);
+    expect(eventoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("editarEvento lanza si no se le da ningún campo que cambiar", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.editarEvento.execute!(
+        { descripcion: "cita con el médico" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/qué cambiar/);
+    expect(eventoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("editarEvento rechaza una fecha nueva que no se puede interpretar", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.editarEvento.execute!(
+        { descripcion: "cita con el médico", fechaInicioNueva: "no-es-una-fecha" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he entendido bien la nueva fecha/);
+    expect(eventoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("borrarEvento encuentra y borra el evento que coincide", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.borrarEvento.execute!(
+      { descripcion: "médico" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoDelete).toHaveBeenCalledWith({ where: { id: "e1" } });
+    expect(result).toMatchObject({ id: "e1", titulo: "Cita con el médico" });
+    expect(revalidatePath).toHaveBeenCalledWith("/calendario");
+  });
+
+  it("borrarEvento lanza si no encuentra ningún evento que coincida", async () => {
+    eventoFindMany.mockResolvedValue([]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.borrarEvento.execute!(
+        { descripcion: "algo que no existe" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he encontrado ningún evento/);
+    expect(eventoDelete).not.toHaveBeenCalled();
+  });
+
+  it("borrarEvento: ante un fallo al borrar, lanza un mensaje en español sin detalles internos", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    eventoDelete.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.borrarEvento.execute!({ descripcion: "médico" }, { toolCallId: "c", messages: [], context: undefined }),
+    ).rejects.toThrow(/No se ha podido borrar el evento/);
+  });
+
+  it("consultarAhorros sin nombre de cuenta devuelve todas con el total", async () => {
+    getCuentasConSaldo.mockResolvedValue([
+      { id: "c1", nombre: "Viaje", saldoCentimos: 5000, objetivoCentimos: null, createdAt: new Date(), userId: "u1" },
+      { id: "c2", nombre: "Fondo de emergencia", saldoCentimos: 12000, objetivoCentimos: null, createdAt: new Date(), userId: "u1" },
+    ]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.consultarAhorros.execute!({}, { toolCallId: "c", messages: [], context: undefined });
+
+    expect(result).toEqual({
+      cuentas: [
+        { nombre: "Viaje", saldoCentimos: 5000 },
+        { nombre: "Fondo de emergencia", saldoCentimos: 12000 },
+      ],
+      totalCentimos: 17000,
+    });
+  });
+
+  it("consultarAhorros con nombre de cuenta devuelve solo esa (coincidencia parcial)", async () => {
+    getCuentasConSaldo.mockResolvedValue([
+      { id: "c1", nombre: "Fondo de emergencia", saldoCentimos: 12000, objetivoCentimos: null, createdAt: new Date(), userId: "u1" },
+    ]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    const result = await tools.consultarAhorros.execute!(
+      { cuenta: "emergencia" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(result).toEqual({ cuentas: [{ nombre: "Fondo de emergencia", saldoCentimos: 12000 }], totalCentimos: 12000 });
+  });
+
+  it("consultarAhorros lanza si pregunta por una cuenta que no existe", async () => {
+    getCuentasConSaldo.mockResolvedValue([]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.consultarAhorros.execute!({ cuenta: "inventada" }, { toolCallId: "c", messages: [], context: undefined }),
+    ).rejects.toThrow(/No encuentro ninguna cuenta/);
+  });
+
+  it("consultarAhorros: ante un fallo al leer, lanza un mensaje en español sin detalles internos", async () => {
+    getCuentasConSaldo.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1");
+
+    await expect(
+      tools.consultarAhorros.execute!({}, { toolCallId: "c", messages: [], context: undefined }),
+    ).rejects.toThrow(/No he podido consultar tus ahorros/);
   });
 });

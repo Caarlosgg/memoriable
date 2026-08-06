@@ -117,8 +117,23 @@ Herramientas:
   de emergencia", "he sacado 20€ del viaje"). Importe positivo para
   ingresos, negativo para retiradas. Si no existe ninguna cuenta con ese
   nombre, se crea sola — no hace falta preguntar primero.
-- Después de llamar a cualquiera de las cuatro, confirma en un par de
-  frases lo que hiciste, con naturalidad.`;
+- Tienes la herramienta \`editarEvento\` para cuando pida cambiar algo de
+  una cita/evento ya existente ("cambia la cita del médico al jueves a
+  las 5", "la reunión es en la sala 2, no en mi despacho"). Búscalo por
+  descripción entre sus eventos futuros — no hace falta que cite el
+  título exacto. Mismo criterio de zona horaria que \`crearEvento\` para
+  cualquier fecha nueva.
+- Tienes la herramienta \`borrarEvento\` para cuando pida cancelar o
+  quitar una cita/evento ("cancela la cita del médico", "quita la
+  reunión del jueves"). Igual que \`editarEvento\`, búscalo por
+  descripción entre sus eventos futuros.
+- Tienes la herramienta \`consultarAhorros\`, de SOLO LECTURA, para
+  cuando pregunte cuánto tiene ahorrado ("¿cuánto llevo ahorrado?",
+  "¿cuánto tengo en el fondo de emergencia?"). Llámala siempre que
+  necesites ese dato para responder — nunca inventes ni calcules tú un
+  importe de ahorro, esta herramienta te da el real.
+- Después de llamar a cualquiera de las siete, confirma en un par de
+  frases lo que hiciste (o lo que has consultado), con naturalidad.`;
 
 const NOW_FORMATTER = new Intl.DateTimeFormat("es-ES", {
   weekday: "long",

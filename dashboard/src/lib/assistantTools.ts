@@ -3,12 +3,28 @@ import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import type { Message, CuentaAhorro } from "@prisma/client";
+import type { Message, CuentaAhorro, Evento } from "@prisma/client";
 import { captureMessage, resolveEmbedder } from "./pipeline";
 import { toAssistantSource } from "./assistantContext";
 import { ACTIONABLE_CATEGORIES } from "./categories";
 import { findSimilarMessages } from "./vectorSearch";
+import { getCuentasConSaldo } from "./ahorros";
 import { prisma } from "./prisma";
+
+/**
+ * Normaliza texto para comparar por voz: minúsculas + sin tildes/diacríticos.
+ * Sin esto, "Reunión" (guardado con tilde) y "reunion" (como lo dice o lo
+ * transcribe el usuario, o como lo normaliza el propio modelo) no
+ * coinciden con un `includes` normal — un fallo real de coincidencia
+ * detectado en verificación en vivo, no algo teórico.
+ */
+function normalizeForMatch(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
+}
 
 export interface CrearEventoResult {
   id: string;
@@ -29,6 +45,23 @@ export interface RegistrarAhorroResult {
   centimos: number;
   /** Si no existía ninguna cuenta parecida y se creó una nueva sobre la marcha. */
   cuentaCreada: boolean;
+}
+
+export interface EditarEventoResult {
+  id: string;
+  titulo: string;
+  fechaInicio: string;
+  ubicacion: string | null;
+}
+
+export interface BorrarEventoResult {
+  id: string;
+  titulo: string;
+}
+
+export interface ConsultarAhorrosResult {
+  cuentas: { nombre: string; saldoCentimos: number }[];
+  totalCentimos: number;
 }
 
 function isPendienteAccionable(m: Message): boolean {
@@ -85,16 +118,40 @@ async function encontrarOCrearCuenta(
   userId: string,
   nombreBuscado: string,
 ): Promise<{ cuenta: CuentaAhorro; creada: boolean }> {
-  const normalizado = nombreBuscado.trim().toLowerCase();
+  const normalizado = normalizeForMatch(nombreBuscado);
   const cuentas = await prisma.cuentaAhorro.findMany({ where: { userId } });
   const match = cuentas.find((c) => {
-    const n = c.nombre.toLowerCase();
+    const n = normalizeForMatch(c.nombre);
     return n.includes(normalizado) || normalizado.includes(n);
   });
   if (match) return { cuenta: match, creada: false };
 
   const creada = await prisma.cuentaAhorro.create({ data: { userId, nombre: nombreBuscado.trim() } });
   return { cuenta: creada, creada: true };
+}
+
+/**
+ * Busca, entre los eventos FUTUROS del usuario (hoy incluido), el que mejor
+ * coincide con una descripción libre ("la cita del médico", "la reunión
+ * del jueves"). Solo futuros a propósito: editar/borrar un evento ya
+ * pasado no es una acción real que alguien pida por voz — y así, si hay
+ * dos eventos con nombre parecido, uno pasado y uno próximo, siempre gana
+ * el que de verdad tiene sentido tocar. Mismo criterio de coincidencia por
+ * texto bidireccional que `encontrarOCrearCuenta` (títulos de evento son
+ * etiquetas cortas, no hace falta búsqueda semántica).
+ */
+async function encontrarEvento(userId: string, descripcion: string): Promise<Evento | null> {
+  const normalizado = normalizeForMatch(descripcion);
+  const eventos = await prisma.evento.findMany({
+    where: { userId, fechaInicio: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+    orderBy: { fechaInicio: "asc" },
+  });
+  return (
+    eventos.find((e) => {
+      const t = normalizeForMatch(e.titulo);
+      return t.includes(normalizado) || normalizado.includes(t);
+    }) ?? null
+  );
 }
 
 /**
@@ -297,6 +354,158 @@ export function createAssistantTools(userId: string) {
           cuentaNombre: cuenta.nombre,
           centimos,
           cuentaCreada,
+        };
+        return result;
+      },
+    }),
+    editarEvento: tool({
+      description:
+        "Modifica un evento/cita ya existente del calendario del usuario (cambiar la hora, el título o la ubicación — \"cambia la cita del médico al jueves a las 5\", \"la reunión es en la sala 2, no en mi despacho\"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad — no la llames de nuevo adivinando otro.",
+      inputSchema: z.object({
+        descripcion: z
+          .string()
+          .min(1)
+          .describe("Cómo describe el usuario el evento a cambiar, para buscarlo entre los suyos (p. ej. \"la cita del médico\", \"la reunión del jueves\")."),
+        tituloNuevo: z.string().optional().describe("Nuevo título, solo si cambia."),
+        fechaInicioNueva: z
+          .string()
+          .optional()
+          .describe("Nueva fecha/hora de inicio en ISO 8601 (con el desfase de España), solo si cambia."),
+        fechaFinNueva: z.string().optional().describe("Nueva fecha/hora de fin en ISO 8601, solo si cambia."),
+        ubicacionNueva: z.string().optional().describe("Nueva ubicación, solo si cambia."),
+      }),
+      execute: async ({ descripcion, tituloNuevo, fechaInicioNueva, fechaFinNueva, ubicacionNueva }) => {
+        let evento: Evento | null;
+        try {
+          evento = await encontrarEvento(userId, descripcion);
+        } catch (err) {
+          console.error("La tool editarEvento no pudo buscar el evento:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido buscar tus eventos. Inténtalo de nuevo en un momento.");
+        }
+        if (!evento) {
+          throw new Error("No he encontrado ningún evento próximo que coincida con eso.");
+        }
+
+        const data: { titulo?: string; fechaInicio?: Date; fechaFin?: Date; ubicacion?: string } = {};
+        if (tituloNuevo) data.titulo = tituloNuevo;
+        if (ubicacionNueva) data.ubicacion = ubicacionNueva;
+        if (fechaInicioNueva) {
+          const fecha = new Date(fechaInicioNueva);
+          if (Number.isNaN(fecha.getTime())) throw new Error("No he entendido bien la nueva fecha. ¿Puedes decírmela de otra forma?");
+          data.fechaInicio = fecha;
+        }
+        if (fechaFinNueva) {
+          const fin = new Date(fechaFinNueva);
+          if (Number.isNaN(fin.getTime())) throw new Error("No he entendido bien la nueva fecha de fin.");
+          data.fechaFin = fin;
+        }
+        if (Object.keys(data).length === 0) {
+          throw new Error("No me has dicho qué cambiar del evento.");
+        }
+
+        let actualizado: Evento;
+        try {
+          actualizado = await prisma.evento.update({ where: { id: evento.id }, data });
+        } catch (err) {
+          console.error("La tool editarEvento no pudo guardar los cambios:", err);
+          Sentry.captureException(err);
+          throw new Error("No se han podido guardar los cambios. Inténtalo de nuevo en un momento.");
+        }
+
+        try {
+          revalidatePath("/calendario");
+        } catch (err) {
+          console.error("No se pudo invalidar la caché tras editar el evento (no crítico):", err);
+        }
+
+        const result: EditarEventoResult = {
+          id: actualizado.id,
+          titulo: actualizado.titulo,
+          fechaInicio: actualizado.fechaInicio.toISOString(),
+          ubicacion: actualizado.ubicacion,
+        };
+        return result;
+      },
+    }),
+    borrarEvento: tool({
+      description:
+        "Borra un evento/cita del calendario del usuario (\"cancela la cita del médico\", \"quita la reunión del jueves\"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad.",
+      inputSchema: z.object({
+        descripcion: z
+          .string()
+          .min(1)
+          .describe("Cómo describe el usuario el evento a borrar, para buscarlo entre los suyos."),
+      }),
+      execute: async ({ descripcion }) => {
+        let evento: Evento | null;
+        try {
+          evento = await encontrarEvento(userId, descripcion);
+        } catch (err) {
+          console.error("La tool borrarEvento no pudo buscar el evento:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido buscar tus eventos. Inténtalo de nuevo en un momento.");
+        }
+        if (!evento) {
+          throw new Error("No he encontrado ningún evento próximo que coincida con eso.");
+        }
+
+        try {
+          await prisma.evento.delete({ where: { id: evento.id } });
+        } catch (err) {
+          console.error("La tool borrarEvento no pudo borrar el evento:", err);
+          Sentry.captureException(err);
+          throw new Error("No se ha podido borrar el evento. Inténtalo de nuevo en un momento.");
+        }
+
+        try {
+          revalidatePath("/calendario");
+        } catch (err) {
+          console.error("No se pudo invalidar la caché tras borrar el evento (no crítico):", err);
+        }
+
+        const result: BorrarEventoResult = { id: evento.id, titulo: evento.titulo };
+        return result;
+      },
+    }),
+    consultarAhorros: tool({
+      description:
+        "Consulta cuánto tiene ahorrado el usuario, en una cuenta concreta o en todas (\"¿cuánto llevo ahorrado?\", \"¿cuánto tengo en el fondo de emergencia?\"). De solo lectura — nunca modifica nada, úsala para poder responder con el dato real en vez de inventarlo.",
+      inputSchema: z.object({
+        cuenta: z
+          .string()
+          .optional()
+          .describe("Nombre de la cuenta si pregunta por una en concreto; omite si pregunta por el total o por todas sus cuentas."),
+      }),
+      execute: async ({ cuenta: nombreCuenta }) => {
+        let cuentas;
+        try {
+          cuentas = await getCuentasConSaldo(userId);
+        } catch (err) {
+          console.error("La tool consultarAhorros no pudo leer las cuentas:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido consultar tus ahorros. Inténtalo de nuevo en un momento.");
+        }
+
+        if (nombreCuenta) {
+          const normalizado = normalizeForMatch(nombreCuenta);
+          const match = cuentas.find((c) => {
+            const n = normalizeForMatch(c.nombre);
+            return n.includes(normalizado) || normalizado.includes(n);
+          });
+          if (!match) {
+            throw new Error(`No encuentro ninguna cuenta de ahorro parecida a "${nombreCuenta}".`);
+          }
+          const result: ConsultarAhorrosResult = {
+            cuentas: [{ nombre: match.nombre, saldoCentimos: match.saldoCentimos }],
+            totalCentimos: match.saldoCentimos,
+          };
+          return result;
+        }
+
+        const result: ConsultarAhorrosResult = {
+          cuentas: cuentas.map((c) => ({ nombre: c.nombre, saldoCentimos: c.saldoCentimos })),
+          totalCentimos: cuentas.reduce((sum, c) => sum + c.saldoCentimos, 0),
         };
         return result;
       },
