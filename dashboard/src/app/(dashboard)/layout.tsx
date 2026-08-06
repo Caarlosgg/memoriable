@@ -5,6 +5,8 @@ import { MobileHeader } from "@/components/nav/MobileHeader";
 import { CommandPalette } from "@/components/CommandPalette";
 import { UndoToastProvider } from "@/components/UndoToast";
 import { AssistantProvider } from "@/components/AssistantProvider";
+import { DailyBriefingModal } from "@/components/DailyBriefingModal";
+import { getDailyBriefing } from "@/lib/dailyBriefing";
 
 export default async function DashboardLayout({
   children,
@@ -13,7 +15,13 @@ export default async function DashboardLayout({
 }>) {
   // Comprobación "de verdad" (no solo la optimista de proxy.ts): si no hay
   // sesión válida, redirige a /login.
-  await verifySession();
+  const userId = await verifySession();
+  // No crítico: si falla, el dashboard sigue funcionando igual, solo sin el
+  // modal del resumen del día (no es un dato imprescindible para entrar).
+  const briefing = await getDailyBriefing(userId).catch((err) => {
+    console.error("No se pudo calcular el resumen del día (no crítico):", err);
+    return null;
+  });
 
   return (
     <UndoToastProvider>
@@ -32,6 +40,7 @@ export default async function DashboardLayout({
           </div>
           <BottomTabs />
           <CommandPalette />
+          {briefing && <DailyBriefingModal userId={userId} data={briefing} />}
         </div>
       </AssistantProvider>
     </UndoToastProvider>
