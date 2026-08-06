@@ -85,7 +85,7 @@ describe("buildSystemPrompt", () => {
     // Normaliza espacios/saltos de línea: el prompt es un template literal
     // multilínea, así que una frase puede partirse en el código fuente.
     const prompt = buildSystemPrompt("x").toLowerCase().replace(/\s+/g, " ");
-    expect(prompt).toContain("solo puedo ayudarte con lo que has guardado");
+    expect(prompt).toContain("solo puedo ayudarte con memoriable y lo que has guardado");
     expect(prompt).toContain("redirige con amabilidad");
   });
 

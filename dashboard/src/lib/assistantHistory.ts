@@ -58,10 +58,17 @@ export async function saveExchange(
   await prisma.conversation.update({ where: { id: conversationId }, data: {} }).catch(() => {});
 }
 
-/** Conversaciones del usuario, las más recientes (por actividad) primero. */
+/**
+ * Conversaciones del usuario, las más recientes (por actividad) primero.
+ * Solo las que tienen ya al menos un intercambio guardado: `ensureConversation`
+ * crea la fila de `Conversation` ANTES de saber si la respuesta llegará a
+ * completarse (p. ej. si Groq falla o la petición no termina) — sin este
+ * filtro, esas conversaciones "fantasma" aparecían en la lista con título
+ * pero sin nada dentro, y al abrirlas se veían vacías sin explicación.
+ */
 export async function listConversations(userId: string, limit = 30): Promise<ConversationSummary[]> {
   return prisma.conversation.findMany({
-    where: { userId },
+    where: { userId, exchanges: { some: {} } },
     orderBy: { updatedAt: "desc" },
     take: limit,
     select: { id: true, titulo: true, updatedAt: true },

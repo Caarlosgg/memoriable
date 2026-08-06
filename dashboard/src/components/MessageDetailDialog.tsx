@@ -272,7 +272,7 @@ export function MessageDetailDialog({
             </DialogFooter>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4" onPaste={handlePaste}>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="detalle-resumen" className="text-sm font-medium text-ink">
                 Resumen
@@ -404,7 +404,7 @@ export function MessageDetailDialog({
               </Button>
             </div>
 
-            <div className="flex flex-col gap-2" onPaste={handlePaste}>
+            <div className="flex flex-col gap-2">
               <p className="text-sm font-medium text-ink">Imágenes</p>
               {fields.imagenes.length > 0 && (
                 <div className="flex flex-wrap gap-2">

@@ -77,7 +77,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       .catch((err) => console.error("No se pudieron cargar las conversaciones del Asistente:", err));
   }, []);
 
-  const { messages, sendMessage, setMessages, status, error, clearError } = useChat<AssistantMessage>({
+  const { messages, sendMessage, setMessages, status, error, clearError, stop } = useChat<AssistantMessage>({
     transport: new DefaultChatTransport({ api: "/api/asistente", body: { conversationId } }),
     onFinish: ({ message }) => {
       const savedId = message.metadata?.conversationId ?? conversationId;
@@ -96,6 +96,19 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   });
 
   const isBusy = status === "submitted" || status === "streaming";
+
+  // Red de seguridad: si una respuesta se queda colgada (verificado en vivo
+  // que puede pasar con peticiones lentas) sin llegar nunca a un estado
+  // final, el chat quedaba bloqueado para siempre — "no me deja enviar
+  // mensajes" sin ningún error visible, solo un reinicio de página lo
+  // arreglaba. Pasado este margen se corta la petición sola y se libera el
+  // chat, con un error visible en vez de un bloqueo silencioso.
+  const STUCK_TIMEOUT_MS = 45_000;
+  useEffect(() => {
+    if (!isBusy) return;
+    const timer = setTimeout(() => stop(), STUCK_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isBusy, stop]);
 
   function handleSend(text: string) {
     const trimmed = text.trim();
