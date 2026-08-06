@@ -11,6 +11,20 @@ const initialState: RegisterState = {};
 export function RegisterForm() {
   const [state, formAction, pending] = useActionState(register, initialState);
 
+  if (state?.registered) {
+    return (
+      <div className="flex flex-col items-center gap-3 text-center">
+        <p className="text-sm text-ink">
+          Cuenta creada. Te hemos mandado un enlace de confirmación — revisa tu correo (y la carpeta de spam, por
+          si acaso) para poder entrar.
+        </p>
+        <Link href="/login" className="font-medium text-accent hover:text-accent-strong">
+          Ir a entrar
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
       <div className="flex flex-col gap-1.5">
@@ -27,6 +41,22 @@ export function RegisterForm() {
         <Input
           id="password"
           name="password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          aria-invalid={state?.error ? true : undefined}
+          aria-describedby={state?.error ? "register-error" : undefined}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="passwordConfirm" className="text-sm font-medium text-ink">
+          Confirmar contraseña
+        </label>
+        <Input
+          id="passwordConfirm"
+          name="passwordConfirm"
           type="password"
           required
           minLength={8}

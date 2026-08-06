@@ -47,10 +47,18 @@ datasource db {
 /// mensaje entrante por `telegramChatId` (vinculado desde el dashboard con
 /// un código corto, ver `linkCode`).
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
+  id    String @id @default(cuid())
+  email String @unique
+  /// Opcional desde el login con Google: una cuenta creada solo por OAuth no
+  /// tiene contraseña propia (ver dashboard/src/app/login/actions.ts, caso
+  /// passwordHash null).
+  passwordHash String?
   createdAt    DateTime @default(now())
+
+  /// Si el registro fue por email/contraseña, empieza en false hasta que
+  /// confirme el enlace del correo de verificación. Las cuentas por Google
+  /// nacen ya verificadas (el id_token de Google ya certifica el email).
+  emailVerified Boolean @default(false)
 
   /// Chat de Telegram vinculado a esta cuenta (null hasta que se vincula
   /// con /vincular). Único: un chat solo puede pertenecer a una cuenta.
@@ -60,13 +68,29 @@ model User {
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
-  messages      Message[]
-  exchanges     AssistantExchange[]
-  conversations Conversation[]
-  eventos       Evento[]
-  cuentasAhorro CuentaAhorro[]
+  messages           Message[]
+  exchanges          AssistantExchange[]
+  conversations      Conversation[]
+  eventos            Evento[]
+  cuentasAhorro      CuentaAhorro[]
+  verificationTokens VerificationToken[]
 
   @@map("users")
+}
+
+/// Token de un solo uso para confirmar el email al registrarse (registro/
+/// login profesional del dashboard). El bot no lo usa para nada.
+model VerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("verification_tokens")
 }
 
 /// Estado de una tarea/recordatorio en el tablero kanban (Fase 3). Solo
@@ -123,6 +147,12 @@ model Message {
   /// personal, un campo dinámico tipo JSON es proporcional a la necesidad
   /// real y evita construir un editor de "esquema de esquema" por tarjeta.
   camposExtra Json @default("{}")
+
+  /// Imágenes adjuntas (Fase D del dashboard), URLs de Vercel Blob. Array
+  /// simple en vez de una tabla Attachment aparte: proporcional al uso real
+  /// (una nota, unas pocas capturas, no un gestor de ficheros). El bot no
+  /// las usa (no hay forma de adjuntar una imagen por Telegram hoy).
+  imagenes String[] @default([])
 
   /// Dueño de la nota (Fase 2, multiusuario). Obligatorio: el backfill de
   /// las notas previas a esta fase ya se completó (ver migración

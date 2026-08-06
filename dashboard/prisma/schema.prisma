@@ -36,22 +36,45 @@ datasource db {
 
 /// Ver ../../prisma/schema.prisma: cuenta del dashboard (multiusuario, Fase 2).
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
+  id        String  @id @default(cuid())
+  email     String  @unique
+  /// Opcional desde el login con Google: una cuenta creada solo por OAuth no
+  /// tiene contraseña propia (ver login/actions.ts, caso passwordHash null).
+  passwordHash String?
   createdAt    DateTime @default(now())
+
+  /// Si el registro fue por email/contraseña, empieza en false hasta que
+  /// confirme el enlace del correo de verificación. Las cuentas por Google
+  /// nacen ya verificadas (el id_token de Google ya certifica el email).
+  emailVerified Boolean @default(false)
 
   telegramChatId    BigInt?   @unique
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
-  messages      Message[]
-  exchanges     AssistantExchange[]
-  conversations Conversation[]
-  eventos       Evento[]
-  cuentasAhorro CuentaAhorro[]
+  messages           Message[]
+  exchanges          AssistantExchange[]
+  conversations      Conversation[]
+  eventos            Evento[]
+  cuentasAhorro      CuentaAhorro[]
+  verificationTokens VerificationToken[]
 
   @@map("users")
+}
+
+/// Ver ../../prisma/schema.prisma: token de un solo uso para confirmar el
+/// email al registrarse (Fase de registro/login profesional).
+model VerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("verification_tokens")
 }
 
 /// Ver ../../prisma/schema.prisma: estado en el tablero kanban (Fase 3).
@@ -93,6 +116,12 @@ model Message {
 
   /// Ver ../../prisma/schema.prisma: campos extra personalizados (Fase E).
   camposExtra Json @default("{}")
+
+  /// Ver ../../prisma/schema.prisma: imágenes adjuntas (Fase D), URLs de
+  /// Vercel Blob. Array simple en vez de una tabla Attachment aparte:
+  /// proporcional al uso real (una nota, unas pocas capturas, no un
+  /// gestor de ficheros).
+  imagenes String[] @default([])
 
   /// Ver ../../prisma/schema.prisma: obligatorio, backfill ya completado.
   userId String

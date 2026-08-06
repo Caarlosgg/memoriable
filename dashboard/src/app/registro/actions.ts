@@ -1,15 +1,17 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { Prisma } from "@prisma/client";
 import { hashPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@/lib/auth";
-import { createSession } from "@/lib/session";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
+import { createVerificationToken } from "@/lib/verification";
+import { sendVerificationEmail, resolveBaseUrl } from "@/lib/email";
 
 export interface RegisterState {
   error?: string;
+  /** true cuando la cuenta ya se creó y solo falta confirmar el email. */
+  registered?: boolean;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -25,6 +27,7 @@ export async function register(
 ): Promise<RegisterState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const passwordConfirm = String(formData.get("passwordConfirm") ?? "");
 
   if (!EMAIL_RE.test(email) || email.length > MAX_EMAIL_LENGTH) {
     return { error: "Escribe un email válido." };
@@ -35,6 +38,9 @@ export async function register(
   // bcrypt ignora más de 72 bytes: se rechaza en vez de truncar en silencio.
   if (password.length > MAX_PASSWORD_LENGTH) {
     return { error: `La contraseña no puede tener más de ${MAX_PASSWORD_LENGTH} caracteres.` };
+  }
+  if (password !== passwordConfirm) {
+    return { error: "Las contraseñas no coinciden." };
   }
 
   const limit = await checkRateLimit(`registro:${await clientIp()}`, REGISTER_LIMIT, REGISTER_WINDOW_MS);
@@ -58,17 +64,19 @@ export async function register(
     return { error: "No se ha podido crear la cuenta. Inténtalo de nuevo." };
   }
 
-  // La cuenta ya existe en este punto (el create de arriba ya terminó) — si
-  // falla justo la sesión (p. ej. un problema puntual leyendo SESSION_SECRET),
-  // no tiene sentido decir "no se ha podido crear la cuenta": eso confundiría
-  // a alguien que reintente y se encuentre con "ya existe una cuenta". Se
-  // manda a /login con la cuenta ya lista en vez de fingir que no pasó nada.
+  // La cuenta ya existe en este punto (el create de arriba ya terminó): no
+  // se inicia sesión automáticamente — nace sin verificar (emailVerified:
+  // false por defecto) y el login la rechaza hasta que confirme el correo.
+  // Si el envío falla (p. ej. sin RESEND_API_KEY), la cuenta sigue creada
+  // igual: desde /login siempre se puede pedir que se reenvíe.
   try {
-    await createSession(userId);
+    const token = await createVerificationToken(userId);
+    const baseUrl = await resolveBaseUrl();
+    await sendVerificationEmail(email, `${baseUrl}/verificar-email?token=${token}`);
   } catch (err) {
-    console.error("Cuenta creada pero no se pudo iniciar sesión automáticamente:", err);
-    redirect("/login");
+    console.error("Cuenta creada pero falló el envío del correo de verificación:", err);
+    Sentry.captureException(err);
   }
 
-  redirect("/");
+  return { registered: true };
 }
