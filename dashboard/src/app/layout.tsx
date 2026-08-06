@@ -4,6 +4,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { ThemeScript } from "@/components/ThemeScript";
 import "./globals.css";
 
 // Tipografía con carácter propio (no la fuente de sistema por defecto):
@@ -55,7 +56,15 @@ export default function RootLayout({
     <html
       lang="es"
       className={`${fraunces.variable} ${inter.variable} h-full antialiased`}
+      // El script del <head> fija data-theme/data-text-size en <html> ANTES
+      // de que React hidrate — sin esto, React avisaría de un "mismatch"
+      // porque el HTML servido no tiene esos atributos y el del navegador
+      // sí. Mismo patrón que usan las librerías de tema (next-themes, etc).
+      suppressHydrationWarning
     >
+      <head>
+        <ThemeScript />
+      </head>
       <body className="min-h-full flex flex-col bg-paper text-ink">
         <OfflineBanner />
         {children}

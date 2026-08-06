@@ -3,6 +3,7 @@ import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { LinkTelegramForm } from "@/app/(dashboard)/cuenta/LinkTelegramForm";
 import { ExportSection } from "@/components/ExportSection";
+import { ThemeSettings } from "@/components/ThemeSettings";
 
 export async function CuentaSection() {
   const userId = await verifySession();
@@ -42,6 +43,8 @@ export async function CuentaSection() {
           </>
         )}
       </div>
+
+      <ThemeSettings />
 
       <ExportSection />
     </section>

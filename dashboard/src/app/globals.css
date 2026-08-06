@@ -83,6 +83,82 @@
   }
 }
 
+/*
+ * Tema elegido a mano desde "Cuenta" (ver ThemeSettings.tsx), guardado en
+ * localStorage — gana siempre sobre `prefers-color-scheme`: un selector de
+ * atributo (`[data-theme=...]`) tiene más especificidad que el `:root`
+ * simple de dentro de la media query de arriba, así que estas reglas
+ * ganan pase lo que pase, esté o no el sistema en oscuro. Sin elección
+ * manual (sin el atributo), no se aplica ninguna de las dos y manda el
+ * `prefers-color-scheme` de siempre — "sistema" es el valor por defecto,
+ * no hace falta una tercera variante aparte.
+ */
+:root[data-theme="dark"] {
+  --paper: #17160f;
+  --paper-raised: #201f18;
+  --paper-line: #33312a;
+  --ink: #f3efe6;
+  --muted: #a99f8d;
+  --accent: #4fceac;
+  --accent-strong: #7fe0c4;
+  --accent-ink: #08211a;
+  --accent-soft: #1c3830;
+  --highlight: #f3b84e;
+  --highlight-strong: #f8cf85;
+  --highlight-soft: #3a2c17;
+  --danger: #e6857e;
+  --danger-soft: #3a1e1c;
+
+  --cat-tarea: #4fceac;
+  --cat-tarea-soft: #1c3830;
+  --cat-idea: #f3b84e;
+  --cat-idea-soft: #3a2c17;
+  --cat-pregunta: #7ea6e0;
+  --cat-pregunta-soft: #1e2c40;
+  --cat-recordatorio: #e58b62;
+  --cat-recordatorio-soft: #3a2318;
+  --cat-nota: #c9a876;
+  --cat-nota-soft: #33291a;
+  --cat-otro: #a99f8d;
+  --cat-otro-soft: #2b291f;
+}
+
+:root[data-theme="light"] {
+  --paper: #faf6ef;
+  --paper-raised: #ffffff;
+  --paper-line: #e4ddcf;
+  --ink: #1c1b18;
+  --muted: #6b6558;
+  --accent: #0a7b5d;
+  --accent-strong: #0d5e47;
+  --accent-ink: #eef4f1;
+  --accent-soft: #dcece5;
+  --highlight: #da8c0b;
+  --highlight-strong: #8f5a06;
+  --highlight-soft: #fbead0;
+  --danger: #b3261e;
+  --danger-soft: #fbeceb;
+
+  --cat-tarea: #0a7b5d;
+  --cat-tarea-soft: #dcece5;
+  --cat-idea: #8f5a06;
+  --cat-idea-soft: #fbead0;
+  --cat-pregunta: #3a66a6;
+  --cat-pregunta-soft: #e3ebf7;
+  --cat-recordatorio: #c2542f;
+  --cat-recordatorio-soft: #f7e5dd;
+  --cat-nota: #7a5a34;
+  --cat-nota-soft: #ede4d6;
+  --cat-otro: #6b6558;
+  --cat-otro-soft: #e9e5db;
+}
+
+/* Tamaño de texto (accesibilidad): escala TODO lo que use rem (la mayoría
+   de clases de Tailwind), sin tocar layout ni contenedores de tamaño fijo. */
+:root[data-text-size="large"] {
+  font-size: 112.5%;
+}
+
 @theme inline {
   --color-paper: var(--paper);
   --color-paper-raised: var(--paper-raised);
