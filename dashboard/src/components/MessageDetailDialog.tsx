@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useRef, useState, useTransition, type ReactNode, type ClipboardEvent, type ChangeEvent } from "react";
 import type { Message } from "@prisma/client";
-import { Pencil, Clock, Tag, X, Plus, Trash2 } from "lucide-react";
+import { Pencil, Clock, Tag, X, Plus, Trash2, ImagePlus } from "lucide-react";
 import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION } from "@/lib/categories";
 import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
-import { updateMessage, deleteMessage } from "@/app/(dashboard)/actions";
+import { updateMessage, deleteMessage, uploadImage } from "@/app/(dashboard)/actions";
 import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtraJson } from "@/lib/camposExtra";
 import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
@@ -26,6 +26,7 @@ export interface EditableFields {
   prioridad: Message["prioridad"];
   etiquetas: string[];
   camposExtra: CamposExtraJson;
+  imagenes: string[];
 }
 
 function fieldsFrom(message: Message): EditableFields {
@@ -37,6 +38,7 @@ function fieldsFrom(message: Message): EditableFields {
     prioridad: message.prioridad,
     etiquetas: message.etiquetas,
     camposExtra: message.camposExtra as CamposExtraJson,
+    imagenes: message.imagenes,
   };
 }
 
@@ -92,6 +94,9 @@ export function MessageDetailDialog({
   const [camposExtraRows, setCamposExtraRows] = useState<CampoExtra[]>(() => camposExtraToArray(message.camposExtra));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -103,6 +108,7 @@ export function MessageDetailDialog({
       setCamposExtraRows(camposExtraToArray(message.camposExtra));
       setEditing(defaultEditing);
       setError(null);
+      setUploadError(null);
     }
   }
 
@@ -111,7 +117,44 @@ export function MessageDetailDialog({
     setEtiquetasTexto(message.etiquetas.join(", "));
     setCamposExtraRows(camposExtraToArray(message.camposExtra));
     setError(null);
+    setUploadError(null);
     setEditing(false);
+  }
+
+  /** Sube un fichero (dropzone o Ctrl+V) y lo añade a las imágenes de la nota. */
+  async function handleUpload(file: File) {
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      const result = await uploadImage(formData);
+      if (result.error || !result.url) {
+        setUploadError(result.error ?? "No se ha podido subir la imagen.");
+        return;
+      }
+      setFields((f) => ({ ...f, imagenes: [...f.imagenes, result.url!] }));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleFileInputChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void handleUpload(file);
+  }
+
+  /** Pegar una captura de pantalla (Ctrl+V) sube la imagen igual que arrastrarla. */
+  function handlePaste(e: ClipboardEvent<HTMLDivElement>) {
+    const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith("image/"));
+    if (!item) return;
+    const file = item.getAsFile();
+    if (file) void handleUpload(file);
+  }
+
+  function removeImagen(url: string) {
+    setFields((f) => ({ ...f, imagenes: f.imagenes.filter((u) => u !== url) }));
   }
 
   function updateCampoExtra(index: number, patch: Partial<CampoExtra>) {
@@ -182,6 +225,14 @@ export function MessageDetailDialog({
               <CategoryIcon aria-hidden size={14} /> {categoryLabel}
             </p>
             <p className="text-sm whitespace-pre-wrap text-ink">{message.contenido}</p>
+            {message.imagenes.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {message.imagenes.map((url) => (
+                  // eslint-disable-next-line @next/next/no-img-element -- Blob URLs son públicas, no hace falta el optimizador de next/image.
+                  <img key={url} src={url} alt="" className="h-20 w-20 rounded-lg border border-paper-line object-cover" />
+                ))}
+              </div>
+            )}
             {message.etiquetas.length > 0 && (
               <ul className="flex flex-wrap gap-1.5">
                 {message.etiquetas.map((tag) => (
@@ -351,6 +402,51 @@ export function MessageDetailDialog({
               <Button type="button" variant="secondary" size="sm" onClick={addCampoExtra} className="self-start">
                 <Plus aria-hidden size={14} /> Añadir campo
               </Button>
+            </div>
+
+            <div className="flex flex-col gap-2" onPaste={handlePaste}>
+              <p className="text-sm font-medium text-ink">Imágenes</p>
+              {fields.imagenes.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {fields.imagenes.map((url) => (
+                    <div key={url} className="group relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- Blob URLs son públicas, no hace falta el optimizador de next/image. */}
+                      <img src={url} alt="" className="h-20 w-20 rounded-lg border border-paper-line object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeImagen(url)}
+                        aria-label="Quitar esta imagen"
+                        className="absolute -top-1.5 -right-1.5 rounded-full bg-paper-raised p-1 text-muted shadow-sm transition-colors hover:bg-danger-soft hover:text-danger focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+                      >
+                        <X aria-hidden size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="self-start"
+              >
+                <ImagePlus aria-hidden size={14} />
+                {uploading ? "Subiendo…" : "Añadir imagen (o pega con Ctrl+V)"}
+              </Button>
+              {uploadError && (
+                <p role="alert" className="text-xs text-danger">
+                  {uploadError}
+                </p>
+              )}
             </div>
 
             {error && (

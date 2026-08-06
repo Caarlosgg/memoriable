@@ -1,7 +1,9 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
+import { put } from "@vercel/blob";
 import type { EstadoTarea, Prioridad, Prisma } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
@@ -43,6 +45,7 @@ export interface UpdateMessageInput {
   prioridad?: Prioridad;
   etiquetas?: string[];
   camposExtra?: Prisma.InputJsonValue;
+  imagenes?: string[];
 }
 
 export interface UpdateMessageResult {
@@ -77,6 +80,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
         ...(input.prioridad !== undefined ? { prioridad: input.prioridad } : {}),
         ...(input.etiquetas !== undefined ? { etiquetas: input.etiquetas } : {}),
         ...(input.camposExtra !== undefined ? { camposExtra: input.camposExtra } : {}),
+        ...(input.imagenes !== undefined ? { imagenes: input.imagenes } : {}),
       },
     });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
@@ -87,6 +91,45 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
   } catch (err) {
     console.error("Error al editar la nota:", err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
+  }
+}
+
+export interface UploadImageResult {
+  url?: string;
+  error?: string;
+}
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
+/**
+ * Sube una imagen adjunta a una nota (Fase D) a Vercel Blob y devuelve su
+ * URL pública — el propio dueño la añade a `imagenes` con `updateMessage`
+ * (esto solo sube el fichero, no toca la nota). Sin `BLOB_READ_WRITE_TOKEN`
+ * configurada, `put()` lanza — se captura y se devuelve un error legible en
+ * vez de una excepción cruda, mismo criterio que el resto de integraciones
+ * opcionales (Groq/Gemini/Sentry).
+ */
+export async function uploadImage(formData: FormData): Promise<UploadImageResult> {
+  const userId = await verifySession();
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "No se ha recibido ningún fichero." };
+  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    return { error: "Solo se admiten imágenes (PNG, JPEG, WEBP o GIF)." };
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return { error: "La imagen pesa demasiado (máx. 8 MB)." };
+  }
+
+  try {
+    const extension = file.type.split("/")[1];
+    const blob = await put(`notas/${userId}/${randomUUID()}.${extension}`, file, { access: "public" });
+    return { url: blob.url };
+  } catch (err) {
+    console.error("Error al subir la imagen a Vercel Blob:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido subir la imagen. Inténtalo de nuevo en un momento." };
   }
 }
 
