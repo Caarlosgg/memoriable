@@ -1,21 +1,33 @@
 import "server-only";
 import { headers } from "next/headers";
 import * as Sentry from "@sentry/nextjs";
-import { Resend } from "resend";
+import nodemailer, { type Transporter } from "nodemailer";
 
 /**
  * Inicialización perezosa, mismo patrón que resolveEmbedder/resolveCategorizer
- * del bot: sin RESEND_API_KEY, el registro sigue funcionando (la cuenta se
- * crea igual), solo que no se envía el correo de verificación — no debe
- * romper nada por faltar una variable opcional.
+ * del bot: sin GMAIL_USER/GMAIL_APP_PASSWORD, el registro sigue funcionando
+ * (la cuenta se crea igual), solo que no se envía el correo de verificación
+ * — no debe romper nada por faltar variables opcionales.
+ *
+ * Gmail SMTP en vez de un proveedor transaccional (Resend/SendGrid): para
+ * enviar a destinatarios arbitrarios de forma fiable, esos proveedores
+ * exigen verificar un dominio propio (con sus registros DNS) — algo que
+ * este proyecto no tiene y que tendría coste. Gmail con una "contraseña de
+ * aplicación" no necesita dominio: el correo sale de verdad desde la propia
+ * cuenta de Gmail del usuario, así que llega a la bandeja de entrada sin
+ * más configuración.
  */
-let cachedClient: Resend | null | undefined;
+let cachedTransporter: Transporter | null | undefined;
 
-function resolveResend(): Resend | null {
-  if (cachedClient !== undefined) return cachedClient;
-  const apiKey = process.env.RESEND_API_KEY;
-  cachedClient = apiKey ? new Resend(apiKey) : null;
-  return cachedClient;
+function resolveTransporter(): Transporter | null {
+  if (cachedTransporter !== undefined) return cachedTransporter;
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  cachedTransporter =
+    user && pass
+      ? nodemailer.createTransport({ service: "gmail", auth: { user, pass } })
+      : null;
+  return cachedTransporter;
 }
 
 /**
@@ -31,8 +43,6 @@ export async function resolveBaseUrl(): Promise<string> {
   return `${proto}://${host}`;
 }
 
-const FROM_ADDRESS = "MemorIAble <onboarding@resend.dev>";
-
 /**
  * Envía el correo de verificación al registrarse. Devuelve si se pudo
  * enviar — el registro NO falla si esto devuelve false (ver registro/
@@ -40,15 +50,15 @@ const FROM_ADDRESS = "MemorIAble <onboarding@resend.dev>";
  * reenviar el correo desde /login.
  */
 export async function sendVerificationEmail(to: string, verifyUrl: string): Promise<boolean> {
-  const resend = resolveResend();
-  if (!resend) {
-    console.error("RESEND_API_KEY no configurada: no se envió el correo de verificación a", to);
+  const transporter = resolveTransporter();
+  if (!transporter) {
+    console.error("GMAIL_USER/GMAIL_APP_PASSWORD no configuradas: no se envió el correo de verificación a", to);
     return false;
   }
 
   try {
-    const { error } = await resend.emails.send({
-      from: FROM_ADDRESS,
+    await transporter.sendMail({
+      from: `MemorIAble <${process.env.GMAIL_USER}>`,
       to,
       subject: "Confirma tu email en MemorIAble",
       html: `
@@ -63,11 +73,6 @@ export async function sendVerificationEmail(to: string, verifyUrl: string): Prom
         </div>
       `,
     });
-    if (error) {
-      console.error("Resend devolvió un error al enviar el correo de verificación:", error);
-      Sentry.captureException(new Error(`Resend error: ${error.message}`));
-      return false;
-    }
     return true;
   } catch (err) {
     console.error("Fallo al enviar el correo de verificación:", err);

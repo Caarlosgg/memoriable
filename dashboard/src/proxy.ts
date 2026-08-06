@@ -20,6 +20,17 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Quien pincha en el enlace del correo de confirmación nunca tiene sesión
+  // (se manda justo después de crear la cuenta, antes de poder entrar) —
+  // sin esto, el propio proxy lo mandaba a /login antes de que la página
+  // llegara siquiera a comprobar el token, y la cuenta nunca se marcaba
+  // verificada. A diferencia de /login y /registro, no redirige aunque SÍ
+  // haya sesión: alguien ya logueado en otro dispositivo puede pinchar el
+  // mismo enlace sin problema.
+  if (pathname === "/verificar-email") {
+    return NextResponse.next();
+  }
+
   if (!authenticated) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

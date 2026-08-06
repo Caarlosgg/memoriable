@@ -1,28 +1,56 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
+import { Mail, CircleAlert } from "lucide-react";
 import { register, type RegisterState } from "./actions";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ResendVerification } from "@/components/ResendVerification";
 
 const initialState: RegisterState = {};
 
-export function RegisterForm() {
-  const [state, formAction, pending] = useActionState(register, initialState);
-
-  if (state?.registered) {
+function RegisteredConfirmation({ email, emailSent }: { email: string; emailSent: boolean }) {
+  if (!emailSent) {
     return (
       <div className="flex flex-col items-center gap-3 text-center">
-        <p className="text-sm text-ink">
-          Cuenta creada. Te hemos mandado un enlace de confirmación — revisa tu correo (y la carpeta de spam, por
-          si acaso) para poder entrar.
+        <CircleAlert aria-hidden size={32} className="text-danger" />
+        <h2 className="font-display text-lg font-semibold text-ink">Cuenta creada, pero...</h2>
+        <p className="text-sm text-muted">
+          No hemos podido mandarte el correo de confirmación ahora mismo. Puedes pedir que se reenvíe:
         </p>
-        <Link href="/login" className="font-medium text-accent hover:text-accent-strong">
+        <div className="w-full">
+          <ResendVerification email={email} />
+        </div>
+        <Link href="/login" className="text-sm font-medium text-accent hover:text-accent-strong">
           Ir a entrar
         </Link>
       </div>
     );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3 text-center">
+      <Mail aria-hidden size={32} className="text-accent" />
+      <h2 className="font-display text-lg font-semibold text-ink">Revisa tu correo</h2>
+      <p className="text-sm text-muted">
+        Te hemos mandado un enlace de confirmación a <span className="font-medium text-ink">{email}</span>. Ábrelo
+        para activar tu cuenta (mira también la carpeta de spam, por si acaso).
+      </p>
+      <ResendVerification email={email} />
+      <Link href="/login" className="text-sm font-medium text-accent hover:text-accent-strong">
+        Ya lo he confirmado, ir a entrar
+      </Link>
+    </div>
+  );
+}
+
+export function RegisterForm() {
+  const [state, formAction, pending] = useActionState(register, initialState);
+  const [email, setEmail] = useState("");
+
+  if (state?.registered) {
+    return <RegisteredConfirmation email={email} emailSent={state.emailSent ?? false} />;
   }
 
   return (
@@ -31,7 +59,16 @@ export function RegisterForm() {
         <label htmlFor="email" className="text-sm font-medium text-ink">
           Email
         </label>
-        <Input id="email" name="email" type="email" required autoFocus autoComplete="email" />
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          required
+          autoFocus
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">

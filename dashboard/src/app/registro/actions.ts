@@ -12,6 +12,8 @@ export interface RegisterState {
   error?: string;
   /** true cuando la cuenta ya se creó y solo falta confirmar el email. */
   registered?: boolean;
+  /** true si el correo de verificación se pudo enviar de verdad — la UI no promete "revisa tu correo" si esto es false. */
+  emailSent?: boolean;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -67,16 +69,19 @@ export async function register(
   // La cuenta ya existe en este punto (el create de arriba ya terminó): no
   // se inicia sesión automáticamente — nace sin verificar (emailVerified:
   // false por defecto) y el login la rechaza hasta que confirme el correo.
-  // Si el envío falla (p. ej. sin RESEND_API_KEY), la cuenta sigue creada
-  // igual: desde /login siempre se puede pedir que se reenvíe.
+  // Si el envío falla (p. ej. sin GMAIL_USER/GMAIL_APP_PASSWORD), la cuenta
+  // sigue creada igual: desde /login siempre se puede pedir que se reenvíe.
+  // `emailSent` viaja a la UI para que no diga "revisa tu correo" cuando en
+  // realidad no se ha mandado nada.
+  let emailSent = false;
   try {
     const token = await createVerificationToken(userId);
     const baseUrl = await resolveBaseUrl();
-    await sendVerificationEmail(email, `${baseUrl}/verificar-email?token=${token}`);
+    emailSent = await sendVerificationEmail(email, `${baseUrl}/verificar-email?token=${token}`);
   } catch (err) {
     console.error("Cuenta creada pero falló el envío del correo de verificación:", err);
     Sentry.captureException(err);
   }
 
-  return { registered: true };
+  return { registered: true, emailSent };
 }

@@ -84,18 +84,18 @@ describe("register", () => {
       "ana@example.com",
       "http://localhost:3000/verificar-email?token=token123",
     );
-    expect(result).toEqual({ registered: true });
+    expect(result).toEqual({ registered: true, emailSent: true });
   });
 
-  it("la cuenta queda creada aunque falle el envío del correo de verificación", async () => {
-    sendVerificationEmail.mockRejectedValue(new Error("Resend caído"));
+  it("la cuenta queda creada aunque falle el envío del correo de verificación, y lo refleja en emailSent", async () => {
+    sendVerificationEmail.mockRejectedValue(new Error("SMTP caído"));
     const { register } = await import("../src/app/registro/actions");
     const result = await register(
       {},
       formData({ email: "ana@example.com", password: "password1", passwordConfirm: "password1" }),
     );
     expect(userCreate).toHaveBeenCalled();
-    expect(result).toEqual({ registered: true });
+    expect(result).toEqual({ registered: true, emailSent: false });
   });
 
   it("email duplicado da un mensaje claro, no un error genérico", async () => {

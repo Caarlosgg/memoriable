@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CircleCheck, CircleAlert } from "lucide-react";
 import { verifyEmailToken } from "@/lib/verification";
+import { AutoRedirect } from "./AutoRedirect";
 
 export const metadata: Metadata = {
   title: "Confirmar email · MemorIAble",
@@ -39,8 +40,9 @@ export default async function VerificarEmailPage({
         )}
         <h1 className="mb-1 font-display text-xl font-semibold text-ink">{titulo}</h1>
         <p className="mb-6 text-sm text-muted">{texto}</p>
+        {resultado === "ok" && <AutoRedirect />}
         <Link href="/login" className="font-medium text-accent hover:text-accent-strong">
-          Ir a entrar
+          Ir a entrar ahora
         </Link>
       </div>
     </main>
