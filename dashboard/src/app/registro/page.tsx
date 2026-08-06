@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { RegisterForm } from "./RegisterForm";
+import { GoogleButton } from "../login/GoogleButton";
+import { isGoogleOAuthConfigured } from "@/lib/googleOAuth";
 
 export const metadata: Metadata = {
   title: "Crear cuenta · MemorIAble",
@@ -18,6 +20,19 @@ export default function RegisterPage() {
         <p className="mb-6 text-sm text-muted">
           Tus notas son privadas: solo tú puedes verlas.
         </p>
+        {isGoogleOAuthConfigured() && (
+          <>
+            {/* Mismo flujo que el botón de /login: con Google no hace falta
+                confirmar email ni crear contraseña, la cuenta se crea sola
+                al volver del callback si es la primera vez. */}
+            <GoogleButton />
+            <div className="my-4 flex items-center gap-3 text-xs text-muted">
+              <span className="h-px flex-1 bg-paper-line" />
+              o con tu email
+              <span className="h-px flex-1 bg-paper-line" />
+            </div>
+          </>
+        )}
         <RegisterForm />
       </div>
     </main>
