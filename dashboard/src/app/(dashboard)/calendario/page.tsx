@@ -7,6 +7,7 @@ import { ResumenSection } from "@/components/calendar/ResumenSection";
 import { CalendarView } from "@/components/calendar/CalendarView";
 import { CalendarSkeleton } from "@/components/calendar/CalendarSkeleton";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { PageHeader } from "@/components/PageHeader";
 
 export const metadata: Metadata = { title: "Calendario · MemorIAble" };
 
@@ -33,10 +34,22 @@ async function CalendarSection() {
 
 export default function CalendarioPage() {
   return (
-    <SectionErrorBoundary title="Calendario">
-      <Suspense fallback={<CalendarSkeleton />}>
-        <CalendarSection />
-      </Suspense>
-    </SectionErrorBoundary>
+    <>
+      <PageHeader
+        title="Calendario"
+        help={
+          <>
+            Tus citas y eventos con fecha y hora. Créalos aquí con el botón de nuevo evento, o pídeselo al
+            Asistente en lenguaje natural (&quot;quedar el jueves a las 5&quot;). Haz clic en un día o en un
+            evento para ver el detalle.
+          </>
+        }
+      />
+      <SectionErrorBoundary title="Calendario">
+        <Suspense fallback={<CalendarSkeleton />}>
+          <CalendarSection />
+        </Suspense>
+      </SectionErrorBoundary>
+    </>
   );
 }

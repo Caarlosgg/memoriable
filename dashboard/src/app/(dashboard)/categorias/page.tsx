@@ -4,6 +4,7 @@ import { CaptureForm } from "@/components/CaptureForm";
 import { NotesSection } from "@/components/NotesSection";
 import { NotesSkeleton } from "@/components/NotesSkeleton";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { PageHeader } from "@/components/PageHeader";
 
 export const metadata: Metadata = { title: "Notas · MemorIAble" };
 
@@ -18,6 +19,16 @@ export default async function NotasPage({
 
   return (
     <>
+      <PageHeader
+        title="Notas"
+        help={
+          <>
+            Anota ideas, tareas, preguntas o recordatorios en lenguaje natural — la propia IA los categoriza
+            solos, sin que tengas que elegir nada. Haz clic en una tarjeta para ver el detalle o editarla, y usa
+            los filtros de arriba para buscar por categoría, prioridad o etiqueta.
+          </>
+        }
+      />
       <SectionErrorBoundary title="Anotar">
         <CaptureForm />
       </SectionErrorBoundary>

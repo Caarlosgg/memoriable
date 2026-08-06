@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { getCuentasConSaldo, getTendenciasPorCuenta, describeTrend } from "@/lib/ahorros";
 import { AhorrosSection } from "@/components/ahorros/AhorrosSection";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { PageHeader } from "@/components/PageHeader";
 
 export const metadata: Metadata = { title: "Ahorros · MemorIAble" };
 
@@ -32,10 +33,22 @@ function AhorrosSkeleton() {
 
 export default function AhorrosPage() {
   return (
-    <SectionErrorBoundary title="Ahorros">
-      <Suspense fallback={<AhorrosSkeleton />}>
-        <AhorrosData />
-      </Suspense>
-    </SectionErrorBoundary>
+    <>
+      <PageHeader
+        title="Ahorros"
+        help={
+          <>
+            Lleva el seguimiento de tus cuentas de ahorro (un fondo de emergencia, un viaje, lo que quieras).
+            Apunta ingresos y retiradas aquí, o dile al Asistente cuánto has ahorrado — se registra solo, y si
+            no existe la cuenta, se crea sobre la marcha.
+          </>
+        }
+      />
+      <SectionErrorBoundary title="Ahorros">
+        <Suspense fallback={<AhorrosSkeleton />}>
+          <AhorrosData />
+        </Suspense>
+      </SectionErrorBoundary>
+    </>
   );
 }
