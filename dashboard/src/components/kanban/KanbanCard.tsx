@@ -34,7 +34,7 @@ export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(funct
   forwardedRef,
 ) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: message.id });
-  const { Icon: CategoryIcon, color } = presentCategory(message.categoria);
+  const { Icon: CategoryIcon, color, borderAccent } = presentCategory(message.categoria);
   const priority = PRIORIDAD_PRESENTATION[message.prioridad];
   const PriorityIcon = PRIORIDAD_ICON;
   const EstadoIcon = ESTADO_PRESENTATION[message.estado].Icon;
@@ -89,7 +89,8 @@ export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(funct
       }}
       style={{ transform: CSS.Translate.toString(transform) }}
       className={cn(
-        "fade-in touch-none rounded-xl border border-paper-line bg-paper-raised p-3 shadow-sm transition-shadow hover:shadow-md",
+        "fade-in touch-none rounded-xl border border-l-4 border-paper-line bg-paper-raised p-3 shadow-sm transition-shadow hover:shadow-md",
+        borderAccent,
         isDragging ? "z-10 opacity-50 shadow-lg" : "",
         className,
       )}

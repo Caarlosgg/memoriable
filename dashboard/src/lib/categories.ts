@@ -29,19 +29,50 @@ export function isCategory(value: string): value is Category {
  */
 export const CATEGORY_PRESENTATION: Record<
   Category,
-  { Icon: LucideIcon; label: string; color: string; colorSoft: string }
+  { Icon: LucideIcon; label: string; color: string; colorSoft: string; borderAccent: string }
 > = {
-  tarea: { Icon: CheckSquare, label: "Tareas", color: "text-cat-tarea", colorSoft: "bg-cat-tarea-soft" },
-  idea: { Icon: Lightbulb, label: "Ideas", color: "text-cat-idea", colorSoft: "bg-cat-idea-soft" },
-  pregunta: { Icon: HelpCircle, label: "Preguntas", color: "text-cat-pregunta", colorSoft: "bg-cat-pregunta-soft" },
+  tarea: {
+    Icon: CheckSquare,
+    label: "Tareas",
+    color: "text-cat-tarea",
+    colorSoft: "bg-cat-tarea-soft",
+    borderAccent: "border-l-cat-tarea",
+  },
+  idea: {
+    Icon: Lightbulb,
+    label: "Ideas",
+    color: "text-cat-idea",
+    colorSoft: "bg-cat-idea-soft",
+    borderAccent: "border-l-cat-idea",
+  },
+  pregunta: {
+    Icon: HelpCircle,
+    label: "Preguntas",
+    color: "text-cat-pregunta",
+    colorSoft: "bg-cat-pregunta-soft",
+    borderAccent: "border-l-cat-pregunta",
+  },
   recordatorio: {
     Icon: Bell,
     label: "Recordatorios",
     color: "text-cat-recordatorio",
     colorSoft: "bg-cat-recordatorio-soft",
+    borderAccent: "border-l-cat-recordatorio",
   },
-  nota: { Icon: StickyNote, label: "Notas", color: "text-cat-nota", colorSoft: "bg-cat-nota-soft" },
-  otro: { Icon: Archive, label: "Sin categorizar", color: "text-cat-otro", colorSoft: "bg-cat-otro-soft" },
+  nota: {
+    Icon: StickyNote,
+    label: "Notas",
+    color: "text-cat-nota",
+    colorSoft: "bg-cat-nota-soft",
+    borderAccent: "border-l-cat-nota",
+  },
+  otro: {
+    Icon: Archive,
+    label: "Sin categorizar",
+    color: "text-cat-otro",
+    colorSoft: "bg-cat-otro-soft",
+    borderAccent: "border-l-cat-otro",
+  },
 };
 
 export function presentCategory(categoria: string) {

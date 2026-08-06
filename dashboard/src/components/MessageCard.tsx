@@ -26,7 +26,7 @@ export const MessageCard = React.forwardRef<HTMLLIElement, MessageCardProps>(fun
   { message, showCategory = true, highlightQuery, highlighted = false, className, ...rest },
   ref,
 ) {
-  const { Icon, label, color } = presentCategory(message.categoria);
+  const { Icon, label, color, borderAccent } = presentCategory(message.categoria);
   const resumen = message.resumen || "(sin resumen)";
 
   return (
@@ -34,8 +34,10 @@ export const MessageCard = React.forwardRef<HTMLLIElement, MessageCardProps>(fun
       ref={ref}
       id={`mensaje-${message.id}`}
       className={cn(
-        "fade-in group scroll-mt-24 rounded-xl border p-4 shadow-sm transition-shadow hover:shadow-md",
-        highlighted ? "border-accent bg-accent-soft ring-2 ring-accent/40" : "border-paper-line bg-paper-raised",
+        "fade-in group scroll-mt-24 rounded-xl border border-l-4 p-4 shadow-sm transition-shadow hover:shadow-md",
+        highlighted
+          ? "border-accent bg-accent-soft ring-2 ring-accent/40"
+          : `border-paper-line bg-paper-raised ${borderAccent}`,
         className,
       )}
       {...rest}
