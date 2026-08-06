@@ -5,6 +5,9 @@ import { OfflineCategorizer } from '../ai/offlineCategorizer.js';
 import { ResilientCategorizer } from '../ai/resilientCategorizer.js';
 import { GeminiEmbedder, NullEmbedder } from '../ai/embedder.js';
 import type { Categorizer, Embedder } from '../ai/types.js';
+import { GroqBriefingGenerator, OfflineBriefingGenerator, type BriefingGenerator } from '../ai/briefing.js';
+import { ResilientBriefingGenerator } from '../ai/resilientBriefing.js';
+import { BudgetedBriefingGenerator } from '../ai/budgetedBriefing.js';
 import { env, hasGroq, hasDatabase } from '../config/env.js';
 import { DailyBudget, type BudgetGuard } from '../cost/budget.js';
 import { DEFAULT_BUDGET_FILE, FileBudgetStore } from '../cost/fileBudgetStore.js';
@@ -52,6 +55,25 @@ export function resolveCategorizer(logger: Logger = rootLogger): Categorizer {
     maxMessagesPerDay: env.MAX_MESSAGES_PER_DAY,
   });
   return budgeted;
+}
+
+/**
+ * Elige el generador del Daily Briefing (Tier P1): mismas capas de
+ * protección que `resolveCategorizer` (resiliente + fusible de coste,
+ * caída a un generador offline determinista), reutilizando el MISMO
+ * `BudgetGuard` que la categorización — un briefing es una llamada más
+ * al mismo presupuesto diario, no uno aparte.
+ */
+export function resolveBriefingGenerator(logger: Logger = rootLogger): BriefingGenerator {
+  const offline = new OfflineBriefingGenerator();
+
+  if (!hasGroq()) {
+    return offline;
+  }
+
+  const groq = new GroqBriefingGenerator(createGroqClient(), env.GROQ_MODEL);
+  const resilient = new ResilientBriefingGenerator(groq, offline, { logger });
+  return new BudgetedBriefingGenerator(resilient, offline, resolveBudget(logger), { logger });
 }
 
 /**

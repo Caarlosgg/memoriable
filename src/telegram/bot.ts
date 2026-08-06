@@ -1,19 +1,20 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { env } from '../config/env.js';
 import { errorContext, logger as rootLogger, type Logger } from '../logging/index.js';
 import { InvalidMessageError } from '../pipeline/sanitize.js';
 import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
-import { resolvePipeline } from '../pipeline/factory.js';
+import { resolvePipeline, resolveBriefingGenerator } from '../pipeline/factory.js';
 import { resolveChatOwner, linkTelegramChat } from '../db/users.js';
 import { linkAttemptLimiter, type LinkAttemptLimiter } from './linkRateLimit.js';
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
 import { startDailySummary } from '../summary/scheduler.js';
-import { dayKey } from '../summary/dailySummary.js';
+import { dayKey, buildDailySummary } from '../summary/dailySummary.js';
 import { FileFocusStateStore, type FocusStateStore } from '../summary/focusState.js';
-import { PrismaEventRepository } from '../db/eventRepository.js';
+import { PrismaEventRepository, type EventRepository } from '../db/eventRepository.js';
+import type { BriefingGenerator } from '../ai/briefing.js';
 
 /** Respuestas al usuario, centralizadas para poder testearlas. */
 export const REPLIES = {
@@ -49,6 +50,8 @@ export const BOT_COMMANDS = [
   { command: 'vincular', description: 'Vincular este chat a tu cuenta del dashboard' },
   { command: 'buscar', description: 'Buscar en tus mensajes guardados' },
   { command: 'pendientes', description: 'Ver tus tareas y recordatorios pendientes' },
+  { command: 'resumen', description: 'Tu día en claro: misión principal, plan y avisos' },
+  { command: 'hoy', description: 'Igual que /resumen' },
 ] as const;
 
 /**
@@ -111,6 +114,37 @@ export async function handlePendingCommand(
     });
   } catch (err) {
     logger?.error('telegram.pending_failed', errorContext(err));
+    return REPLIES.error;
+  }
+}
+
+/** Teclado inline bajo el Daily Briefing: mismo par de acciones en /resumen, /hoy y "Actualizar". */
+export function briefingKeyboard() {
+  return Markup.inlineKeyboard([
+    Markup.button.callback('🔁 Actualizar', 'briefing:refresh'),
+    Markup.button.callback('📋 Ver pendientes', 'briefing:pendientes'),
+  ]);
+}
+
+/**
+ * Maneja `/resumen` y `/hoy`: el Daily Briefing bajo demanda (Tier P1) —
+ * mismo contenido que el resumen programado, pero sin la comprobación de
+ * "una vez al día" (aquí el usuario lo está pidiendo expresamente, tantas
+ * veces como quiera). **Nunca lanza**: ante un fallo interno devuelve un
+ * mensaje de error y lo registra.
+ */
+export async function handleBriefingCommand(
+  userId: string,
+  pipeline: Pipeline,
+  eventRepository: EventRepository | undefined,
+  briefingGenerator: BriefingGenerator | undefined,
+  logger: Logger | undefined = pipeline.logger,
+): Promise<string> {
+  try {
+    const { text } = await buildDailySummary(pipeline.repository, userId, new Date(), eventRepository, briefingGenerator);
+    return text;
+  } catch (err) {
+    logger?.error('telegram.briefing_failed', errorContext(err));
     return REPLIES.error;
   }
 }
@@ -229,6 +263,9 @@ export function createBot(
   logger: Logger = pipeline.logger ?? rootLogger,
   /** Estado del "ritual matutino" (Tier 2.6) — sin él, el bot funciona igual pero no hay foco del día. */
   focusStore?: FocusStateStore,
+  /** Daily Briefing (Tier P1) — sin estos dos, /resumen y /hoy siguen funcionando, solo sin eventos ni consultor de IA. */
+  eventRepository?: EventRepository,
+  briefingGenerator?: BriefingGenerator,
 ): Telegraf | null {
   if (!token) return null;
 
@@ -294,6 +331,37 @@ export function createBot(
 
   bot.command('pendientes', async (ctx) => {
     const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+    const reply = await handlePendingCommand(userId, pipeline, logger);
+    await ctx.reply(reply, { parse_mode: 'HTML' });
+  });
+
+  // /resumen y /hoy: el mismo Daily Briefing bajo demanda (Tier P1).
+  bot.command(['resumen', 'hoy'], async (ctx) => {
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+    const reply = await handleBriefingCommand(userId, pipeline, eventRepository, briefingGenerator, logger);
+    await ctx.reply(reply, { parse_mode: 'HTML', ...briefingKeyboard() });
+  });
+
+  bot.action('briefing:refresh', async (ctx) => {
+    await ctx.answerCbQuery('Actualizando…');
+    const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+    const reply = await handleBriefingCommand(userId, pipeline, eventRepository, briefingGenerator, logger);
+    try {
+      await ctx.editMessageText(reply, { parse_mode: 'HTML', ...briefingKeyboard() });
+    } catch (err) {
+      // Si el texto es idéntico al anterior, Telegram rechaza la edición
+      // ("message is not modified") — no es un fallo real, no hace falta
+      // registrarlo como error.
+      logger.debug('telegram.briefing_refresh_noop', errorContext(err));
+    }
+  });
+
+  bot.action('briefing:pendientes', async (ctx) => {
+    await ctx.answerCbQuery();
+    const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
     if (!userId) return;
     const reply = await handlePendingCommand(userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
@@ -413,7 +481,12 @@ export function startBot(
   const focusStore = new FileFocusStateStore(undefined, (err) =>
     logger.warn('summary.focus_store_error', errorContext(err)),
   );
-  const bot = createBot(env.TELEGRAM_BOT_TOKEN, pipeline, logger, focusStore);
+  // Compartidos entre /resumen, /hoy y el cron: un único EventRepository y
+  // un único generador del Daily Briefing (con su propio fusible de coste)
+  // para todo el proceso.
+  const eventRepository = new PrismaEventRepository();
+  const briefingGenerator = resolveBriefingGenerator(logger);
+  const bot = createBot(env.TELEGRAM_BOT_TOKEN, pipeline, logger, focusStore, eventRepository, briefingGenerator);
 
   if (!bot) {
     logger.warn('telegram.disabled', {
@@ -435,7 +508,7 @@ export function startBot(
   void registerCommands(bot, logger);
 
   // Resumen diario proactivo (si hay TELEGRAM_CHAT_ID configurado).
-  const dailySummary = startDailySummary(bot, pipeline.repository, logger, focusStore, new PrismaEventRepository());
+  const dailySummary = startDailySummary(bot, pipeline.repository, logger, focusStore, eventRepository, briefingGenerator);
 
   const stop = (signal: string) => {
     logger.info('telegram.stopping', { signal });

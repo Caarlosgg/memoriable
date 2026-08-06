@@ -13,6 +13,7 @@ import { InMemorySummaryStateStore } from '../src/summary/summaryState.js';
 import { InMemoryFocusStateStore } from '../src/summary/focusState.js';
 import type { MessageRepository, StoredMessage } from '../src/db/repository.js';
 import type { EventRepository, EventSummary } from '../src/db/eventRepository.js';
+import type { BriefingGenerator, BriefingResult } from '../src/ai/briefing.js';
 
 function msg(overrides: Partial<StoredMessage> & { id: string }): StoredMessage {
   return {
@@ -41,6 +42,10 @@ function fakeEventRepo(eventos: EventSummary[]) {
   return {
     eventsBetween: vi.fn().mockResolvedValue(eventos),
   } satisfies EventRepository;
+}
+
+function fakeBriefingGenerator(result: BriefingResult) {
+  return { generate: vi.fn().mockResolvedValue(result) } satisfies BriefingGenerator;
 }
 
 describe('dayKey', () => {
@@ -170,6 +175,42 @@ describe('buildDailySummary', () => {
     expect(text).toContain('¿Cuál es tu foco de hoy?');
     expect(text).toContain('Cita médica');
   });
+
+  it('sin briefingGenerator, no incluye la sección del consultor (compatible con lo anterior)', async () => {
+    const now = new Date(2026, 6, 29, 9, 0);
+    const repo = fakeRepo([], []);
+    const { text } = await buildDailySummary(repo, 'u1', now);
+    expect(text).not.toContain('Misión principal');
+  });
+
+  it('con briefingGenerator, incluye la sección del consultor y usa su elección para el foco del día', async () => {
+    const now = new Date(2026, 6, 29, 9, 0);
+    const repo = fakeRepo([msg({ id: 'p1', resumen: 'Pagar la luz' })], []);
+    const briefingResult: BriefingResult = {
+      misionPrincipal: 'Pagar la luz',
+      misionPrincipalMessageId: 'p1',
+      bloqueManana: ['Pagar la luz', 'Revisar el correo'],
+      bloqueTarde: ['Organizar el armario'],
+      advertencias: ['Llevas 3 tareas atascadas.'],
+    };
+    const briefingGenerator = fakeBriefingGenerator(briefingResult);
+
+    const { text, focusCandidates } = await buildDailySummary(repo, 'u1', now, undefined, briefingGenerator);
+
+    expect(briefingGenerator.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ pending: expect.any(Array), eventosHoy: expect.any(Array), now }),
+    );
+    expect(text).toContain('Misión principal');
+    expect(text).toContain('Pagar la luz');
+    expect(text).toContain('Bloque mañana');
+    expect(text).toContain('Revisar el correo');
+    expect(text).toContain('Bloque tarde');
+    expect(text).toContain('Organizar el armario');
+    expect(text).toContain('Ojo con esto');
+    expect(text).toContain('atascadas');
+    // El foco del día se toma del propio briefing, no de la heurística aparte.
+    expect(focusCandidates).toEqual(['Pagar la luz', 'Revisar el correo']);
+  });
 });
 
 describe('formatDailySummary', () => {
@@ -193,6 +234,19 @@ describe('formatDailySummary', () => {
     });
     expect(text).toContain('1. Cita médica');
     expect(text).toContain('2. Pagar la luz');
+  });
+
+  it('con briefing, omite las secciones vacías (sin bloque tarde ni advertencias si no hay)', () => {
+    const text = formatDailySummary({
+      pending: [],
+      savedYesterday: [],
+      briefing: { misionPrincipal: 'Pagar la luz', bloqueManana: ['Pagar la luz'], bloqueTarde: [], advertencias: [] },
+      now: new Date(2026, 6, 29),
+    });
+    expect(text).toContain('Misión principal');
+    expect(text).toContain('Bloque mañana');
+    expect(text).not.toContain('Bloque tarde');
+    expect(text).not.toContain('Ojo con esto');
   });
 });
 
@@ -307,5 +361,30 @@ describe('runDailySummaryTick', () => {
     });
 
     expect(focusStore.get(123)).toBeUndefined();
+  });
+
+  it('con briefingGenerator, el texto enviado incluye la sección del consultor', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const store = new InMemorySummaryStateStore();
+    const briefingGenerator = fakeBriefingGenerator({
+      misionPrincipal: 'Pagar la luz',
+      bloqueManana: ['Pagar la luz'],
+      bloqueTarde: [],
+      advertencias: [],
+    });
+
+    await runDailySummaryTick({
+      repository: fakeRepo([], []),
+      userId: 'u1',
+      chatId: 123,
+      store,
+      briefingGenerator,
+      send,
+      hour: 9,
+      now,
+    });
+
+    expect(briefingGenerator.generate).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('Misión principal'));
   });
 });

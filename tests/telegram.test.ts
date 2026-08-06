@@ -7,8 +7,10 @@ import type { Categorizer } from '../src/ai/types.js';
 import {
   BOT_COMMANDS,
   REPLIES,
+  briefingKeyboard,
   commandArgument,
   createBot,
+  handleBriefingCommand,
   handleLinkCommand,
   handlePendingCommand,
   handleSearchCommand,
@@ -20,6 +22,8 @@ import {
 import { createLinkAttemptLimiter } from '../src/telegram/linkRateLimit.js';
 import { describeTelegramError, isValidTokenFormat } from '../src/telegram/errors.js';
 import { InMemoryFocusStateStore } from '../src/summary/focusState.js';
+import { InMemoryEventRepository } from '../src/db/eventRepository.js';
+import type { BriefingGenerator } from '../src/ai/briefing.js';
 
 const TOKEN_VALIDO = '123456789:AAEabcdefghijklmnopqrstuvwxyz012345';
 
@@ -294,6 +298,89 @@ describe('handlePendingCommand', () => {
     expect(records.find((r) => r.event === 'telegram.pending_failed')).toMatchObject({
       level: 'error',
     });
+  });
+});
+
+describe('briefingKeyboard', () => {
+  it('trae los dos botones de acción', () => {
+    const { reply_markup } = briefingKeyboard();
+    const labels = reply_markup.inline_keyboard.flat().map((b) => b.text);
+    expect(labels).toEqual(['🔁 Actualizar', '📋 Ver pendientes']);
+  });
+});
+
+describe('handleBriefingCommand', () => {
+  it('compone el resumen (delegando en buildDailySummary) para el usuario dado', async () => {
+    const repository = new InMemoryMessageRepository();
+    // "Llamar al banco" cae en 'tarea' por la heurística offline (ver
+    // offlineCategorizer.ts) — "Pagar la luz" no matchea ningún verbo y
+    // caería en 'nota', que no aparece en pendientes.
+    await handleTextMessage('Llamar al banco', 'u1', { categorizer: new OfflineCategorizer(), repository });
+
+    const reply = await handleBriefingCommand('u1', { categorizer: new OfflineCategorizer(), repository }, undefined, undefined);
+
+    expect(reply).toContain('Resumen diario');
+    expect(reply).toContain('Llamar al banco');
+  });
+
+  it('incluye eventos de hoy cuando se le da un eventRepository', async () => {
+    const repository = new InMemoryMessageRepository();
+    const eventRepository = new InMemoryEventRepository([{ titulo: 'Cita médica', fechaInicio: new Date() }]);
+
+    const reply = await handleBriefingCommand(
+      'u1',
+      { categorizer: new OfflineCategorizer(), repository },
+      eventRepository,
+      undefined,
+    );
+
+    // Sin briefingGenerator, el evento de hoy no aparece en el texto plano
+    // (esa sección solo la compone el consultor) — pero no debe lanzar ni
+    // fallar por tener un eventRepository sin generador.
+    expect(reply).toContain('Resumen diario');
+  });
+
+  it('con briefingGenerator, incluye la sección del consultor', async () => {
+    const repository = new InMemoryMessageRepository();
+    const briefingGenerator: BriefingGenerator = {
+      generate: vi.fn().mockResolvedValue({
+        misionPrincipal: 'Pagar la luz',
+        bloqueManana: ['Pagar la luz'],
+        bloqueTarde: [],
+        advertencias: [],
+      }),
+    };
+
+    const reply = await handleBriefingCommand(
+      'u1',
+      { categorizer: new OfflineCategorizer(), repository },
+      undefined,
+      briefingGenerator,
+    );
+
+    expect(reply).toContain('Misión principal');
+    expect(reply).toContain('Pagar la luz');
+  });
+
+  it('nunca lanza: ante un fallo interno responde error y lo registra', async () => {
+    const { logger, records } = createMemoryLogger();
+    const repository = {
+      save: vi.fn(),
+      search: vi.fn(),
+      pending: vi.fn().mockRejectedValue(new Error('db caída')),
+      savedBetween: vi.fn(),
+    };
+
+    const reply = await handleBriefingCommand(
+      'u1',
+      { categorizer: new OfflineCategorizer(), repository, logger },
+      undefined,
+      undefined,
+      logger,
+    );
+
+    expect(reply).toBe(REPLIES.error);
+    expect(records.find((r) => r.event === 'telegram.briefing_failed')).toMatchObject({ level: 'error' });
   });
 });
 

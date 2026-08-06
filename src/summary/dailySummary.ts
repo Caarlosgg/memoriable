@@ -4,6 +4,7 @@ import { formatResponseCard } from '../telegram/formatResponseCard.js';
 import type { Logger } from '../logging/logger.js';
 import type { SummaryStateStore } from './summaryState.js';
 import type { FocusStateStore } from './focusState.js';
+import type { BriefingGenerator, BriefingResult } from '../ai/briefing.js';
 
 /** Separador visual entre tarjetas, igual que en las listas del bot. */
 const CARD_SEPARATOR = '\n\n➖➖➖\n\n';
@@ -88,20 +89,42 @@ function focusPrompt(candidates: readonly string[]): string {
 }
 
 /**
+ * Sección del "consultor de productividad" (Daily Briefing, Tier P1) — solo
+ * se añade cuando hay un `BriefingGenerator` de verdad (con o sin IA real
+ * detrás, ver briefing.ts). Omite bloques vacíos: sin advertencias no hay
+ * sección de advertencias, en vez de un "⚠️ nada que avisar" que no aporta.
+ */
+function formatBriefingSection(result: BriefingResult): string {
+  const parts = [`🎯 <b>Misión principal</b>\n${result.misionPrincipal}`];
+  if (result.bloqueManana.length > 0) {
+    parts.push(`🧭 <b>Bloque mañana</b> (trabajo profundo)\n${result.bloqueManana.map((b) => `• ${b}`).join('\n')}`);
+  }
+  if (result.bloqueTarde.length > 0) {
+    parts.push(`🌤️ <b>Bloque tarde</b>\n${result.bloqueTarde.map((b) => `• ${b}`).join('\n')}`);
+  }
+  if (result.advertencias.length > 0) {
+    parts.push(`⚠️ <b>Ojo con esto</b>\n${result.advertencias.map((a) => `• ${a}`).join('\n')}`);
+  }
+  return parts.join('\n\n');
+}
+
+/**
  * Compone el texto (HTML de Telegram) del resumen diario: encabezado con la
- * fecha, los pendientes actuales, lo guardado ayer y, si hay algo que
- * proponer, la pregunta del foco del día. Función pura de presentación,
- * sin I/O.
+ * fecha, el briefing del consultor (si hay uno), los pendientes actuales,
+ * lo guardado ayer y, si hay algo que proponer, la pregunta del foco del
+ * día. Función pura de presentación, sin I/O.
  */
 export function formatDailySummary({
   pending,
   savedYesterday,
   focusCandidates = [],
+  briefing,
   now,
 }: {
   pending: readonly StoredMessage[];
   savedYesterday: readonly StoredMessage[];
   focusCandidates?: readonly string[];
+  briefing?: BriefingResult;
   now: Date;
 }): string {
   const header = `☀️ <b>Resumen diario</b> · ${DAY_LABEL_FORMATTER.format(now)}`;
@@ -115,7 +138,9 @@ export function formatDailySummary({
     savedYesterday,
     '🌙 Ayer no guardaste nada.',
   );
-  const parts = [header, pendingSection, yesterdaySection];
+  const parts = [header];
+  if (briefing) parts.push(formatBriefingSection(briefing));
+  parts.push(pendingSection, yesterdaySection);
   const prompt = focusPrompt(focusCandidates);
   if (prompt) parts.push(prompt);
   return parts.join('\n\n');
@@ -133,12 +158,19 @@ export interface DailySummaryContent {
  * con implementaciones en memoria. `eventRepository` es opcional: sin él
  * (p. ej. en tests que no les interesa el calendario), el resumen sigue
  * funcionando igual que antes, solo sin la sección de eventos.
+ *
+ * `briefingGenerator` es opcional (Tier P1): con él, el resumen incluye el
+ * análisis del "consultor" (misión principal, bloques, advertencias) y las
+ * candidatas a foco del día se toman de SU elección — no tendría sentido
+ * preguntar "¿cuál es tu foco?" con una heurística aparte cuando el propio
+ * briefing ya ha decidido cuál es la misión principal.
  */
 export async function buildDailySummary(
   repository: MessageRepository,
   userId: string,
   now: Date,
   eventRepository?: EventRepository,
+  briefingGenerator?: BriefingGenerator,
 ): Promise<DailySummaryContent> {
   const { from, to } = yesterdayRange(now);
   const todayRangeValue = todayRange(now);
@@ -147,8 +179,16 @@ export async function buildDailySummary(
     repository.savedBetween(userId, from, to),
     eventRepository ? eventRepository.eventsBetween(userId, todayRangeValue.from, todayRangeValue.to) : Promise.resolve([]),
   ]);
-  const focusCandidates = pickFocusCandidates(pending, eventosHoy);
-  const text = formatDailySummary({ pending, savedYesterday, focusCandidates, now });
+
+  const briefing = briefingGenerator ? await briefingGenerator.generate({ pending, eventosHoy, now }) : undefined;
+  const focusCandidates = briefing
+    ? [briefing.misionPrincipal, ...briefing.bloqueManana.filter((b) => b !== briefing.misionPrincipal)].slice(
+        0,
+        MAX_FOCUS_CANDIDATES,
+      )
+    : pickFocusCandidates(pending, eventosHoy);
+
+  const text = formatDailySummary({ pending, savedYesterday, focusCandidates, briefing, now });
   return { text, focusCandidates };
 }
 
@@ -162,6 +202,8 @@ export interface DailySummaryTickDeps {
   /** Estado del "ritual matutino" (Tier 2.6). Opcional: sin él, no se propone foco del día. */
   focusStore?: FocusStateStore;
   eventRepository?: EventRepository;
+  /** Generador del Daily Briefing (Tier P1). Opcional: sin él, el resumen es el de siempre (sin sección de consultor). */
+  briefingGenerator?: BriefingGenerator;
   /** Envía el texto al chat del usuario. Inyectado para testear sin red. */
   send: (text: string) => Promise<void>;
   /** Hora local (0-23) a partir de la cual procede enviar. */
@@ -196,7 +238,13 @@ export async function runDailySummaryTick(
   const key = dayKey(now);
   if (deps.store.lastSentDay() === key) return 'already_sent_today';
 
-  const { text, focusCandidates } = await buildDailySummary(deps.repository, deps.userId, now, deps.eventRepository);
+  const { text, focusCandidates } = await buildDailySummary(
+    deps.repository,
+    deps.userId,
+    now,
+    deps.eventRepository,
+    deps.briefingGenerator,
+  );
   await deps.send(text);
   deps.store.markSent(key);
   if (focusCandidates.length > 0) deps.focusStore?.setAwaiting(deps.chatId, key);

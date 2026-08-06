@@ -11,6 +11,7 @@ import {
 } from './dailySummary.js';
 import { DEFAULT_SUMMARY_STATE_FILE, FileSummaryStateStore } from './summaryState.js';
 import type { FocusStateStore } from './focusState.js';
+import type { BriefingGenerator } from '../ai/briefing.js';
 
 export interface DailySummaryHandle {
   /** Detiene el cron (para apagados ordenados y tests). */
@@ -37,6 +38,8 @@ export function startDailySummary(
   /** Estado del "ritual matutino" (Tier 2.6): sin él, el resumen se manda igual pero no propone foco del día. */
   focusStore?: FocusStateStore,
   eventRepository?: EventRepository,
+  /** Daily Briefing (Tier P1): sin él, el resumen es el de siempre, sin la sección de consultor. */
+  briefingGenerator?: BriefingGenerator,
 ): DailySummaryHandle | null {
   const chatId = env.TELEGRAM_CHAT_ID;
   if (!chatId) {
@@ -60,6 +63,7 @@ export function startDailySummary(
     chatId: Number(chatId),
     focusStore,
     eventRepository,
+    briefingGenerator,
     hour,
     logger,
     send: (text) => bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' }).then(() => {}),
