@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "@prisma/client";
-import { buildContextBlock, buildSystemPrompt, toAssistantSources } from "../src/lib/assistantContext";
+import {
+  buildContextBlock,
+  buildSystemPrompt,
+  buildWorkspaceContextLine,
+  buildAmbientBlock,
+  toAssistantSources,
+} from "../src/lib/assistantContext";
 
 function fakeMessage(overrides: Partial<Message> = {}): Message {
   return {
@@ -139,5 +145,80 @@ describe("buildSystemPrompt", () => {
   it("incluye el desfase de España respecto a UTC, en invierno (+01:00, CET)", () => {
     const prompt = buildSystemPrompt("x", new Date("2026-01-15T12:00:00.000Z"));
     expect(prompt).toContain("+01:00");
+  });
+
+  it("sin extra, no menciona ningún workspace de equipo ni estado ambiental", () => {
+    const prompt = buildSystemPrompt("x");
+    expect(prompt).not.toContain("espacio de equipo");
+    expect(prompt).not.toContain("Estado actual");
+  });
+
+  it("con workspaceLine, la incluye en el prompt", () => {
+    const prompt = buildSystemPrompt("x", new Date(), { workspaceLine: 'Trabajando en "Marketing".' });
+    expect(prompt).toContain('Trabajando en "Marketing".');
+  });
+
+  it("con ambientBlock, la incluye bajo 'Estado actual'", () => {
+    const prompt = buildSystemPrompt("x", new Date(), { ambientBlock: "Tiene 3 tareas pendientes." });
+    expect(prompt).toContain("Estado actual");
+    expect(prompt).toContain("Tiene 3 tareas pendientes.");
+  });
+});
+
+describe("buildWorkspaceContextLine", () => {
+  it("no dice nada si el espacio activo es el personal", () => {
+    expect(buildWorkspaceContextLine({ isPersonal: true, nombre: "Personal", role: "OWNER" })).toBe("");
+  });
+
+  it("no dice nada si falta el nombre (defensivo, no debería pasar en producción)", () => {
+    expect(buildWorkspaceContextLine({ isPersonal: false })).toBe("");
+  });
+
+  it("menciona el nombre del equipo y el rol del usuario", () => {
+    const line = buildWorkspaceContextLine({ isPersonal: false, nombre: "Marketing", role: "ADMIN" });
+    expect(line).toContain("Marketing");
+    expect(line).toContain("administrador/a");
+  });
+
+  it("traduce cada rol a su etiqueta en español", () => {
+    expect(buildWorkspaceContextLine({ isPersonal: false, nombre: "X", role: "OWNER" })).toContain("propietario/a");
+    expect(buildWorkspaceContextLine({ isPersonal: false, nombre: "X", role: "MEMBER" })).toContain("miembro");
+  });
+});
+
+describe("buildAmbientBlock", () => {
+  it("dice honestamente que no hay nada pendiente ni próximo", () => {
+    const block = buildAmbientBlock({ pendientesCount: 0, eventosProximos: [], eventosProximosCount: 0 });
+    expect(block).toMatch(/no tiene tareas pendientes ni eventos/i);
+  });
+
+  it("cuenta las tareas pendientes en singular", () => {
+    const block = buildAmbientBlock({ pendientesCount: 1, eventosProximos: [], eventosProximosCount: 0 });
+    expect(block).toContain("1 tarea/recordatorio pendiente en el tablero");
+  });
+
+  it("cuenta las tareas pendientes en plural", () => {
+    const block = buildAmbientBlock({ pendientesCount: 4, eventosProximos: [], eventosProximosCount: 0 });
+    expect(block).toContain("4 tareas/recordatorios pendientes");
+  });
+
+  it("lista los eventos próximos con su fecha", () => {
+    const block = buildAmbientBlock({
+      pendientesCount: 0,
+      eventosProximos: [{ titulo: "Reunión de equipo", fecha: "jue 13 ago, 10:00" }],
+      eventosProximosCount: 1,
+    });
+    expect(block).toContain("Reunión de equipo (jue 13 ago, 10:00)");
+    expect(block).toContain("1 evento en los próximos 7 días");
+  });
+
+  it("indica cuántos eventos más hay cuando exceden los listados", () => {
+    const block = buildAmbientBlock({
+      pendientesCount: 0,
+      eventosProximos: [{ titulo: "A", fecha: "lun" }, { titulo: "B", fecha: "mar" }, { titulo: "C", fecha: "mié" }],
+      eventosProximosCount: 5,
+    });
+    expect(block).toContain("5 eventos en los próximos 7 días");
+    expect(block).toContain("y 2 más");
   });
 });

@@ -203,12 +203,84 @@ function madridUtcOffset(now: Date): string {
   return `${match[1]}${match[2]!.padStart(2, "0")}:00`;
 }
 
+/** Rol de un miembro dentro de un workspace de equipo (ver lib/workspace.ts). */
+export type AssistantWorkspaceRole = "OWNER" | "ADMIN" | "MEMBER";
+
+const ROLE_LABELS: Record<AssistantWorkspaceRole, string> = {
+  OWNER: "propietario/a",
+  ADMIN: "administrador/a",
+  MEMBER: "miembro",
+};
+
+/**
+ * Línea de contexto sobre el espacio activo — solo se genera algo si NO es
+ * el personal: en modo personal el Asistente se comporta exactamente igual
+ * que siempre, así que no hace falta aclarar nada (ver mismo criterio en
+ * ActiveWorkspaceBadge.tsx). En modo equipo, decirle al modelo en qué
+ * espacio y con qué rol actúa evita respuestas que suenan "genéricas"
+ * cuando en realidad el usuario está gestionando un equipo concreto.
+ */
+export function buildWorkspaceContextLine(workspace: {
+  isPersonal: boolean;
+  nombre?: string;
+  role?: AssistantWorkspaceRole;
+}): string {
+  if (workspace.isPersonal || !workspace.nombre) return "";
+  const roleLabel = workspace.role ? ROLE_LABELS[workspace.role] : "miembro";
+  return `El usuario está trabajando ahora en el espacio de equipo "${workspace.nombre}" — todo lo que hagas (crear notas, eventos, marcar tareas) se guarda ahí, visible para el resto del equipo, no en su espacio personal. Su rol en este equipo es ${roleLabel}.`;
+}
+
+/** Resumen de un evento próximo, ya formateado, para el bloque ambiental. */
+export interface AmbientEvento {
+  titulo: string;
+  fecha: string;
+}
+
+/** Cifras del estado actual del workspace activo, para el bloque de contexto "ambiental" (ver resolveAmbientStats en assistantAmbient.ts). */
+export interface AmbientStats {
+  pendientesCount: number;
+  eventosProximos: AmbientEvento[];
+  eventosProximosCount: number;
+}
+
+/**
+ * Bloque de contexto "ambiental": no son notas citadas como fuente (eso ya
+ * lo cubre buildContextBlock), sino una foto rápida de cuánto hay pendiente
+ * y qué se acerca en el calendario — para que el Asistente pueda responder
+ * con criterio a preguntas tipo "¿cómo llevo la semana?" sin tener que
+ * enumerar cada nota. Pura y testeable sin BD.
+ */
+export function buildAmbientBlock(stats: AmbientStats): string {
+  const partes: string[] = [];
+  if (stats.pendientesCount > 0) {
+    const plural = stats.pendientesCount !== 1;
+    partes.push(
+      `Tiene ${stats.pendientesCount} tarea${plural ? "s" : ""}/recordatorio${plural ? "s" : ""} pendiente${plural ? "s" : ""} en el tablero.`,
+    );
+  }
+  if (stats.eventosProximosCount > 0) {
+    const listados = stats.eventosProximos.map((e) => `${e.titulo} (${e.fecha})`).join(", ");
+    const resto = stats.eventosProximosCount - stats.eventosProximos.length;
+    partes.push(
+      `Tiene ${stats.eventosProximosCount} evento${stats.eventosProximosCount === 1 ? "" : "s"} en los próximos 7 días: ${listados}${resto > 0 ? ` y ${resto} más` : ""}.`,
+    );
+  }
+  if (partes.length === 0) return "No tiene tareas pendientes ni eventos en los próximos 7 días.";
+  return partes.join(" ");
+}
+
 /** System prompt completo (reglas + fecha actual + contexto). Pura salvo por `now`, que por defecto es "ahora mismo". */
-export function buildSystemPrompt(contextBlock: string, now: Date = new Date()): string {
+export function buildSystemPrompt(
+  contextBlock: string,
+  now: Date = new Date(),
+  extra?: { workspaceLine?: string; ambientBlock?: string },
+): string {
   const offset = madridUtcOffset(now);
+  const workspaceSection = extra?.workspaceLine ? `\n\n${extra.workspaceLine}` : "";
+  const ambientSection = extra?.ambientBlock ? `\n\nEstado actual (para responder con criterio a preguntas generales sobre cómo va la semana, sin que cuente como fuente citable): ${extra.ambientBlock}` : "";
   return `${SYSTEM_PROMPT_BASE}
 
-Fecha y hora actuales en España: ${NOW_FORMATTER.format(now)} (desfase respecto a UTC: ${offset}) — usa esto para calcular cualquier fecha relativa ("mañana", "el jueves", "en dos semanas") y para el desfase que le corresponde a fechaInicio/fechaFin en crearEvento.
+Fecha y hora actuales en España: ${NOW_FORMATTER.format(now)} (desfase respecto a UTC: ${offset}) — usa esto para calcular cualquier fecha relativa ("mañana", "el jueves", "en dos semanas") y para el desfase que le corresponde a fechaInicio/fechaFin en crearEvento.${workspaceSection}${ambientSection}
 
 Contexto (notas guardadas relevantes para esta pregunta):
 ${contextBlock}`;

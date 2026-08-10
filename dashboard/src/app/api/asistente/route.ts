@@ -7,7 +7,8 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { resolveEmbedder } from "@/lib/pipeline";
 import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
-import { toAssistantSources, buildContextBlock, buildSystemPrompt, type AssistantSource } from "@/lib/assistantContext";
+import { toAssistantSources, buildContextBlock, buildSystemPrompt, buildWorkspaceContextLine, buildAmbientBlock, type AssistantSource } from "@/lib/assistantContext";
+import { resolveAmbientStats, resolveWorkspaceNombre } from "@/lib/assistantAmbient";
 import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
 import { getActiveWorkspace } from "@/lib/workspace";
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
   // editarEvento/borrarEvento y las notas citadas — resuelto una vez aquí,
   // no dentro de cada tool, para que toda la petición opere sobre el mismo
   // workspace de principio a fin.
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, isPersonal, role } = await getActiveWorkspace(userId);
 
   if (!process.env.GROQ_API_KEY) {
     // Sin fallback posible aquí (a diferencia de la captura rápida): no hay
@@ -137,15 +138,45 @@ export async function POST(req: Request) {
     }
   }
 
-  // Independientes entre sí (ninguna depende del resultado de la otra) —
-  // en paralelo en vez de en secuencia recorta el tiempo hasta el primer
+  // Nunca bloquea la respuesta ni la degrada de forma visible: si falla,
+  // el Asistente simplemente no menciona en qué equipo está trabajando el
+  // usuario (sigue funcionando, solo con un prompt algo menos afinado).
+  async function resolveWorkspaceLine(): Promise<string> {
+    if (isPersonal) return "";
+    try {
+      const nombre = await resolveWorkspaceNombre(workspaceId);
+      return buildWorkspaceContextLine({ isPersonal, nombre, role });
+    } catch (err) {
+      console.error("No se pudo resolver el nombre del workspace activo (se continúa sin mencionarlo):", err);
+      return "";
+    }
+  }
+
+  // Igual de no-crítico que resolveSources: si falla, el Asistente responde
+  // igual, solo sin el bloque de "cómo va la semana".
+  async function resolveAmbient(): Promise<string> {
+    try {
+      return buildAmbientBlock(await resolveAmbientStats(workspaceId));
+    } catch (err) {
+      console.error("No se pudieron calcular las cifras ambientales (se responde sin ellas):", err);
+      return "";
+    }
+  }
+
+  // Independientes entre sí (ninguna depende del resultado de otra) — en
+  // paralelo en vez de en secuencia recorta el tiempo hasta el primer
   // token de la respuesta. Cada una atrapa sus propios errores, así que
-  // Promise.all nunca rechaza por un fallo aislado de una de las dos.
-  const [conversationId, sources] = await Promise.all([resolveConversationId(), resolveSources()]);
+  // Promise.all nunca rechaza por un fallo aislado de una de ellas.
+  const [conversationId, sources, workspaceLine, ambientBlock] = await Promise.all([
+    resolveConversationId(),
+    resolveSources(),
+    resolveWorkspaceLine(),
+    resolveAmbient(),
+  ]);
 
   const result = streamText({
     model: groq("openai/gpt-oss-120b"),
-    system: buildSystemPrompt(buildContextBlock(sources)),
+    system: buildSystemPrompt(buildContextBlock(sources), new Date(), { workspaceLine, ambientBlock }),
     messages: await convertToModelMessages(messages),
     tools: createAssistantTools(userId, workspaceId),
     // Permite encadenar la llamada a `crearNota` con la respuesta de texto
