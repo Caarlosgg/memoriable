@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import type { EstadoTarea, Prioridad } from "@prisma/client";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { searchMessages } from "@/lib/data";
+import { getActiveWorkspace } from "@/lib/workspace";
 import { isCategory } from "@/lib/categories";
 import { ESTADOS_TABLERO, PRIORIDADES } from "@/lib/kanban";
 
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
   const hasta = parseHasta(params.get("hasta"));
   const etiqueta = params.get("etiqueta")?.trim() || null;
 
-  const results = await searchMessages(userId, q, { categoria, estado, prioridad, desde, hasta, etiqueta });
+  const { workspaceId } = await getActiveWorkspace(userId);
+  const results = await searchMessages(workspaceId, q, { categoria, estado, prioridad, desde, hasta, etiqueta });
   return NextResponse.json({ query: q, results });
 }

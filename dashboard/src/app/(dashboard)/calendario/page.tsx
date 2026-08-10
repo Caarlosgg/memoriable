@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { verifySession } from "@/lib/dal";
+import { getActiveWorkspace } from "@/lib/workspace";
 import { getAllEventos, getImportantPending } from "@/lib/eventos";
 import { upcomingRange } from "@/lib/calendar";
 import { ResumenSection } from "@/components/calendar/ResumenSection";
@@ -19,7 +20,11 @@ export const metadata: Metadata = { title: "Calendario · MemorIAble" };
  */
 async function CalendarSection() {
   const userId = await verifySession();
-  const [importantPending, allEventos] = await Promise.all([getImportantPending(userId), getAllEventos(userId)]);
+  const { workspaceId } = await getActiveWorkspace(userId);
+  const [importantPending, allEventos] = await Promise.all([
+    getImportantPending(workspaceId),
+    getAllEventos(workspaceId),
+  ]);
 
   const { desde, hasta } = upcomingRange(7);
   const upcomingEventos = allEventos.filter((e) => e.fechaInicio >= desde && e.fechaInicio < hasta);

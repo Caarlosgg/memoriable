@@ -7,6 +7,7 @@ import { UndoToastProvider } from "@/components/UndoToast";
 import { AssistantProvider } from "@/components/AssistantProvider";
 import { DailyBriefingModal } from "@/components/DailyBriefingModal";
 import { getDailyBriefing } from "@/lib/dailyBriefing";
+import { getPersonalWorkspaceId } from "@/lib/workspace";
 
 export default async function DashboardLayout({
   children,
@@ -18,10 +19,15 @@ export default async function DashboardLayout({
   const userId = await verifySession();
   // No crítico: si falla, el dashboard sigue funcionando igual, solo sin el
   // modal del resumen del día (no es un dato imprescindible para entrar).
-  const briefing = await getDailyBriefing(userId).catch((err) => {
-    console.error("No se pudo calcular el resumen del día (no crítico):", err);
-    return null;
-  });
+  // Fase Equipo: SIEMPRE el workspace personal, nunca el activo (ver
+  // getDailyBriefing en lib/dailyBriefing.ts) — "tu día" no cambia si
+  // tienes seleccionado un workspace de equipo.
+  const briefing = await getPersonalWorkspaceId(userId)
+    .then((personalWorkspaceId) => getDailyBriefing(personalWorkspaceId))
+    .catch((err) => {
+      console.error("No se pudo calcular el resumen del día (no crítico):", err);
+      return null;
+    });
 
   return (
     <UndoToastProvider>
