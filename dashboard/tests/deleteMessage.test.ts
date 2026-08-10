@@ -2,6 +2,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
+vi.mock("@/lib/workspace", () => ({
+  getActiveWorkspace: async () => ({ workspaceId: "ws1", isPersonal: true, role: "OWNER" }),
+}));
 
 const messageDeleteMany = vi.fn();
 vi.mock("@/lib/prisma", () => ({
@@ -25,7 +28,7 @@ describe("deleteMessage", () => {
 
     const result = await deleteMessage("m1");
 
-    expect(messageDeleteMany).toHaveBeenCalledWith({ where: { id: "m1", userId: "u1" } });
+    expect(messageDeleteMany).toHaveBeenCalledWith({ where: { id: "m1", workspaceId: "ws1" } });
     expect(result.error).toBeUndefined();
     expect(revalidatePath).toHaveBeenCalledWith("/categorias");
     expect(revalidatePath).toHaveBeenCalledWith("/pendientes");

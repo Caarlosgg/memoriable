@@ -36,8 +36,8 @@ datasource db {
 
 /// Ver ../../prisma/schema.prisma: cuenta del dashboard (multiusuario, Fase 2).
 model User {
-  id        String  @id @default(cuid())
-  email     String  @unique
+  id    String @id @default(cuid())
+  email String @unique
   /// Opcional desde el login con Google: una cuenta creada solo por OAuth no
   /// tiene contraseña propia (ver login/actions.ts, caso passwordHash null).
   passwordHash String?
@@ -52,18 +52,71 @@ model User {
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
-  messages           Message[]
-  exchanges          AssistantExchange[]
-  conversations      Conversation[]
-  eventos            Evento[]
-  cuentasAhorro      CuentaAhorro[]
+  /// Ver ../../prisma/schema.prisma: workspace personal autocreado (Fase Equipo).
+  personalWorkspaceId String?    @unique
+  personalWorkspace   Workspace? @relation("PersonalWorkspace", fields: [personalWorkspaceId], references: [id])
+
+  messages         Message[]           @relation("MessageAuthor")
+  assignedMessages Message[]           @relation("MessageAssignee")
+  exchanges        AssistantExchange[]
+  conversations    Conversation[]
+  eventos          Evento[]            @relation("EventoAuthor")
+  assignedEventos  Evento[]            @relation("EventoAssignee")
+  cuentasAhorro    CuentaAhorro[]
   verificationTokens VerificationToken[]
+  memberships      Membership[]
 
   @@map("users")
 }
 
+/// Ver ../../prisma/schema.prisma: espacio de trabajo, personal o de
+/// equipo (Fase Equipo). Message/Evento cuelgan de un Workspace, no
+/// directamente de un User.
+model Workspace {
+  id        String   @id @default(cuid())
+  nombre    String
+  personal  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  memberships Membership[]
+  messages    Message[]
+  eventos     Evento[]
+  personalOf  User?    @relation("PersonalWorkspace")
+
+  @@map("workspaces")
+}
+
+/// Ver ../../prisma/schema.prisma: rol dentro de un workspace de equipo (Fase Equipo).
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+/// Ver ../../prisma/schema.prisma: estado de una membresía (Fase Equipo).
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+}
+
+/// Ver ../../prisma/schema.prisma: pertenencia usuario↔workspace (Fase Equipo).
+model Membership {
+  userId      String
+  workspaceId String
+  role        WorkspaceRole    @default(MEMBER)
+  status      MembershipStatus @default(ACTIVE)
+  joinedAt    DateTime         @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, workspaceId])
+  @@index([workspaceId])
+  @@map("memberships")
+}
+
 /// Ver ../../prisma/schema.prisma: token de un solo uso para confirmar el
-/// email al registrarse (Fase de registro/login profesional).
+/// email al registrarse (registro/login profesional del dashboard).
 model VerificationToken {
   id        String   @id @default(cuid())
   token     String   @unique
@@ -111,14 +164,6 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
-  /// Posición dentro de su columna del tablero kanban: al crearse, la hora
-  /// actual en milisegundos (siempre creciente, sin necesitar consultar el
-  /// máximo actual). Al arrastrar una tarjeta a una posición nueva, se
-  /// recalcula como el punto medio entre sus dos vecinas — indexado
-  /// fraccionario, evita tener que renumerar el resto de la columna en
-  /// cada arrastre.
-  orden Float @default(0)
-
   /// Ver ../../prisma/schema.prisma: etiquetas libres (Fase F/J).
   etiquetas String[] @default([])
 
@@ -131,9 +176,27 @@ model Message {
   /// gestor de ficheros).
   imagenes String[] @default([])
 
+  /// Posición dentro de su columna del tablero kanban: al crearse, la hora
+  /// actual en milisegundos (siempre creciente, sin necesitar consultar el
+  /// máximo actual). Al arrastrar una tarjeta a una posición nueva, se
+  /// recalcula como el punto medio entre sus dos vecinas — indexado
+  /// fraccionario, evita tener que renumerar el resto de la columna en
+  /// cada arrastre.
+  orden Float @default(0)
+
   /// Ver ../../prisma/schema.prisma: obligatorio, backfill ya completado.
+  /// Quien la creó — nunca cambia, aunque se asigne a otra persona.
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation("MessageAuthor", fields: [userId], references: [id])
+
+  /// Ver ../../prisma/schema.prisma: workspace en el que vive (Fase Equipo).
+  /// NOT NULL desde 20260810130000_require_message_workspace.
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  /// Ver ../../prisma/schema.prisma: a quién se ha asignado (Fase Equipo).
+  assigneeId String?
+  assignee   User?   @relation("MessageAssignee", fields: [assigneeId], references: [id])
 
   /// Ver ../../prisma/schema.prisma para el porqué de las dimensiones y del
   /// acceso vía $queryRaw/$executeRaw (Prisma no soporta Unsupported en el
@@ -149,6 +212,8 @@ model Message {
   @@index([userId])
   @@index([estado])
   @@index([orden])
+  @@index([workspaceId])
+  @@index([assigneeId])
   @@map("messages")
 }
 
@@ -163,14 +228,25 @@ model Evento {
   participantes String[]  @default([])
   createdAt     DateTime  @default(now())
 
+  /// Quien lo creó — nunca cambia, aunque se asigne a otra persona.
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation("EventoAuthor", fields: [userId], references: [id])
+
+  /// Ver Message.workspaceId — mismo criterio.
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  /// Ver Message.assigneeId — mismo criterio.
+  assigneeId String?
+  assignee   User?   @relation("EventoAssignee", fields: [assigneeId], references: [id])
 
   messageId String?
   message   Message? @relation(fields: [messageId], references: [id])
 
   @@index([userId])
   @@index([fechaInicio])
+  @@index([workspaceId])
+  @@index([assigneeId])
   @@map("eventos")
 }
 

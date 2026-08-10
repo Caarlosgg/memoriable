@@ -23,6 +23,9 @@ export class PrismaMessageRepository implements MessageRepository {
       create(args: unknown): Promise<StoredMessage>;
       findMany(args: unknown): Promise<StoredMessage[]>;
     };
+    user: {
+      findUnique(args: unknown): Promise<{ personalWorkspaceId: string | null } | null>;
+    };
     $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
   }> | null = null;
 
@@ -42,6 +45,21 @@ export class PrismaMessageRepository implements MessageRepository {
 
   async save(userId: string, record: NewMessage): Promise<StoredMessage> {
     const client = await this.getClient();
+
+    // Fase Equipo: todo mensaje vive en un workspace, nunca solo en un
+    // userId — el bot no tiene concepto de equipo todavía, así que
+    // siempre escribe en el workspace PERSONAL del dueño del chat. Cada
+    // cuenta ya tiene uno (autocreado al registrarse desde el dashboard,
+    // o backfillado por la migración para las cuentas previas) — si por
+    // lo que sea faltara, es un estado inconsistente real, no algo que
+    // deba silenciarse guardando con workspaceId nulo.
+    const owner = await client.user.findUnique({ where: { id: userId }, select: { personalWorkspaceId: true } });
+    if (!owner?.personalWorkspaceId) {
+      throw new Error(
+        `El usuario ${userId} no tiene workspace personal — no se puede guardar el mensaje.`,
+      );
+    }
+
     // Primero el insert normal (tipado, siempre fiable) y LUEGO, si hay
     // embedding, un UPDATE aparte para la columna Unsupported. Dos viajes en
     // vez de un INSERT crudo único: así el mensaje se guarda de forma
@@ -54,6 +72,7 @@ export class PrismaMessageRepository implements MessageRepository {
         categoria: record.categoria,
         resumen: record.resumen,
         userId,
+        workspaceId: owner.personalWorkspaceId,
       },
     });
 

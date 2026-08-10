@@ -6,6 +6,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
+vi.mock("@/lib/workspace", () => ({
+  getActiveWorkspace: async () => ({ workspaceId: "ws1", isPersonal: true, role: "OWNER" }),
+}));
 
 const eventoCreate = vi.fn();
 const eventoUpdateMany = vi.fn();
@@ -67,7 +70,9 @@ describe("createEvento", () => {
 
     expect(result.error).toBeUndefined();
     expect(eventoCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ userId: "u1", titulo: "Cita con el médico" }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: "u1", workspaceId: "ws1", titulo: "Cita con el médico" }),
+      }),
     );
     expect(revalidatePath).toHaveBeenCalledWith("/calendario");
   });
@@ -95,12 +100,12 @@ describe("updateEvento", () => {
     revalidatePath.mockReset();
   });
 
-  it("actualiza solo si el evento pertenece al usuario (updateMany con userId en el where)", async () => {
+  it("actualiza solo si el evento pertenece al workspace activo (updateMany con workspaceId en el where)", async () => {
     const { updateEvento } = await import("../src/app/(dashboard)/calendario/actions");
     const result = await updateEvento("e1", baseInput);
     expect(result.error).toBeUndefined();
     expect(eventoUpdateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "e1", userId: "u1" } }),
+      expect.objectContaining({ where: { id: "e1", workspaceId: "ws1" } }),
     );
   });
 
@@ -120,11 +125,11 @@ describe("updateEvento", () => {
 });
 
 describe("deleteEvento", () => {
-  it("borra solo si el evento pertenece al usuario (deleteMany con userId en el where)", async () => {
+  it("borra solo si el evento pertenece al workspace activo (deleteMany con workspaceId en el where)", async () => {
     eventoDeleteMany.mockResolvedValue({ count: 1 });
     const { deleteEvento } = await import("../src/app/(dashboard)/calendario/actions");
     const result = await deleteEvento("e1");
     expect(result.error).toBeUndefined();
-    expect(eventoDeleteMany).toHaveBeenCalledWith({ where: { id: "e1", userId: "u1" } });
+    expect(eventoDeleteMany).toHaveBeenCalledWith({ where: { id: "e1", workspaceId: "ws1" } });
   });
 });

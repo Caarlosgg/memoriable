@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
+import { getActiveWorkspace } from "@/lib/workspace";
 
 export interface EventoInput {
   titulo: string;
@@ -48,6 +49,7 @@ function parseEventoInput(input: EventoInput): { data: Omit<EventoInput, "fechaI
 /** Crea un evento desde /calendario. Mismos criterios de validación que la tool crearEvento del Asistente. */
 export async function createEvento(input: EventoInput): Promise<EventoResult> {
   const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
   const parsed = parseEventoInput(input);
   if ("error" in parsed) return { error: parsed.error };
 
@@ -55,6 +57,7 @@ export async function createEvento(input: EventoInput): Promise<EventoResult> {
     await prisma.evento.create({
       data: {
         userId,
+        workspaceId,
         titulo: parsed.data.titulo,
         descripcion: parsed.data.descripcion ?? null,
         fechaInicio: parsed.data.fechaInicio,
@@ -72,15 +75,16 @@ export async function createEvento(input: EventoInput): Promise<EventoResult> {
   }
 }
 
-/** Edita un evento. `updateMany` con userId en el where (mismo criterio de dueño que el resto de acciones). */
+/** Edita un evento. `updateMany` con workspaceId en el where (mismo criterio de acceso que el resto de acciones). */
 export async function updateEvento(id: string, input: EventoInput): Promise<EventoResult> {
   const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
   const parsed = parseEventoInput(input);
   if ("error" in parsed) return { error: parsed.error };
 
   try {
     const result = await prisma.evento.updateMany({
-      where: { id, userId },
+      where: { id, workspaceId },
       data: {
         titulo: parsed.data.titulo,
         descripcion: parsed.data.descripcion ?? null,
@@ -100,11 +104,12 @@ export async function updateEvento(id: string, input: EventoInput): Promise<Even
   }
 }
 
-/** Borra un evento. Mismo criterio de dueño: solo borra si pertenece al usuario de la sesión. */
+/** Borra un evento. Mismo criterio de acceso: solo borra si pertenece al workspace activo. */
 export async function deleteEvento(id: string): Promise<EventoResult> {
   const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
   try {
-    await prisma.evento.deleteMany({ where: { id, userId } });
+    await prisma.evento.deleteMany({ where: { id, workspaceId } });
     revalidatePath("/calendario");
     return {};
   } catch (err) {

@@ -121,19 +121,19 @@ function isPendienteAccionable(m: Message): boolean {
 }
 
 /**
- * Busca, entre las tareas/recordatorios pendientes del usuario, la que
- * mejor coincide con una descripción libre. Semántica primero (misma
- * infraestructura que las fuentes citadas del propio Asistente) porque el
- * usuario rara vez repite el texto exacto de la nota original ("ya he
- * llamado al fontanero" vs. "Llamar al fontanero para revisar la
+ * Busca, entre las tareas/recordatorios pendientes del workspace activo,
+ * la que mejor coincide con una descripción libre. Semántica primero
+ * (misma infraestructura que las fuentes citadas del propio Asistente)
+ * porque el usuario rara vez repite el texto exacto de la nota original
+ * ("ya he llamado al fontanero" vs. "Llamar al fontanero para revisar la
  * caldera") — un ILIKE de texto exacto fallaría casi siempre. Cae a texto
  * si no hay embedder configurado o no encontró nada.
  */
-async function encontrarTareaPendiente(userId: string, descripcion: string): Promise<Message | null> {
+async function encontrarTareaPendiente(workspaceId: string, descripcion: string): Promise<Message | null> {
   try {
     const embedding = await resolveEmbedder().embedQuery(descripcion);
     if (embedding) {
-      const similares = await findSimilarMessages(userId, embedding, { limit: 8 });
+      const similares = await findSimilarMessages(workspaceId, embedding, { limit: 8 });
       const match = similares.find(isPendienteAccionable);
       if (match) return match;
     }
@@ -143,7 +143,7 @@ async function encontrarTareaPendiente(userId: string, descripcion: string): Pro
 
   return prisma.message.findFirst({
     where: {
-      userId,
+      workspaceId,
       categoria: { in: [...ACTIONABLE_CATEGORIES] },
       estado: { not: "HECHO" },
       OR: [
@@ -183,19 +183,19 @@ async function encontrarOCrearCuenta(
 }
 
 /**
- * Busca, entre los eventos FUTUROS del usuario (hoy incluido), el que mejor
- * coincide con una descripción libre ("la cita del médico", "la reunión
- * del jueves"). Solo futuros a propósito: editar/borrar un evento ya
- * pasado no es una acción real que alguien pida por voz — y así, si hay
+ * Busca, entre los eventos FUTUROS del workspace activo (hoy incluido), el
+ * que mejor coincide con una descripción libre ("la cita del médico", "la
+ * reunión del jueves"). Solo futuros a propósito: editar/borrar un evento
+ * ya pasado no es una acción real que alguien pida por voz — y así, si hay
  * dos eventos con nombre parecido, uno pasado y uno próximo, siempre gana
  * el que de verdad tiene sentido tocar. Mismo criterio de coincidencia por
  * texto bidireccional que `encontrarOCrearCuenta` (títulos de evento son
  * etiquetas cortas, no hace falta búsqueda semántica).
  */
-async function encontrarEvento(userId: string, descripcion: string): Promise<Evento | null> {
+async function encontrarEvento(workspaceId: string, descripcion: string): Promise<Evento | null> {
   const normalizado = normalizeForMatch(descripcion);
   const eventos = await prisma.evento.findMany({
-    where: { userId, fechaInicio: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+    where: { workspaceId, fechaInicio: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
     orderBy: { fechaInicio: "asc" },
   });
   return (
@@ -210,14 +210,20 @@ async function encontrarEvento(userId: string, descripcion: string): Promise<Eve
  * Herramientas que dejan al Asistente actuar de verdad (no solo responder).
  * Fábrica (no un objeto estático) porque cada tool necesita saber para qué
  * usuario está guardando — se liga al userId de la sesión ya verificada en
- * la ruta, nunca al de un mensaje o input del propio modelo.
+ * la ruta, nunca al de un mensaje o input del propio modelo. `workspaceId`
+ * (Fase Equipo) es el workspace ACTIVO en el momento de la petición —
+ * `crearNota`/`crearEvento`/`completarTarea`/`editarEvento`/`borrarEvento`
+ * lo usan como límite de acceso; `registrarAhorro`/`consultarAhorros` lo
+ * ignoran a propósito (Ahorros es siempre personal, ver `getPersonalWorkspaceId`
+ * en `lib/workspace.ts` — el llamante les pasa el userId tal cual, nunca
+ * el workspace).
  *
  * Definidas aparte de api/asistente/route.ts para poder importar SOLO su
  * tipo (`InferUITools`) desde el cliente sin arrastrar código de servidor
  * al bundle — un `import type` se borra en compilación, así que no rompe
  * el límite server-only pese a venir del mismo módulo.
  */
-export function createAssistantTools(userId: string) {
+export function createAssistantTools(userId: string, workspaceId: string) {
   return {
     crearNota: tool({
       description:
@@ -231,7 +237,7 @@ export function createAssistantTools(userId: string) {
       execute: async ({ contenido }) => {
         let saved;
         try {
-          saved = await captureMessage(userId, contenido);
+          saved = await captureMessage(userId, contenido, workspaceId);
         } catch (err) {
           console.error("La tool crearNota no pudo guardar la nota:", err);
           Sentry.captureException(err);
@@ -293,6 +299,7 @@ export function createAssistantTools(userId: string) {
             const evento = await prisma.evento.create({
               data: {
                 userId,
+                workspaceId,
                 titulo,
                 fechaInicio: repetir ? fechaRepeticion(fecha, repetir.frecuencia, i) : fecha,
                 fechaFin: fin ? (repetir ? fechaRepeticion(fin, repetir.frecuencia, i) : fin) : null,
@@ -340,7 +347,7 @@ export function createAssistantTools(userId: string) {
       execute: async ({ descripcion }) => {
         let tarea: Message | null;
         try {
-          tarea = await encontrarTareaPendiente(userId, descripcion);
+          tarea = await encontrarTareaPendiente(workspaceId, descripcion);
         } catch (err) {
           console.error("La tool completarTarea no pudo buscar la tarea:", err);
           Sentry.captureException(err);
@@ -351,7 +358,16 @@ export function createAssistantTools(userId: string) {
         }
 
         try {
-          await prisma.message.update({ where: { id: tarea.id }, data: { estado: "HECHO", hecho: true } });
+          // `updateMany` con workspaceId en el where (no `update` por id
+          // solo): mismo criterio que el resto de la app — no basta con
+          // confiar en que `encontrarTareaPendiente` ya la buscó dentro
+          // del workspace correcto, la propia escritura vuelve a
+          // comprobarlo.
+          const { count } = await prisma.message.updateMany({
+            where: { id: tarea.id, workspaceId },
+            data: { estado: "HECHO", hecho: true },
+          });
+          if (count === 0) throw new Error("La tarea encontrada ya no está en este workspace.");
         } catch (err) {
           console.error("La tool completarTarea no pudo marcarla como hecha:", err);
           Sentry.captureException(err);
@@ -461,7 +477,7 @@ export function createAssistantTools(userId: string) {
       execute: async ({ descripcion, tituloNuevo, fechaInicioNueva, fechaFinNueva, ubicacionNueva }) => {
         let evento: Evento | null;
         try {
-          evento = await encontrarEvento(userId, descripcion);
+          evento = await encontrarEvento(workspaceId, descripcion);
         } catch (err) {
           console.error("La tool editarEvento no pudo buscar el evento:", err);
           Sentry.captureException(err);
@@ -490,7 +506,12 @@ export function createAssistantTools(userId: string) {
 
         let actualizado: Evento;
         try {
-          actualizado = await prisma.evento.update({ where: { id: evento.id }, data });
+          // `updateMany` con workspaceId — mismo motivo que en
+          // completarTarea: la escritura vuelve a comprobar el acceso,
+          // no confía solo en la búsqueda previa.
+          const { count } = await prisma.evento.updateMany({ where: { id: evento.id, workspaceId }, data });
+          if (count === 0) throw new Error("El evento encontrado ya no está en este workspace.");
+          actualizado = { ...evento, ...data };
         } catch (err) {
           console.error("La tool editarEvento no pudo guardar los cambios:", err);
           Sentry.captureException(err);
@@ -524,7 +545,7 @@ export function createAssistantTools(userId: string) {
       execute: async ({ descripcion }) => {
         let evento: Evento | null;
         try {
-          evento = await encontrarEvento(userId, descripcion);
+          evento = await encontrarEvento(workspaceId, descripcion);
         } catch (err) {
           console.error("La tool borrarEvento no pudo buscar el evento:", err);
           Sentry.captureException(err);
@@ -535,7 +556,10 @@ export function createAssistantTools(userId: string) {
         }
 
         try {
-          await prisma.evento.delete({ where: { id: evento.id } });
+          // `deleteMany` con workspaceId — mismo motivo que en
+          // completarTarea/editarEvento.
+          const { count } = await prisma.evento.deleteMany({ where: { id: evento.id, workspaceId } });
+          if (count === 0) throw new Error("El evento encontrado ya no está en este workspace.");
         } catch (err) {
           console.error("La tool borrarEvento no pudo borrar el evento:", err);
           Sentry.captureException(err);

@@ -20,8 +20,14 @@ export interface DailyBriefingData {
  * verificado en esta misma sesión que las llamadas con varios pasos pueden
  * tardar decenas de segundos, inaceptable para un modal que aparece nada
  * más entrar.
+ *
+ * Fase Equipo: SIEMPRE el workspace personal del usuario (recibido ya
+ * resuelto, ver `getPersonalWorkspaceId` en `lib/workspace.ts`), nunca el
+ * activo — "tu día" es un ritual personal, no cambia si en ese momento
+ * tienes seleccionado un workspace de equipo. Un "resumen del equipo"
+ * aparte es una mejora futura, no de esta fase.
  */
-export async function getDailyBriefing(userId: string): Promise<DailyBriefingData> {
+export async function getDailyBriefing(personalWorkspaceId: string): Promise<DailyBriefingData> {
   const hoyInicio = new Date();
   hoyInicio.setHours(0, 0, 0, 0);
   const hoyFin = new Date(hoyInicio);
@@ -29,12 +35,16 @@ export async function getDailyBriefing(userId: string): Promise<DailyBriefingDat
 
   const [pendientes, eventosHoy] = await Promise.all([
     prisma.message.findMany({
-      where: { userId, categoria: { in: [...ACTIONABLE_CATEGORIES] }, estado: { not: "HECHO" } },
+      where: {
+        workspaceId: personalWorkspaceId,
+        categoria: { in: [...ACTIONABLE_CATEGORIES] },
+        estado: { not: "HECHO" },
+      },
       orderBy: { fecha: "asc" },
       select: { id: true, resumen: true, categoria: true, fecha: true },
     }),
     prisma.evento.findMany({
-      where: { userId, fechaInicio: { gte: hoyInicio, lt: hoyFin } },
+      where: { workspaceId: personalWorkspaceId, fechaInicio: { gte: hoyInicio, lt: hoyFin } },
       orderBy: { fechaInicio: "asc" },
       select: { id: true, titulo: true, fechaInicio: true, ubicacion: true },
     }),

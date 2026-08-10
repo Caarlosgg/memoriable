@@ -1,6 +1,7 @@
 import "server-only";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { prisma } from "./prisma";
+import { createPersonalWorkspace } from "./workspace";
 
 const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -87,6 +88,12 @@ export async function findOrCreateGoogleUser(email: string): Promise<string> {
     }
     return existing.id;
   }
-  const created = await prisma.user.create({ data: { email, passwordHash: null, emailVerified: true } });
-  return created.id;
+  // Cuenta + workspace personal + membership OWNER en una sola
+  // transacción — mismo motivo que en registro/actions.ts: nunca debe
+  // existir un User sin su espacio personal.
+  return prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({ data: { email, passwordHash: null, emailVerified: true } });
+    await createPersonalWorkspace(tx, created.id);
+    return created.id;
+  });
 }

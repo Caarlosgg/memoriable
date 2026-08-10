@@ -19,29 +19,43 @@ const TOTAL_LIMIT = 8;
  * propósito NO usa embeddings/búsqueda semántica: tiene que responder en
  * cada tecleo, y la semántica (si llega, Tier 3) tiene otro coste y otro
  * sitio (el Asistente).
+ *
+ * Fase Equipo: notas/eventos se buscan dentro del `workspaceId` ACTIVO
+ * (igual que el resto de la app); las cuentas de ahorro siguen siendo
+ * siempre personales (`userId`, nunca workspace) — pero solo se incluyen
+ * en el resultado si `isPersonal` es true, para que Cmd+K no ofrezca ir a
+ * "Ahorros" mientras se navega un workspace de equipo, donde esa sección
+ * ni siquiera aparece en el menú.
  */
-export async function searchAcrossAll(userId: string, query: string): Promise<QuickSearchResult[]> {
+export async function searchAcrossAll(
+  userId: string,
+  workspaceId: string,
+  isPersonal: boolean,
+  query: string,
+): Promise<QuickSearchResult[]> {
   const q = query.trim();
   if (q.length < MIN_QUERY_LENGTH) return [];
 
   const [messages, eventos, cuentas] = await Promise.all([
     prisma.message.findMany({
       where: {
-        userId,
+        workspaceId,
         OR: [{ resumen: { contains: q, mode: "insensitive" } }, { contenido: { contains: q, mode: "insensitive" } }],
       },
       orderBy: { fecha: "desc" },
       take: PER_TYPE_LIMIT,
     }),
     prisma.evento.findMany({
-      where: { userId, titulo: { contains: q, mode: "insensitive" } },
+      where: { workspaceId, titulo: { contains: q, mode: "insensitive" } },
       orderBy: { fechaInicio: "desc" },
       take: PER_TYPE_LIMIT,
     }),
-    prisma.cuentaAhorro.findMany({
-      where: { userId, nombre: { contains: q, mode: "insensitive" } },
-      take: PER_TYPE_LIMIT,
-    }),
+    isPersonal
+      ? prisma.cuentaAhorro.findMany({
+          where: { userId, nombre: { contains: q, mode: "insensitive" } },
+          take: PER_TYPE_LIMIT,
+        })
+      : Promise.resolve([]),
   ]);
 
   const results: QuickSearchResult[] = [

@@ -47,8 +47,17 @@ function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.join(",")}]`;
 }
 
-/** Repositorio propio del dashboard: mismas operaciones, con su propio Prisma. */
+/**
+ * Repositorio propio del dashboard: mismas operaciones, con su propio
+ * Prisma. `workspaceId` se inyecta por CONSTRUCTOR, no por parámetro de
+ * `save()` — la interfaz `MessageRepository` es compartida con el bot
+ * (que no tiene concepto de workspace), así que no se toca; cada llamada
+ * a `captureMessage` construye una instancia nueva con el workspace
+ * activo de esa petición (ver más abajo).
+ */
 class DashboardMessageRepository implements MessageRepository {
+  constructor(private readonly workspaceId: string) {}
+
   async save(userId: string, record: NewMessage): Promise<StoredMessage> {
     // Insert tipado primero (siempre fiable) y luego, si hay embedding, un
     // UPDATE aparte para la columna Unsupported — igual que en
@@ -62,6 +71,7 @@ class DashboardMessageRepository implements MessageRepository {
         categoria: record.categoria,
         resumen: record.resumen,
         userId,
+        workspaceId: this.workspaceId,
         // Siempre creciente: la nueva nota nace arriba del todo de su
         // columna en el tablero, sin tener que consultar el máximo actual.
         orden: Date.now(),
@@ -142,16 +152,23 @@ export function resolveEmbedder(): Embedder {
 /**
  * Punto de entrada de la captura rápida: mismo pipeline que usa el bot
  * (sanea → categoriza → embebe → guarda), con el categorizador, embedder y
- * repositorio propios del dashboard inyectados.
+ * repositorio propios del dashboard inyectados. `workspaceId` es siempre
+ * el workspace ACTIVO de quien captura (ver `lib/workspace.ts`) — nunca
+ * se resuelve aquí dentro, lo decide quien llama, para no acoplar este
+ * módulo a `next/headers`/cookies.
  */
-export async function captureMessage(userId: string, contenido: string): Promise<StoredMessage> {
+export async function captureMessage(
+  userId: string,
+  contenido: string,
+  workspaceId: string,
+): Promise<StoredMessage> {
   return processMessage(
     { tipo: "text", contenido },
     userId,
     {
       categorizer: resolveCategorizer(),
       embedder: resolveEmbedder(),
-      repository: new DashboardMessageRepository(),
+      repository: new DashboardMessageRepository(workspaceId),
     },
   );
 }

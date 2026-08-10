@@ -2,6 +2,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
+vi.mock("@/lib/workspace", () => ({
+  getActiveWorkspace: async () => ({ workspaceId: "ws1", isPersonal: true, role: "OWNER" }),
+}));
 
 const messageUpdateMany = vi.fn();
 vi.mock("@/lib/prisma", () => ({
@@ -26,7 +29,7 @@ describe("moveTask", () => {
     await moveTask("m1", "EN_PROGRESO", 1234.5);
 
     expect(messageUpdateMany).toHaveBeenCalledWith({
-      where: { id: "m1", userId: "u1" },
+      where: { id: "m1", workspaceId: "ws1" },
       data: { estado: "EN_PROGRESO", hecho: false, orden: 1234.5 },
     });
     expect(revalidatePath).toHaveBeenCalledWith("/pendientes");
@@ -38,7 +41,7 @@ describe("moveTask", () => {
     await moveTask("m1", "HECHO", 500);
 
     expect(messageUpdateMany).toHaveBeenCalledWith({
-      where: { id: "m1", userId: "u1" },
+      where: { id: "m1", workspaceId: "ws1" },
       data: { estado: "HECHO", hecho: true, orden: 500 },
     });
   });

@@ -23,9 +23,16 @@ export interface ExportPayload {
 
 /**
  * Lee todo lo que entra en el alcance pedido, siempre acotado al usuario de
- * la sesión. Exportación completa de datos (RGPD): mismo criterio de dueño
- * que el resto de la app — `where: { userId }` en cada consulta, nunca se
- * confía en un id suelto.
+ * la sesión. Exportación completa de datos (RGPD): `where: { userId }` en
+ * cada consulta, nunca se confía en un id suelto.
+ *
+ * Fase Equipo: a propósito NO se migra a `workspaceId` como el resto de la
+ * app — esto es "exporta todo lo que YO he escrito" (portabilidad de datos
+ * personales), no "todo lo que veo ahora mismo". `userId` en Message/Evento
+ * sigue significando "quien lo creó" tras la migración, así que sigue
+ * siendo el filtro correcto: cambiarlo a `workspaceId` dejaría que
+ * cualquier miembro de un equipo se descargara TODO el tablero compartido
+ * con su propio botón de "exportar mis datos".
  */
 export async function buildExportData(userId: string, scope: ExportScope): Promise<ExportPayload> {
   const notasWhere =

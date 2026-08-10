@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 const userFindUnique = vi.fn();
 const userCreate = vi.fn();
 const userUpdate = vi.fn();
+const transaction = vi.fn();
 vi.mock("../src/lib/prisma", () => ({
   prisma: {
     user: {
@@ -10,7 +11,13 @@ vi.mock("../src/lib/prisma", () => ({
       create: (...args: unknown[]) => userCreate(...args),
       update: (...args: unknown[]) => userUpdate(...args),
     },
+    $transaction: (cb: (tx: unknown) => unknown) => transaction(cb),
   },
+}));
+
+const createPersonalWorkspace = vi.fn();
+vi.mock("../src/lib/workspace", () => ({
+  createPersonalWorkspace: (...args: unknown[]) => createPersonalWorkspace(...args),
 }));
 
 describe("isGoogleOAuthConfigured", () => {
@@ -58,9 +65,13 @@ describe("findOrCreateGoogleUser", () => {
     userFindUnique.mockReset();
     userCreate.mockReset();
     userUpdate.mockReset();
+    transaction.mockReset();
+    transaction.mockImplementation((cb: (tx: unknown) => unknown) => cb({ user: { create: userCreate } }));
+    createPersonalWorkspace.mockReset();
+    createPersonalWorkspace.mockResolvedValue("ws1");
   });
 
-  it("crea una cuenta nueva sin contraseña, ya verificada", async () => {
+  it("crea una cuenta nueva sin contraseña, ya verificada, con su workspace personal", async () => {
     userFindUnique.mockResolvedValue(null);
     userCreate.mockResolvedValue({ id: "u-nuevo" });
     const { findOrCreateGoogleUser } = await import("../src/lib/googleOAuth");
@@ -70,6 +81,7 @@ describe("findOrCreateGoogleUser", () => {
     expect(userCreate).toHaveBeenCalledWith({
       data: { email: "ana@example.com", passwordHash: null, emailVerified: true },
     });
+    expect(createPersonalWorkspace).toHaveBeenCalledWith(expect.anything(), "u-nuevo");
     expect(userId).toBe("u-nuevo");
   });
 

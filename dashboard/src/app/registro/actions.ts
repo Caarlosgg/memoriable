@@ -7,6 +7,7 @@ import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
 import { createVerificationToken } from "@/lib/verification";
 import { sendVerificationEmail, resolveBaseUrl } from "@/lib/email";
+import { createPersonalWorkspace } from "@/lib/workspace";
 
 export interface RegisterState {
   error?: string;
@@ -53,8 +54,14 @@ export async function register(
   let userId: string;
   try {
     const passwordHash = await hashPassword(password);
-    const user = await prisma.user.create({ data: { email, passwordHash } });
-    userId = user.id;
+    // Cuenta + workspace personal + membership OWNER en una sola
+    // transacción — nunca debe existir un User sin su espacio personal
+    // (ver createPersonalWorkspace, mismo motivo que en googleOAuth.ts).
+    userId = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({ data: { email, passwordHash } });
+      await createPersonalWorkspace(tx, user.id);
+      return user.id;
+    });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       // Email duplicado: alguien intentando registrarse dos veces, no un

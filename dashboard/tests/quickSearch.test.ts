@@ -23,25 +23,33 @@ describe("searchAcrossAll", () => {
 
   it("no consulta nada con menos de 2 caracteres (evita ruido en cada tecleo)", async () => {
     const { searchAcrossAll } = await import("../src/lib/quickSearch");
-    const result = await searchAcrossAll("u1", "a");
+    const result = await searchAcrossAll("u1", "ws1", true, "a");
 
     expect(result).toEqual([]);
     expect(messageFindMany).not.toHaveBeenCalled();
   });
 
-  it("busca en notas, eventos y cuentas de ahorro ligado al usuario", async () => {
+  it("busca notas/eventos en el workspace activo, y cuentas de ahorro ligadas siempre al usuario", async () => {
     const { searchAcrossAll } = await import("../src/lib/quickSearch");
-    await searchAcrossAll("u1", "fontanero");
+    await searchAcrossAll("u1", "ws1", true, "fontanero");
 
     expect(messageFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ userId: "u1" }) }),
+      expect.objectContaining({ where: expect.objectContaining({ workspaceId: "ws1" }) }),
     );
     expect(eventoFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ userId: "u1", titulo: expect.anything() }) }),
+      expect.objectContaining({ where: expect.objectContaining({ workspaceId: "ws1", titulo: expect.anything() }) }),
     );
     expect(cuentaFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ userId: "u1", nombre: expect.anything() }) }),
     );
+  });
+
+  it("no busca en cuentas de ahorro cuando el workspace activo no es el personal", async () => {
+    const { searchAcrossAll } = await import("../src/lib/quickSearch");
+    await searchAcrossAll("u1", "ws-equipo", false, "fontanero");
+
+    expect(cuentaFindMany).not.toHaveBeenCalled();
+    expect(messageFindMany).toHaveBeenCalled();
   });
 
   it("mapea cada tipo a un resultado con href navegable", async () => {
@@ -52,7 +60,7 @@ describe("searchAcrossAll", () => {
     cuentaFindMany.mockResolvedValue([{ id: "c1", nombre: "Fondo fontanero" }]);
 
     const { searchAcrossAll } = await import("../src/lib/quickSearch");
-    const result = await searchAcrossAll("u1", "fontanero");
+    const result = await searchAcrossAll("u1", "ws1", true, "fontanero");
 
     expect(result).toEqual([
       { id: "m1", tipo: "nota", titulo: "Llamar al fontanero", subtitulo: "tarea", href: "/categorias?mensaje=m1#mensaje-m1" },
@@ -69,7 +77,7 @@ describe("searchAcrossAll", () => {
     cuentaFindMany.mockResolvedValue(Array.from({ length: 4 }, (_, i) => ({ id: `c${i}`, nombre: `cuenta ${i}` })));
 
     const { searchAcrossAll } = await import("../src/lib/quickSearch");
-    const result = await searchAcrossAll("u1", "algo");
+    const result = await searchAcrossAll("u1", "ws1", true, "algo");
 
     expect(result.length).toBe(8);
   });

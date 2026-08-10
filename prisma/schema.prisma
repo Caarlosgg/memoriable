@@ -68,14 +68,88 @@ model User {
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
-  messages           Message[]
-  exchanges          AssistantExchange[]
-  conversations      Conversation[]
-  eventos            Evento[]
-  cuentasAhorro      CuentaAhorro[]
+  /// Workspace personal, autocreado al registrarse (Fase Equipo): el
+  /// espacio privado 1-a-1 que ya existía implícitamente (userId como
+  /// dueño único) ahora es un Workspace real con `personal = true`.
+  /// Invariante estructural, no solo convención — @unique impide por
+  /// diseño que una cuenta acabe con dos, y es una lectura O(1) en vez de
+  /// un join+filtro contra Membership+Workspace.personal cada vez que
+  /// hace falta saber "cuál es mi espacio personal".
+  personalWorkspaceId String?    @unique
+  personalWorkspace   Workspace? @relation("PersonalWorkspace", fields: [personalWorkspaceId], references: [id])
+
+  messages         Message[]           @relation("MessageAuthor")
+  assignedMessages Message[]           @relation("MessageAssignee")
+  exchanges        AssistantExchange[]
+  conversations    Conversation[]
+  eventos          Evento[]            @relation("EventoAuthor")
+  assignedEventos  Evento[]            @relation("EventoAssignee")
+  cuentasAhorro    CuentaAhorro[]
   verificationTokens VerificationToken[]
+  memberships      Membership[]
 
   @@map("users")
+}
+
+/// Ver dashboard/prisma/schema.prisma para la explicación completa del
+/// modelo de equipo (Fase Equipo). Espacio de trabajo: personal (1 solo
+/// miembro, autocreado al registrarse) o de equipo (varios miembros,
+/// creado explícitamente). Message/Evento cuelgan de un Workspace, no
+/// directamente de un User — para un workspace personal esto equivale
+/// exactamente al comportamiento de antes (userId como único dueño), así
+/// que no es un caso especial, es una generalización estricta.
+model Workspace {
+  id        String   @id @default(cuid())
+  nombre    String
+  /// true solo en el workspace personal autocreado de cada usuario — nunca
+  /// se crea uno con personal=true desde la UI, solo desde el flujo de
+  /// alta de cuenta (registro/actions.ts, googleOAuth.ts).
+  personal  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  memberships Membership[]
+  messages    Message[]
+  eventos     Evento[]
+  /// Reverso de User.personalWorkspaceId — como máximo un usuario por
+  /// workspace personal (impuesto por el @unique del otro lado).
+  personalOf  User?    @relation("PersonalWorkspace")
+
+  @@map("workspaces")
+}
+
+/// Rol dentro de un workspace de equipo. En esta fase SOLO gobierna la
+/// administración del propio workspace (añadir/quitar miembros) — no
+/// permisos por tarea: cualquier miembro ACTIVE puede crear/editar/
+/// asignar/borrar cualquier tarea del workspace. Ampliar esto a permisos
+/// más finos es una mejora futura, no de esta fase.
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+/// PENDING = se ha añadido a alguien por email pero aún no lo ha aceptado
+/// (aparece como aviso pendiente hasta que entra y confirma); ACTIVE = ya
+/// forma parte de verdad. Un Membership PENDING NO da acceso a los datos
+/// del workspace todavía — el check de acceso exige status=ACTIVE.
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+}
+
+model Membership {
+  userId      String
+  workspaceId String
+  role        WorkspaceRole    @default(MEMBER)
+  status      MembershipStatus @default(ACTIVE)
+  joinedAt    DateTime         @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, workspaceId])
+  @@index([workspaceId])
+  @@map("memberships")
 }
 
 /// Token de un solo uso para confirmar el email al registrarse (registro/
@@ -163,9 +237,27 @@ model Message {
 
   /// Dueño de la nota (Fase 2, multiusuario). Obligatorio: el backfill de
   /// las notas previas a esta fase ya se completó (ver migración
-  /// 20260804190000_require_user_owner).
+  /// 20260804190000_require_user_owner). Quien la creó — nunca cambia,
+  /// aunque se asigne a otra persona (ver `assigneeId`).
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation("MessageAuthor", fields: [userId], references: [id])
+
+  /// Workspace en el que vive (Fase Equipo): el personal del autor por
+  /// defecto, o un workspace de equipo si se ha creado/movido ahí. Es el
+  /// límite real de visibilidad — quien no sea miembro ACTIVE de este
+  /// workspace no puede ver ni tocar esta fila. NOT NULL desde
+  /// 20260810130000_require_message_workspace (backfill verificado en 0
+  /// huérfanos) — mismo patrón que `userId` en su día.
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  /// A quién se ha asignado esta tarea (Fase Equipo) — solo tiene sentido
+  /// en un workspace de equipo; en el personal siempre queda null. Debe
+  /// ser siempre un miembro ACTIVE del mismo `workspaceId` (comprobado a
+  /// nivel de Server Action, Postgres no puede expresar esa referencia
+  /// cruzada como constraint).
+  assigneeId String?
+  assignee   User?   @relation("MessageAssignee", fields: [assigneeId], references: [id])
 
   /// Vector de embedding para búsqueda semántica (Fase 2), generado con
   /// gemini-embedding-001 truncado a 768 dimensiones (Matryoshka Representation
@@ -187,6 +279,8 @@ model Message {
   @@index([userId])
   @@index([estado])
   @@index([orden])
+  @@index([workspaceId])
+  @@index([assigneeId])
   @@map("messages")
 }
 
@@ -208,8 +302,18 @@ model Evento {
   participantes String[] @default([])
   createdAt   DateTime @default(now())
 
+  /// Quien lo creó — nunca cambia, aunque se asigne a otra persona (ver
+  /// `assigneeId`). Ver comentario equivalente en Message.userId.
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation("EventoAuthor", fields: [userId], references: [id])
+
+  /// Ver comentario equivalente en Message.workspaceId.
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  /// Ver comentario equivalente en Message.assigneeId.
+  assigneeId String?
+  assignee   User?   @relation("EventoAssignee", fields: [assigneeId], references: [id])
 
   /// Nota que originó este evento (si lo creó el Asistente a partir de
   /// una de tus notas). Null si se creó directamente desde /calendario.
@@ -218,6 +322,8 @@ model Evento {
 
   @@index([userId])
   @@index([fechaInicio])
+  @@index([workspaceId])
+  @@index([assigneeId])
   @@map("eventos")
 }
 

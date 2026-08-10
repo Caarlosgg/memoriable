@@ -16,8 +16,17 @@ vi.mock("@/lib/rateLimit", () => ({
 }));
 
 const userCreate = vi.fn();
+const transaction = vi.fn();
 vi.mock("@/lib/prisma", () => ({
-  prisma: { user: { create: (...args: unknown[]) => userCreate(...args) } },
+  prisma: {
+    user: { create: (...args: unknown[]) => userCreate(...args) },
+    $transaction: (cb: (tx: unknown) => unknown) => transaction(cb),
+  },
+}));
+
+const createPersonalWorkspace = vi.fn();
+vi.mock("@/lib/workspace", () => ({
+  createPersonalWorkspace: (...args: unknown[]) => createPersonalWorkspace(...args),
 }));
 
 const createVerificationToken = vi.fn();
@@ -44,6 +53,10 @@ describe("register", () => {
     checkRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
     userCreate.mockReset();
     userCreate.mockResolvedValue({ id: "u1", email: "ana@example.com" });
+    transaction.mockReset();
+    transaction.mockImplementation((cb: (tx: unknown) => unknown) => cb({ user: { create: userCreate } }));
+    createPersonalWorkspace.mockReset();
+    createPersonalWorkspace.mockResolvedValue("ws1");
     createVerificationToken.mockReset();
     createVerificationToken.mockResolvedValue("token123");
     sendVerificationEmail.mockReset();
@@ -79,6 +92,7 @@ describe("register", () => {
     );
 
     expect(userCreate).toHaveBeenCalledWith({ data: { email: "ana@example.com", passwordHash: "hashed" } });
+    expect(createPersonalWorkspace).toHaveBeenCalledWith(expect.anything(), "u1");
     expect(createVerificationToken).toHaveBeenCalledWith("u1");
     expect(sendVerificationEmail).toHaveBeenCalledWith(
       "ana@example.com",

@@ -25,14 +25,17 @@ export interface CategoryGroup {
  * y el enlace trae ese id, hay que poder verla aunque no esté entre las
  * `RECENT_PER_CATEGORY` más recientes de su categoría — se trae aparte y se
  * antepone a su grupo si hiciera falta.
+ *
+ * Fase Equipo: alcance por `workspaceId` (el activo), no por `userId` — ver
+ * `lib/workspace.ts`.
  */
-export async function getCategoryGroups(userId: string, highlightId?: string): Promise<CategoryGroup[]> {
+export async function getCategoryGroups(workspaceId: string, highlightId?: string): Promise<CategoryGroup[]> {
   const [counts, highlighted, ...messagesByCategory] = await Promise.all([
-    prisma.message.groupBy({ by: ["categoria"], where: { userId }, _count: { _all: true } }),
-    highlightId ? prisma.message.findUnique({ where: { id: highlightId, userId } }) : Promise.resolve(null),
+    prisma.message.groupBy({ by: ["categoria"], where: { workspaceId }, _count: { _all: true } }),
+    highlightId ? prisma.message.findUnique({ where: { id: highlightId, workspaceId } }) : Promise.resolve(null),
     ...CATEGORIES.map((categoria) =>
       prisma.message.findMany({
-        where: { categoria, userId },
+        where: { categoria, workspaceId },
         orderBy: { fecha: "desc" },
         take: RECENT_PER_CATEGORY,
       }),
@@ -80,17 +83,18 @@ function filtersToWhere(filters: SearchFilters): Prisma.MessageWhereInput {
  * opcionales (categoría/estado/prioridad/fechas, Fase F). Mismo
  * comportamiento que el /buscar del bot, reimplementado aquí porque el
  * dashboard tiene su propio cliente de Prisma (ver prisma/schema.prisma).
- * Es la mitad "texto" de la búsqueda híbrida.
+ * Es la mitad "texto" de la búsqueda híbrida. Alcance por `workspaceId`,
+ * ver comentario de `searchMessages`.
  */
 async function textSearch(
-  userId: string,
+  workspaceId: string,
   query: string,
   filters: SearchFilters,
   limit: number,
 ): Promise<Message[]> {
   return prisma.message.findMany({
     where: {
-      userId,
+      workspaceId,
       ...filtersToWhere(filters),
       OR: [
         { contenido: { contains: query, mode: "insensitive" } },
@@ -118,9 +122,15 @@ function hasAnyFilter(filters: SearchFilters): boolean {
  * primero, sin ILIKE ni búsqueda semántica (no hay nada que "buscar",
  * solo que filtrar). Sin texto y sin filtros, no hay nada que pedir —
  * la vista agrupada por categoría ya cubre ese caso.
+ *
+ * Fase Equipo: alcance por `workspaceId` (el activo), no por `userId` —
+ * texto y semántica deben coincidir en a qué tienes acceso; si uno se
+ * quedara en `userId` y el otro pasara a `workspaceId`, la MISMA búsqueda
+ * híbrida mostraría un alcance de visibilidad distinto según si una nota
+ * coincide por texto o por embedding.
  */
 export async function searchMessages(
-  userId: string,
+  workspaceId: string,
   query: string,
   filters: SearchFilters = {},
 ): Promise<Message[]> {
@@ -129,16 +139,16 @@ export async function searchMessages(
   if (needle === "") {
     if (!hasAnyFilter(filters)) return [];
     return prisma.message.findMany({
-      where: { userId, ...filtersToWhere(filters) },
+      where: { workspaceId, ...filtersToWhere(filters) },
       orderBy: { fecha: "desc" },
       take: SEARCH_LIMIT,
     });
   }
 
   return hybridSearch(needle, filters, SEARCH_LIMIT, {
-    textSearch: (q, f, limit) => textSearch(userId, q, f, limit),
+    textSearch: (q, f, limit) => textSearch(workspaceId, q, f, limit),
     embedder: resolveEmbedder(),
-    findSimilar: (queryEmbedding, options) => findSimilarMessages(userId, queryEmbedding, options),
+    findSimilar: (queryEmbedding, options) => findSimilarMessages(workspaceId, queryEmbedding, options),
   });
 }
 
@@ -153,11 +163,13 @@ export interface BoardColumn {
  * arrastrarlas (o de creación, si nunca las ha reordenado — `orden` nace
  * como la fecha en milisegundos). Mismo alcance que el viejo "Pendientes"
  * (categorías accionables) — solo que ahora también se ven las ya hechas,
- * en su propia columna, en vez de desaparecer sin más.
+ * en su propia columna, en vez de desaparecer sin más. Alcance por
+ * `workspaceId` (el activo) — dentro de un workspace de equipo, el
+ * tablero es compartido entre todos sus miembros.
  */
-export async function getBoardGroups(userId: string): Promise<BoardColumn[]> {
+export async function getBoardGroups(workspaceId: string): Promise<BoardColumn[]> {
   const messages = await prisma.message.findMany({
-    where: { userId, categoria: { in: [...ACTIONABLE_CATEGORIES] } },
+    where: { workspaceId, categoria: { in: [...ACTIONABLE_CATEGORIES] } },
     orderBy: { orden: "desc" },
   });
 

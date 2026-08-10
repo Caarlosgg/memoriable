@@ -19,10 +19,17 @@ function toVectorLiteral(embedding: number[]): string {
  * `Message` los tiene): `MessageDetailDialog` (Fase B) los necesita para
  * mostrar/editar una nota citada por búsqueda semántica — sin ellos, abrir
  * el modal sobre un resultado semántico rompía al leer un estado/prioridad
- * `undefined`.
+ * `undefined`. `userId` se queda en el SELECT (quién la escribió, para
+ * mostrarlo) aunque el filtro de acceso real ya no sea por ahí — ver más
+ * abajo.
+ *
+ * Fase Equipo: filtra por `workspaceId` (el activo), no por `userId` —
+ * mismo motivo que `textSearch`/`searchMessages` en `data.ts`: es la
+ * mitad "semántica" de la MISMA búsqueda híbrida, así que tiene que
+ * respetar el mismo límite de visibilidad que la mitad de texto.
  */
 export async function findSimilarMessages(
-  userId: string,
+  workspaceId: string,
   queryEmbedding: number[],
   options: SearchFilters & { limit?: number } = {},
 ): Promise<Message[]> {
@@ -39,7 +46,7 @@ export async function findSimilarMessages(
     SELECT "id", "tipo", "contenido", "categoria", "resumen", "hecho", "estado", "prioridad", "etiquetas", "camposExtra", "fecha", "userId"
     FROM "messages"
     WHERE "embedding" IS NOT NULL
-      AND "userId" = ${userId}
+      AND "workspaceId" = ${workspaceId}
       AND (${categoria}::text IS NULL OR "categoria" = ${categoria})
       AND (${estado}::"EstadoTarea" IS NULL OR "estado" = ${estado}::"EstadoTarea")
       AND (${prioridad}::"Prioridad" IS NULL OR "prioridad" = ${prioridad}::"Prioridad")

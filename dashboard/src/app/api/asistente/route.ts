@@ -10,6 +10,7 @@ import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import { toAssistantSources, buildContextBlock, buildSystemPrompt, type AssistantSource } from "@/lib/assistantContext";
 import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
+import { getActiveWorkspace } from "@/lib/workspace";
 
 // Verificado en vivo: una petición con dos llamadas a herramienta con
 // `repetir` (crearEvento + registrarAhorro, 5 repeticiones cada una) tardó
@@ -70,6 +71,11 @@ export async function POST(req: Request) {
   // analiza los closures contra el tipo declarado, no el estrechado en el
   // punto de captura) — `userId` sí queda tipado `string` sin más.
   const userId: string = sessionUserId;
+  // Fase Equipo: qué workspace usan crearNota/crearEvento/completarTarea/
+  // editarEvento/borrarEvento y las notas citadas — resuelto una vez aquí,
+  // no dentro de cada tool, para que toda la petición opere sobre el mismo
+  // workspace de principio a fin.
+  const { workspaceId } = await getActiveWorkspace(userId);
 
   if (!process.env.GROQ_API_KEY) {
     // Sin fallback posible aquí (a diferencia de la captura rápida): no hay
@@ -123,7 +129,7 @@ export async function POST(req: Request) {
     try {
       const queryEmbedding = await resolveEmbedder().embedQuery(question);
       if (!queryEmbedding) return [];
-      const similar = await findSimilarMessages(userId, queryEmbedding, { limit: SOURCES_PER_ANSWER });
+      const similar = await findSimilarMessages(workspaceId, queryEmbedding, { limit: SOURCES_PER_ANSWER });
       return toAssistantSources(similar);
     } catch (err) {
       console.error("No se pudieron recuperar notas relevantes (se responde sin fuentes):", err);
@@ -141,7 +147,7 @@ export async function POST(req: Request) {
     model: groq("openai/gpt-oss-120b"),
     system: buildSystemPrompt(buildContextBlock(sources)),
     messages: await convertToModelMessages(messages),
-    tools: createAssistantTools(userId),
+    tools: createAssistantTools(userId, workspaceId),
     // Permite encadenar la llamada a `crearNota` con la respuesta de texto
     // que la confirma, en el mismo turno (si no, el SDK se pararía justo
     // después de ejecutar la tool sin generar el mensaje final).

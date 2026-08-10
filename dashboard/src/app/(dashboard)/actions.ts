@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
 import { isCategory } from "@/lib/categories";
 import { searchAcrossAll, type QuickSearchResult } from "@/lib/quickSearch";
+import { getActiveWorkspace } from "@/lib/workspace";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 
 /**
@@ -17,14 +18,18 @@ import type { StoredMessage } from "@/lib/botPipeline/repository";
  * sincronizado con `estado` (hecho = estado === HECHO): el bot y el resumen
  * diario siguen leyendo `hecho` tal cual, sin saber nada del tablero.
  *
- * `updateMany` con userId en el where (no `update` por id solo): si el id
- * pertenece a otro usuario, esto no actualiza nada en vez de tocar una nota
- * ajena — la comprobación de dueño va en la propia query.
+ * `updateMany` con workspaceId en el where (no `update` por id solo): si el
+ * id no pertenece al workspace activo, esto no actualiza nada en vez de
+ * tocar una nota ajena — la comprobación de acceso va en la propia query.
+ * Fase Equipo: se filtra por `workspaceId`, NO por `userId` — dentro de un
+ * workspace de equipo, cualquier miembro puede mover una tarjeta que le
+ * han asignado aunque no la haya creado él (ver getActiveWorkspace).
  */
 export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise<void> {
   const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
   await prisma.message.updateMany({
-    where: { id, userId },
+    where: { id, workspaceId },
     data: { estado, hecho: estado === "HECHO" },
   });
   revalidatePath("/pendientes");
@@ -36,21 +41,23 @@ export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise
  * cliente (punto medio entre las dos tarjetas vecinas en el destino, o un
  * valor por encima/debajo si se suelta en un extremo) — aquí solo se
  * persiste, junto con el cambio de columna si lo hay. Mismo criterio de
- * dueño que el resto: `updateMany` con userId en el where.
+ * acceso que el resto: `updateMany` con workspaceId en el where.
  */
 export async function moveTask(id: string, estado: EstadoTarea, orden: number): Promise<void> {
   const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
   await prisma.message.updateMany({
-    where: { id, userId },
+    where: { id, workspaceId },
     data: { estado, hecho: estado === "HECHO", orden },
   });
   revalidatePath("/pendientes");
 }
 
-/** Cambia la prioridad de una tarjeta del tablero. Mismo criterio de dueño que arriba. */
+/** Cambia la prioridad de una tarjeta del tablero. Mismo criterio de acceso que arriba. */
 export async function updateTaskPriority(id: string, prioridad: Prioridad): Promise<void> {
   const userId = await verifySession();
-  await prisma.message.updateMany({ where: { id, userId }, data: { prioridad } });
+  const { workspaceId } = await getActiveWorkspace(userId);
+  await prisma.message.updateMany({ where: { id, workspaceId }, data: { prioridad } });
   revalidatePath("/pendientes");
 }
 
@@ -72,11 +79,12 @@ export interface UpdateMessageResult {
 /**
  * Edición manual de una nota desde el modal de detalle (Fase B: botones
  * "Guardar"/"Cancelar" explícitos, nada de autosave). Mismo criterio de
- * dueño que updateTaskStatus/updateTaskPriority: `updateMany` con userId en
- * el where, nunca `update` por id solo.
+ * acceso que updateTaskStatus/updateTaskPriority: `updateMany` con
+ * workspaceId en el where, nunca `update` por id solo.
  */
 export async function updateMessage(id: string, input: UpdateMessageInput): Promise<UpdateMessageResult> {
   const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
 
   const resumen = input.resumen?.trim();
   const contenido = input.contenido?.trim();
@@ -88,7 +96,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
 
   try {
     const result = await prisma.message.updateMany({
-      where: { id, userId },
+      where: { id, workspaceId },
       data: {
         ...(resumen !== undefined ? { resumen } : {}),
         ...(contenido !== undefined ? { contenido } : {}),
@@ -155,15 +163,16 @@ export interface DeleteMessageResult {
 }
 
 /**
- * Borra una nota/tarea. Mismo criterio de dueño que el resto: `deleteMany`
- * con userId en el where. El margen de deshacer (unos segundos antes de
- * llamar a esto de verdad) vive en el cliente, ver UndoToast.tsx — esta
+ * Borra una nota/tarea. Mismo criterio de acceso que el resto: `deleteMany`
+ * con workspaceId en el where. El margen de deshacer (unos segundos antes
+ * de llamar a esto de verdad) vive en el cliente, ver UndoToast.tsx — esta
  * acción SIEMPRE borra de verdad, no sabe nada de "deshacer".
  */
 export async function deleteMessage(id: string): Promise<DeleteMessageResult> {
   const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
   try {
-    const result = await prisma.message.deleteMany({ where: { id, userId } });
+    const result = await prisma.message.deleteMany({ where: { id, workspaceId } });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
     revalidatePath("/categorias");
     revalidatePath("/pendientes");
@@ -178,7 +187,8 @@ export async function deleteMessage(id: string): Promise<DeleteMessageResult> {
 /** Búsqueda de la paleta de comandos (Ctrl/Cmd+K) — ver lib/quickSearch.ts. */
 export async function quickSearch(query: string): Promise<QuickSearchResult[]> {
   const userId = await verifySession();
-  return searchAcrossAll(userId, query);
+  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  return searchAcrossAll(userId, workspaceId, isPersonal, query);
 }
 
 export interface CaptureState {
@@ -192,12 +202,13 @@ export interface CaptureState {
  */
 export async function capture(_prev: CaptureState, formData: FormData): Promise<CaptureState> {
   const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
 
   const contenido = String(formData.get("contenido") ?? "").trim();
   if (contenido === "") return { error: "Escribe algo antes de guardar." };
 
   try {
-    const saved = await captureMessage(userId, contenido);
+    const saved = await captureMessage(userId, contenido, workspaceId);
     revalidatePath("/");
     return { saved };
   } catch (err) {

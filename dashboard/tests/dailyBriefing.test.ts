@@ -56,12 +56,12 @@ describe("getDailyBriefing", () => {
     expect(data.atascadas).toBe(1);
   });
 
-  it("solo pide mensajes accionables (tarea/recordatorio) sin hacer, del usuario dado", async () => {
+  it("solo pide mensajes accionables (tarea/recordatorio) sin hacer, del workspace dado", async () => {
     const { getDailyBriefing } = await import("../src/lib/dailyBriefing");
     await getDailyBriefing("u1");
     expect(messageFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: "u1", categoria: { in: ["tarea", "recordatorio"] }, estado: { not: "HECHO" } },
+        where: { workspaceId: "u1", categoria: { in: ["tarea", "recordatorio"] }, estado: { not: "HECHO" } },
       }),
     );
   });
@@ -70,7 +70,7 @@ describe("getDailyBriefing", () => {
     const { getDailyBriefing } = await import("../src/lib/dailyBriefing");
     await getDailyBriefing("u1");
     const call = eventoFindMany.mock.calls[0]![0];
-    expect(call.where.userId).toBe("u1");
+    expect(call.where.workspaceId).toBe("u1");
     const { gte, lt } = call.where.fechaInicio;
     expect(lt.getTime() - gte.getTime()).toBe(24 * 60 * 60 * 1000);
     expect(gte.getHours()).toBe(0);
