@@ -2,6 +2,7 @@ import { User, CircleCheck } from "lucide-react";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { LinkTelegramForm } from "@/app/(dashboard)/cuenta/LinkTelegramForm";
+import { ChangePasswordForm } from "@/app/(dashboard)/cuenta/ChangePasswordForm";
 import { ExportSection } from "@/components/ExportSection";
 import { ThemeSettings } from "@/components/ThemeSettings";
 
@@ -9,7 +10,7 @@ export async function CuentaSection() {
   const userId = await verifySession();
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { email: true, telegramChatId: true },
+    select: { email: true, telegramChatId: true, passwordHash: true },
   });
 
   return (
@@ -43,6 +44,8 @@ export async function CuentaSection() {
           </>
         )}
       </div>
+
+      <ChangePasswordForm hasPassword={Boolean(user.passwordHash)} />
 
       <ThemeSettings />
 
