@@ -213,6 +213,21 @@ npm run build && npm start
 No hace falta `DIRECT_URL` aquí: esa variable es solo para migraciones,
 y el dashboard no migra.
 
+### Panel de administración (`/admin`)
+
+Gestión global de usuarios y equipos (restablecer contraseñas, verificar
+email a mano, eliminar cuentas/equipos) — solo visible para quien tenga
+`User.isSuperAdmin = true`. No hay UI para auto-concederse este permiso
+la primera vez, a propósito: se designa a mano contra la base de datos,
+una sola vez, para la cuenta que vaya a administrar el resto:
+
+```sql
+UPDATE users SET "isSuperAdmin" = true WHERE email = 'tu-email@ejemplo.com';
+```
+
+A partir de ahí, esa cuenta puede conceder el permiso a otras desde el
+propio panel (Usuarios → "Hacer superadmin").
+
 ### Comandos
 
 - `npm run dev` — servidor de desarrollo (Turbopack).
