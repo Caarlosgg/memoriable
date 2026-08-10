@@ -97,6 +97,22 @@ export async function getPersonalWorkspaceId(userId: string): Promise<string> {
 }
 
 /**
+ * Comprueba si un usuario es miembro ACTIVE (no PENDING) de un workspace —
+ * usado antes de asignarle una tarea o evento: asignar a alguien fuera del
+ * workspace, o con una invitación aún sin aceptar, no tendría sentido (no
+ * vería la tarjeta). Postgres no puede expresar esta referencia cruzada
+ * (assigneeId dentro del mismo workspaceId) como constraint — se comprueba
+ * aquí, a nivel de Server Action.
+ */
+export async function isActiveMember(userId: string, workspaceId: string): Promise<boolean> {
+  const membership = await prisma.membership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+    select: { status: true },
+  });
+  return membership?.status === "ACTIVE";
+}
+
+/**
  * Cambia el workspace activo del usuario — valida que sea miembro ACTIVE
  * antes de guardar la cookie (nunca se confía en el `workspaceId` que
  * pide el cliente sin comprobarlo). Devuelve `false` sin tocar la cookie

@@ -9,15 +9,18 @@ import { NAV_ITEMS } from "./navItems";
  * nativa que un menú hamburguesa (que tiene sentido con listas más largas).
  * Transición de color en CSS puro — no hace falta Framer Motion aquí.
  */
-export function BottomTabs() {
+export function BottomTabs({ isPersonal }: { isPersonal: boolean }) {
   const pathname = usePathname();
+  // Ahorros es siempre personal (ver lib/workspace.ts) — no tiene sentido
+  // en un workspace de equipo, así que desaparece del menú al cambiar a uno.
+  const items = isPersonal ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/ahorros");
 
   return (
     <nav
       aria-label="Navegación principal"
       className="fixed inset-x-0 bottom-0 z-10 flex border-t border-paper-line bg-paper-raised pb-[env(safe-area-inset-bottom)] sm:hidden"
     >
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const active = pathname === item.href;
         return (
           <Link

@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
 import { isCategory } from "@/lib/categories";
 import { searchAcrossAll, type QuickSearchResult } from "@/lib/quickSearch";
-import { getActiveWorkspace } from "@/lib/workspace";
+import { getActiveWorkspace, isActiveMember } from "@/lib/workspace";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 
 /**
@@ -59,6 +59,38 @@ export async function updateTaskPriority(id: string, prioridad: Prioridad): Prom
   const { workspaceId } = await getActiveWorkspace(userId);
   await prisma.message.updateMany({ where: { id, workspaceId }, data: { prioridad } });
   revalidatePath("/pendientes");
+}
+
+export interface AssignTaskResult {
+  error?: string;
+}
+
+/**
+ * Asigna (o quita, con `assigneeId: null`) una tarjeta del tablero a un
+ * miembro del workspace activo. `assigneeId` debe ser siempre un miembro
+ * ACTIVE del MISMO workspace — asignar a alguien fuera de él (o con una
+ * invitación aún sin aceptar) le dejaría una tarea que nunca vería. Mismo
+ * criterio de acceso de escritura que el resto: `updateMany` con
+ * `workspaceId` en el where.
+ */
+export async function assignMessage(id: string, assigneeId: string | null): Promise<AssignTaskResult> {
+  const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
+
+  if (assigneeId && !(await isActiveMember(assigneeId, workspaceId))) {
+    return { error: "Esa persona no es miembro de este workspace." };
+  }
+
+  try {
+    const result = await prisma.message.updateMany({ where: { id, workspaceId }, data: { assigneeId } });
+    if (result.count === 0) return { error: "No se ha encontrado la nota." };
+    revalidatePath("/pendientes");
+    return {};
+  } catch (err) {
+    console.error("Error al asignar la tarea:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido asignar. Inténtalo de nuevo." };
+  }
 }
 
 export interface UpdateMessageInput {

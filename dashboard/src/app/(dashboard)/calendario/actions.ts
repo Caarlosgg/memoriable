@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { getActiveWorkspace } from "@/lib/workspace";
+import { getActiveWorkspace, isActiveMember } from "@/lib/workspace";
 
 export interface EventoInput {
   titulo: string;
@@ -116,5 +116,30 @@ export async function deleteEvento(id: string): Promise<EventoResult> {
     console.error("Error al borrar el evento:", err);
     Sentry.captureException(err);
     return { error: "No se ha podido borrar. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Asigna (o quita, con `assigneeId: null`) un evento a un miembro del
+ * workspace activo. Mismo criterio que `assignMessage` en actions.ts:
+ * `assigneeId` debe ser siempre un miembro ACTIVE del MISMO workspace.
+ */
+export async function assignEvento(id: string, assigneeId: string | null): Promise<EventoResult> {
+  const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
+
+  if (assigneeId && !(await isActiveMember(assigneeId, workspaceId))) {
+    return { error: "Esa persona no es miembro de este workspace." };
+  }
+
+  try {
+    const result = await prisma.evento.updateMany({ where: { id, workspaceId }, data: { assigneeId } });
+    if (result.count === 0) return { error: "No se ha encontrado el evento." };
+    revalidatePath("/calendario");
+    return {};
+  } catch (err) {
+    console.error("Error al asignar el evento:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido asignar. Inténtalo de nuevo." };
   }
 }

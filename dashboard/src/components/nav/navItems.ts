@@ -1,4 +1,4 @@
-import { MessageCircle, StickyNote, ListTodo, CalendarDays, PiggyBank, User, type LucideIcon } from "lucide-react";
+import { MessageCircle, StickyNote, ListTodo, CalendarDays, PiggyBank, Users, User, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -17,5 +17,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pendientes", label: "Tablero", Icon: ListTodo },
   { href: "/calendario", label: "Calendario", Icon: CalendarDays },
   { href: "/ahorros", label: "Ahorros", Icon: PiggyBank },
+  { href: "/equipo", label: "Equipo", Icon: Users },
   { href: "/cuenta", label: "Cuenta", Icon: User },
 ];

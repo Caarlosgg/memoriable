@@ -6,7 +6,9 @@ import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import { ChevronsLeft, ChevronsRight, LogOut, Search } from "lucide-react";
 import { logout } from "@/app/actions";
+import type { WorkspaceSummary } from "@/app/(dashboard)/equipo/actions";
 import { NAV_ITEMS } from "./navItems";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 // Import dinámico a propósito: framer-motion solo lo necesita el colapso del
 // sidebar (una animación de ancho con física de resorte que CSS no
@@ -40,10 +42,21 @@ function usePrefersReducedMotion(): boolean {
   return useSyncExternalStore(subscribeReducedMotion, getReducedMotionSnapshot, () => false);
 }
 
-export function Sidebar() {
+export function Sidebar({
+  workspaces,
+  activeWorkspaceId,
+  isPersonal,
+}: {
+  workspaces: WorkspaceSummary[];
+  activeWorkspaceId: string;
+  isPersonal: boolean;
+}) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const prefersReducedMotion = usePrefersReducedMotion();
+  // Ahorros es siempre personal (ver lib/workspace.ts) — no tiene sentido
+  // en un workspace de equipo, así que desaparece del menú al cambiar a uno.
+  const items = isPersonal ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/ahorros");
 
   return (
     <MotionAside
@@ -67,6 +80,10 @@ export function Sidebar() {
       </div>
 
       <div className="p-3 pb-0">
+        <WorkspaceSwitcher workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} collapsed={collapsed} />
+      </div>
+
+      <div className="p-3 pb-0">
         <button
           type="button"
           onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
@@ -84,7 +101,7 @@ export function Sidebar() {
       </div>
 
       <nav aria-label="Navegación principal" className="flex flex-1 flex-col gap-1 p-3">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = pathname === item.href;
           return (
             <div key={item.href}>
