@@ -80,3 +80,41 @@ export async function sendVerificationEmail(to: string, verifyUrl: string): Prom
     return false;
   }
 }
+
+/**
+ * Envía el correo de "restablecer contraseña". Mismo criterio que
+ * sendVerificationEmail: devuelve si se pudo enviar de verdad, sin lanzar
+ * — quien llama (requestPasswordReset) decide qué hacer si falla, pero
+ * nunca revela al usuario si la cuenta existía (ver actions.ts).
+ */
+export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<boolean> {
+  const transporter = resolveTransporter();
+  if (!transporter) {
+    console.error("GMAIL_USER/GMAIL_APP_PASSWORD no configuradas: no se envió el correo de restablecer contraseña a", to);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: `MemorIAble <${process.env.GMAIL_USER}>`,
+      to,
+      subject: "Restablece tu contraseña en MemorIAble",
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #1c1b18;">
+          <p style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #157a5f;">MemorIAble</p>
+          <h1 style="font-size: 20px; margin: 8px 0 16px;">Restablece tu contraseña</h1>
+          <p style="font-size: 14px; line-height: 1.5;">Hemos recibido una petición para cambiar la contraseña de esta cuenta. Elige una nueva:</p>
+          <p style="margin: 24px 0;">
+            <a href="${resetUrl}" style="background: #157a5f; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">Elegir nueva contraseña</a>
+          </p>
+          <p style="font-size: 12px; color: #6b6a66;">Si no has pedido esto, puedes ignorar este correo: tu contraseña actual sigue siendo válida. El enlace caduca en 1 hora.</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (err) {
+    console.error("Fallo al enviar el correo de restablecer contraseña:", err);
+    Sentry.captureException(err);
+    return false;
+  }
+}

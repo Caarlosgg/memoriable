@@ -63,7 +63,8 @@ model User {
   eventos          Evento[]            @relation("EventoAuthor")
   assignedEventos  Evento[]            @relation("EventoAssignee")
   cuentasAhorro    CuentaAhorro[]
-  verificationTokens VerificationToken[]
+  verificationTokens  VerificationToken[]
+  passwordResetTokens PasswordResetToken[]
   memberships      Membership[]
 
   @@map("users")
@@ -128,6 +129,21 @@ model VerificationToken {
 
   @@index([userId])
   @@map("verification_tokens")
+}
+
+/// Ver ../../prisma/schema.prisma: token de un solo uso para restablecer la
+/// contraseña. Modelo aparte de VerificationToken a propósito.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 /// Ver ../../prisma/schema.prisma: estado en el tablero kanban (Fase 3).

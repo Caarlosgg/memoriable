@@ -85,7 +85,8 @@ model User {
   eventos          Evento[]            @relation("EventoAuthor")
   assignedEventos  Evento[]            @relation("EventoAssignee")
   cuentasAhorro    CuentaAhorro[]
-  verificationTokens VerificationToken[]
+  verificationTokens  VerificationToken[]
+  passwordResetTokens PasswordResetToken[]
   memberships      Membership[]
 
   @@map("users")
@@ -165,6 +166,24 @@ model VerificationToken {
 
   @@index([userId])
   @@map("verification_tokens")
+}
+
+/// Token de un solo uso para restablecer la contraseña ("olvidé mi
+/// contraseña" desde /login). Modelo aparte de VerificationToken a
+/// propósito: son dos acciones con impacto muy distinto (confirmar un
+/// email vs. tomar el control total de la cuenta), y una cuenta puede
+/// tener un token de cada tipo vivo a la vez sin que se pisen.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 /// Estado de una tarea/recordatorio en el tablero kanban (Fase 3). Solo
