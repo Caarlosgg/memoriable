@@ -31,6 +31,7 @@ function fakeMessage(overrides: Partial<ExportPayload["notas"][number]> = {}): E
     workspaceId: "ws1",
     assigneeId: null,
     camposExtra: {},
+    checklist: [],
     fecha: new Date("2026-08-01T10:00:00.000Z"),
     userId: "u1",
     ...overrides,

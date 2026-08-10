@@ -88,6 +88,7 @@ model User {
   verificationTokens  VerificationToken[]
   passwordResetTokens PasswordResetToken[]
   memberships      Membership[]
+  notifications    Notification[]
 
   @@map("users")
 }
@@ -186,6 +187,35 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+/// Tipo de notificación (Fase Equipo): de momento solo asignación — se
+/// asigna una tarea/evento a alguien y esa persona se entera sin tener
+/// que ir mirando el tablero/calendario por si acaso. Enum en vez de un
+/// string libre para que la UI sepa qué icono/verbo usar por tipo.
+enum NotificationType {
+  ASSIGNED_MESSAGE
+  ASSIGNED_EVENTO
+}
+
+/// Notificación en la app (Fase Equipo). Sin canal externo (email/push)
+/// todavía a propósito — empieza como bandeja dentro de la propia app
+/// (campana en el Sidebar), lo mínimo que hace que "asignar" deje de ser
+/// mudo. `link` apunta directamente a la tarjeta/evento asignado.
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
 /// Estado de una tarea/recordatorio en el tablero kanban (Fase 3). Solo
 /// relevante para categorías accionables (tarea/recordatorio) — el resto
 /// de categorías no aparecen en el tablero y se quedan en POR_HACER sin
@@ -240,6 +270,15 @@ model Message {
   /// personal, un campo dinámico tipo JSON es proporcional a la necesidad
   /// real y evita construir un editor de "esquema de esquema" por tarjeta.
   camposExtra Json @default("{}")
+
+  /// Checklist / subtareas dentro de una tarea (organización): array de
+  /// `{id, texto, hecho}`. Campo propio, deliberadamente NO reutiliza
+  /// `camposExtra` — ese es un diccionario de campos personalizados con
+  /// otra forma (nombre → {tipo, valor}); mezclar los dos haría que uno
+  /// pisara al otro. Sin tabla `Subtarea` aparte, mismo criterio que
+  /// `camposExtra`: proporcional al uso real, no un modelo relacional
+  /// completo para una lista corta dentro de una tarjeta.
+  checklist Json @default("[]")
 
   /// Imágenes adjuntas (Fase D del dashboard), URLs de Vercel Blob. Array
   /// simple en vez de una tabla Attachment aparte: proporcional al uso real

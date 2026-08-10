@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, upcomingRange, dayLabel } from "../src/lib/calendar";
+import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, upcomingRange, dayLabel, fechaRepeticion } from "../src/lib/calendar";
 
 describe("dateKey", () => {
   it("da la fecha en formato YYYY-MM-DD en UTC", () => {
@@ -117,5 +117,35 @@ describe("upcomingRange", () => {
     const { desde, hasta } = upcomingRange(7, today);
     expect(desde.toISOString()).toBe("2026-08-05T00:00:00.000Z");
     expect(hasta.toISOString()).toBe("2026-08-12T00:00:00.000Z");
+  });
+});
+
+describe("fechaRepeticion", () => {
+  const base = new Date("2026-08-06T09:00:00.000Z");
+
+  it("i=0 devuelve la fecha base sin desplazar", () => {
+    expect(fechaRepeticion(base, "SEMANAL", 0).toISOString()).toBe(base.toISOString());
+  });
+
+  it("DIARIA suma i días", () => {
+    expect(fechaRepeticion(base, "DIARIA", 3).toISOString()).toBe("2026-08-09T09:00:00.000Z");
+  });
+
+  it("SEMANAL suma i semanas", () => {
+    expect(fechaRepeticion(base, "SEMANAL", 2).toISOString()).toBe("2026-08-20T09:00:00.000Z");
+  });
+
+  it("QUINCENAL suma i quincenas", () => {
+    expect(fechaRepeticion(base, "QUINCENAL", 2).toISOString()).toBe("2026-09-03T09:00:00.000Z");
+  });
+
+  it("MENSUAL suma i meses", () => {
+    expect(fechaRepeticion(base, "MENSUAL", 2).toISOString()).toBe("2026-10-06T09:00:00.000Z");
+  });
+
+  it("no muta la fecha base", () => {
+    const original = base.toISOString();
+    fechaRepeticion(base, "SEMANAL", 3);
+    expect(base.toISOString()).toBe(original);
   });
 });

@@ -109,3 +109,32 @@ export function dayLabel(key: string, today: Date = new Date()): string {
 
   return WEEKDAY_FORMATTER.format(new Date(`${key}T00:00:00.000Z`));
 }
+
+/**
+ * Frecuencias de repetición para eventos/movimientos periódicos — usado
+ * tanto por la tool `crearEvento` del Asistente (assistantTools.ts) como
+ * por el formulario manual de /calendario (EventDetailDialog.tsx), un
+ * único sitio para no tener dos copias de la misma lógica.
+ */
+export const FRECUENCIAS = ["DIARIA", "SEMANAL", "QUINCENAL", "MENSUAL"] as const;
+export type Frecuencia = (typeof FRECUENCIAS)[number];
+
+/** Fecha de la repetición número `i` (0 = la primera, sin desplazar) a partir de una fecha base. */
+export function fechaRepeticion(base: Date, frecuencia: Frecuencia, i: number): Date {
+  const d = new Date(base);
+  switch (frecuencia) {
+    case "DIARIA":
+      d.setDate(d.getDate() + i);
+      break;
+    case "SEMANAL":
+      d.setDate(d.getDate() + i * 7);
+      break;
+    case "QUINCENAL":
+      d.setDate(d.getDate() + i * 14);
+      break;
+    case "MENSUAL":
+      d.setMonth(d.getMonth() + i);
+      break;
+  }
+  return d;
+}

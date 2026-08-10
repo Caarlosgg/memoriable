@@ -2,12 +2,14 @@
 
 import { useRef, useState, useTransition, type ReactNode, type ClipboardEvent, type ChangeEvent } from "react";
 import type { Message } from "@prisma/client";
-import { Pencil, Clock, Tag, X, Plus, Trash2, ImagePlus } from "lucide-react";
+import { Pencil, Clock, Tag, X, Plus, Trash2, ImagePlus, ListChecks } from "lucide-react";
 import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION } from "@/lib/categories";
 import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
 import { updateMessage, deleteMessage, uploadImage } from "@/app/(dashboard)/actions";
 import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtraJson } from "@/lib/camposExtra";
+import { checklistToArray, checklistToJson, type ChecklistItem } from "@/lib/checklist";
+import { cn } from "@/lib/utils";
 import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -26,6 +28,7 @@ export interface EditableFields {
   prioridad: Message["prioridad"];
   etiquetas: string[];
   camposExtra: CamposExtraJson;
+  checklist: ChecklistItem[];
   imagenes: string[];
 }
 
@@ -38,6 +41,7 @@ function fieldsFrom(message: Message): EditableFields {
     prioridad: message.prioridad,
     etiquetas: message.etiquetas,
     camposExtra: message.camposExtra as CamposExtraJson,
+    checklist: checklistToArray(message.checklist),
     imagenes: message.imagenes,
   };
 }
@@ -169,12 +173,47 @@ export function MessageDetailDialog({
     setCamposExtraRows((rows) => [...rows, { nombre: "", tipo: "texto", valor: "" }]);
   }
 
+  /** El array ES la forma de guardado (a diferencia de camposExtra, que es un diccionario) — se edita `fields.checklist` directamente. */
+  function addChecklistItem() {
+    setFields((f) => ({ ...f, checklist: [...f.checklist, { id: crypto.randomUUID(), texto: "", hecho: false }] }));
+  }
+
+  function updateChecklistItem(id: string, patch: Partial<Pick<ChecklistItem, "texto" | "hecho">>) {
+    setFields((f) => ({ ...f, checklist: f.checklist.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+  }
+
+  function removeChecklistItem(id: string) {
+    setFields((f) => ({ ...f, checklist: f.checklist.filter((item) => item.id !== id) }));
+  }
+
+  /**
+   * Marcar un punto de la checklist en modo VISTA (no editing): guardado
+   * inmediato, sin pasar por "Editar"/"Guardar" — mismo criterio que los
+   * botones de estado/prioridad de la tarjeta del tablero. Una checklist
+   * es para ir tachando sobre la marcha; obligar a entrar en edición por
+   * cada marca sería justo la fricción que el checklist quiere evitar.
+   */
+  function handleQuickToggleChecklist(itemId: string) {
+    const current = checklistToArray(message.checklist);
+    const updated = current.map((item) => (item.id === itemId ? { ...item, hecho: !item.hecho } : item));
+    updateMessage(message.id, { checklist: updated })
+      .then((result) => {
+        if (result.error) {
+          console.error("No se pudo actualizar la checklist:", result.error);
+          return;
+        }
+        onSaved?.(message.id, { ...fieldsFrom(message), checklist: updated });
+      })
+      .catch((err) => console.error("No se pudo actualizar la checklist:", err));
+  }
+
   function handleSave() {
     setError(null);
     const patch: EditableFields = {
       ...fields,
       etiquetas: parseEtiquetas(etiquetasTexto),
       camposExtra: camposExtraToJson(camposExtraRows),
+      checklist: checklistToJson(fields.checklist),
     };
     startTransition(async () => {
       const result = await updateMessage(message.id, patch);
@@ -254,6 +293,29 @@ export function MessageDetailDialog({
                   </div>
                 ))}
               </dl>
+            )}
+            {checklistToArray(message.checklist).length > 0 && (
+              <div className="flex flex-col gap-1.5 border-t border-paper-line pt-3">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                  <ListChecks aria-hidden size={13} />
+                  {checklistToArray(message.checklist).filter((i) => i.hecho).length}/
+                  {checklistToArray(message.checklist).length} hechos
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {checklistToArray(message.checklist).map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickToggleChecklist(item.id)}
+                        className="flex w-full items-center gap-2 rounded-lg p-1 text-left text-sm transition-colors hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      >
+                        <input type="checkbox" checked={item.hecho} readOnly className="h-4 w-4 rounded border-paper-line accent-accent" />
+                        <span className={cn(item.hecho ? "text-muted line-through" : "text-ink")}>{item.texto}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-paper-line pt-3 text-xs text-muted">
               <span className="flex items-center gap-1">
@@ -401,6 +463,39 @@ export function MessageDetailDialog({
               ))}
               <Button type="button" variant="secondary" size="sm" onClick={addCampoExtra} className="self-start">
                 <Plus aria-hidden size={14} /> Añadir campo
+              </Button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium text-ink">Checklist</p>
+              {fields.checklist.map((item, i) => (
+                <div key={item.id} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={item.hecho}
+                    onChange={(e) => updateChecklistItem(item.id, { hecho: e.target.checked })}
+                    aria-label={`Marcar como hecho el punto ${i + 1}`}
+                    className="h-4 w-4 shrink-0 rounded border-paper-line accent-accent"
+                  />
+                  <Input
+                    value={item.texto}
+                    onChange={(e) => updateChecklistItem(item.id, { texto: e.target.value })}
+                    placeholder="Punto de la checklist"
+                    aria-label={`Texto del punto ${i + 1}`}
+                    className="flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeChecklistItem(item.id)}
+                    aria-label={`Quitar el punto ${i + 1}`}
+                    className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-danger-soft hover:text-danger focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+                  >
+                    <X aria-hidden size={16} />
+                  </button>
+                </div>
+              ))}
+              <Button type="button" variant="secondary" size="sm" onClick={addChecklistItem} className="self-start">
+                <Plus aria-hidden size={14} /> Añadir punto
               </Button>
             </div>
 

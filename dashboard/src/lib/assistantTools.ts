@@ -9,6 +9,7 @@ import { toAssistantSource } from "./assistantContext";
 import { ACTIONABLE_CATEGORIES } from "./categories";
 import { findSimilarMessages } from "./vectorSearch";
 import { getCuentasConSaldo } from "./ahorros";
+import { FRECUENCIAS, fechaRepeticion } from "./calendar";
 import { prisma } from "./prisma";
 
 /**
@@ -73,9 +74,6 @@ export interface ConsultarAhorrosResult {
   totalCentimos: number;
 }
 
-const FRECUENCIAS = ["DIARIA", "SEMANAL", "QUINCENAL", "MENSUAL"] as const;
-type Frecuencia = (typeof FRECUENCIAS)[number];
-
 /**
  * Parámetro opcional compartido por `crearEvento` y `registrarAhorro` para
  * peticiones repetidas/periódicas ("todos los jueves durante 5 semanas").
@@ -95,26 +93,6 @@ const RepetirSchema = z.object({
     .max(20)
     .describe("Número total de repeticiones, incluyendo la primera (p. ej. 5 para \"durante 5 semanas\")."),
 });
-
-/** Fecha de la repetición número `i` (0 = la primera, sin desplazar) a partir de una fecha base. */
-function fechaRepeticion(base: Date, frecuencia: Frecuencia, i: number): Date {
-  const d = new Date(base);
-  switch (frecuencia) {
-    case "DIARIA":
-      d.setDate(d.getDate() + i);
-      break;
-    case "SEMANAL":
-      d.setDate(d.getDate() + i * 7);
-      break;
-    case "QUINCENAL":
-      d.setDate(d.getDate() + i * 14);
-      break;
-    case "MENSUAL":
-      d.setMonth(d.getMonth() + i);
-      break;
-  }
-  return d;
-}
 
 function isPendienteAccionable(m: Message): boolean {
   return (ACTIONABLE_CATEGORIES as readonly string[]).includes(m.categoria) && m.estado !== "HECHO";

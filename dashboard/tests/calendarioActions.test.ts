@@ -91,6 +91,31 @@ describe("createEvento", () => {
     const result = await createEvento(baseInput);
     expect(result.error).toMatch(/No se ha podido guardar/);
   });
+
+  it("con repetir crea toda la serie en una sola llamada, en fechas distintas", async () => {
+    const { createEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    const result = await createEvento({
+      ...baseInput,
+      fechaInicio: "2026-08-06T09:00:00.000Z",
+      repetir: { frecuencia: "SEMANAL", veces: 5 },
+    });
+    expect(result.error).toBeUndefined();
+    expect(eventoCreate).toHaveBeenCalledTimes(5);
+    const fechas = eventoCreate.mock.calls.map((c) => c[0].data.fechaInicio.toISOString());
+    expect(fechas).toEqual([
+      "2026-08-06T09:00:00.000Z",
+      "2026-08-13T09:00:00.000Z",
+      "2026-08-20T09:00:00.000Z",
+      "2026-08-27T09:00:00.000Z",
+      "2026-09-03T09:00:00.000Z",
+    ]);
+  });
+
+  it("sin repetir crea una única fila", async () => {
+    const { createEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    await createEvento(baseInput);
+    expect(eventoCreate).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("updateEvento", () => {

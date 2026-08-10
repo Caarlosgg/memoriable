@@ -5,10 +5,11 @@ import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Message } from "@prisma/client";
-import { Clock, Tag, Plus } from "lucide-react";
+import { Clock, Tag, Plus, ListChecks } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
 import { PRIORIDAD_PRESENTATION, PRIORIDAD_ICON, ESTADO_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
+import { checklistToArray, checklistProgress } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
 import { AssigneeControl } from "@/components/AssigneeControl";
 import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
@@ -73,6 +74,17 @@ export function KanbanCardContent({
         {message.resumen}
       </p>
       {!compacta && <p className="mt-1 line-clamp-2 text-xs text-muted">{message.contenido}</p>}
+
+      {(() => {
+        const { hechos, total } = checklistProgress(checklistToArray(message.checklist));
+        if (total === 0) return null;
+        return (
+          <p className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-muted">
+            <ListChecks aria-hidden size={11} className={hechos === total ? "text-accent" : undefined} />
+            {hechos}/{total}
+          </p>
+        );
+      })()}
 
       {message.etiquetas.length > 0 && (
         <ul className="mt-1.5 flex flex-wrap gap-1">

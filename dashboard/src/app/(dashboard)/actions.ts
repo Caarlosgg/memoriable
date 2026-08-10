@@ -11,6 +11,7 @@ import { captureMessage } from "@/lib/pipeline";
 import { isCategory } from "@/lib/categories";
 import { searchAcrossAll, type QuickSearchResult } from "@/lib/quickSearch";
 import { getActiveWorkspace, isActiveMember } from "@/lib/workspace";
+import { createNotification } from "@/lib/notifications";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 
 /**
@@ -85,12 +86,34 @@ export async function assignMessage(id: string, assigneeId: string | null): Prom
     const result = await prisma.message.updateMany({ where: { id, workspaceId }, data: { assigneeId } });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
     revalidatePath("/pendientes");
+
+    // No crítico: la tarea ya está asignada, avisar es un extra. Nunca a
+    // uno mismo (asignarte tu propia tarea no es noticia).
+    if (assigneeId && assigneeId !== userId) {
+      notifyMessageAssignment(assigneeId, id).catch((err) => {
+        console.error("No se pudo crear la notificación de asignación (no crítico):", err);
+      });
+    }
+
     return {};
   } catch (err) {
     console.error("Error al asignar la tarea:", err);
     Sentry.captureException(err);
     return { error: "No se ha podido asignar. Inténtalo de nuevo." };
   }
+}
+
+/** Notifica a quien se le ha asignado una tarea — busca el resumen real para que la notificación diga algo útil. */
+async function notifyMessageAssignment(assigneeId: string, messageId: string): Promise<void> {
+  const message = await prisma.message.findUnique({ where: { id: messageId }, select: { resumen: true } });
+  if (!message) return;
+  await createNotification({
+    userId: assigneeId,
+    type: "ASSIGNED_MESSAGE",
+    title: "Te han asignado una tarea",
+    body: message.resumen,
+    link: `/categorias?mensaje=${messageId}#mensaje-${messageId}`,
+  });
 }
 
 export interface UpdateMessageInput {
@@ -101,6 +124,7 @@ export interface UpdateMessageInput {
   prioridad?: Prioridad;
   etiquetas?: string[];
   camposExtra?: Prisma.InputJsonValue;
+  checklist?: Prisma.InputJsonValue;
   imagenes?: string[];
 }
 
@@ -137,6 +161,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
         ...(input.prioridad !== undefined ? { prioridad: input.prioridad } : {}),
         ...(input.etiquetas !== undefined ? { etiquetas: input.etiquetas } : {}),
         ...(input.camposExtra !== undefined ? { camposExtra: input.camposExtra } : {}),
+        ...(input.checklist !== undefined ? { checklist: input.checklist } : {}),
         ...(input.imagenes !== undefined ? { imagenes: input.imagenes } : {}),
       },
     });

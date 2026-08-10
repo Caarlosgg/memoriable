@@ -4,11 +4,13 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
+import type { Notification } from "@prisma/client";
 import { ChevronsLeft, ChevronsRight, LogOut, Search } from "lucide-react";
 import { logout } from "@/app/actions";
 import type { WorkspaceSummary } from "@/app/(dashboard)/equipo/actions";
 import { NAV_ITEMS } from "./navItems";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { NotificationBell } from "./NotificationBell";
 
 // Import dinámico a propósito: framer-motion solo lo necesita el colapso del
 // sidebar (una animación de ancho con física de resorte que CSS no
@@ -46,10 +48,14 @@ export function Sidebar({
   workspaces,
   activeWorkspaceId,
   isPersonal,
+  notifications,
+  unreadCount,
 }: {
   workspaces: WorkspaceSummary[];
   activeWorkspaceId: string;
   isPersonal: boolean;
+  notifications: Notification[];
+  unreadCount: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -69,6 +75,7 @@ export function Sidebar({
         {!collapsed && (
           <h1 className="font-display text-lg font-semibold tracking-tight text-ink">MemorIAble</h1>
         )}
+        {!collapsed && <NotificationBell notifications={notifications} unreadCount={unreadCount} />}
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}

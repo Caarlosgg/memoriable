@@ -66,6 +66,7 @@ model User {
   verificationTokens  VerificationToken[]
   passwordResetTokens PasswordResetToken[]
   memberships      Membership[]
+  notifications    Notification[]
 
   @@map("users")
 }
@@ -146,6 +147,29 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+/// Ver ../../prisma/schema.prisma: tipo de notificación (Fase Equipo).
+enum NotificationType {
+  ASSIGNED_MESSAGE
+  ASSIGNED_EVENTO
+}
+
+/// Ver ../../prisma/schema.prisma: notificación en la app.
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
 /// Ver ../../prisma/schema.prisma: estado en el tablero kanban (Fase 3).
 enum EstadoTarea {
   POR_HACER
@@ -185,6 +209,9 @@ model Message {
 
   /// Ver ../../prisma/schema.prisma: campos extra personalizados (Fase E).
   camposExtra Json @default("{}")
+
+  /// Ver ../../prisma/schema.prisma: checklist/subtareas — array [{id, texto, hecho}].
+  checklist Json @default("[]")
 
   /// Ver ../../prisma/schema.prisma: imágenes adjuntas (Fase D), URLs de
   /// Vercel Blob. Array simple en vez de una tabla Attachment aparte:

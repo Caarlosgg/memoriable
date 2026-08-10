@@ -19,6 +19,7 @@ function fakeMessage(id: string, overrides: Partial<Message> = {}): Message {
     workspaceId: "ws1",
     assigneeId: null,
     camposExtra: {},
+    checklist: [],
     fecha: new Date("2026-08-01T00:00:00.000Z"),
     userId: "u1",
     ...overrides,
