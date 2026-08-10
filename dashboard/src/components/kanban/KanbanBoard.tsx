@@ -61,7 +61,10 @@ export function KanbanBoard({
   // que trabajan drag/optimista), solo lo que se pasa a renderizar.
   const [filtroCategoria, setFiltroCategoria] = useState<Category | "todas">("todas");
   const [filtroPrioridad, setFiltroPrioridad] = useState<Prioridad | "todas">("todas");
-  const hasFilters = filtroCategoria !== "todas" || filtroPrioridad !== "todas";
+  // "todas" | "sin-asignar" | un userId — solo tiene sentido en modo equipo
+  // (con `members`), ver el <select> condicional más abajo.
+  const [filtroAsignado, setFiltroAsignado] = useState<string>("todas");
+  const hasFilters = filtroCategoria !== "todas" || filtroPrioridad !== "todas" || filtroAsignado !== "todas";
 
   // Borrado con margen de deshacer (Tier 1.3): igual que el filtro, no toca
   // `byEstado` — solo lo que se renderiza. Ver MessageDetailDialog.tsx.
@@ -87,6 +90,10 @@ export function KanbanBoard({
     if (hiddenIds.has(message.id)) return false;
     if (filtroCategoria !== "todas" && message.categoria !== filtroCategoria) return false;
     if (filtroPrioridad !== "todas" && message.prioridad !== filtroPrioridad) return false;
+    if (filtroAsignado === "sin-asignar" && message.assigneeId !== null) return false;
+    if (filtroAsignado !== "todas" && filtroAsignado !== "sin-asignar" && message.assigneeId !== filtroAsignado) {
+      return false;
+    }
     return true;
   }
 
@@ -355,12 +362,29 @@ export function KanbanBoard({
             </option>
           ))}
         </select>
+        {members.length > 0 && (
+          <select
+            value={filtroAsignado}
+            onChange={(e) => setFiltroAsignado(e.target.value)}
+            aria-label="Filtrar el tablero por persona asignada"
+            className={FILTER_CLASSNAME}
+          >
+            <option value="todas">Cualquier persona</option>
+            <option value="sin-asignar">Sin asignar</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.email}
+              </option>
+            ))}
+          </select>
+        )}
         {hasFilters && (
           <button
             type="button"
             onClick={() => {
               setFiltroCategoria("todas");
               setFiltroPrioridad("todas");
+              setFiltroAsignado("todas");
             }}
             className="text-xs font-medium text-muted underline-offset-2 hover:text-accent-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
