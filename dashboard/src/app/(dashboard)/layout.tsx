@@ -10,6 +10,7 @@ import { getDailyBriefing } from "@/lib/dailyBriefing";
 import { getActiveWorkspace, getPersonalWorkspaceId } from "@/lib/workspace";
 import { listMyWorkspaces } from "@/app/(dashboard)/equipo/actions";
 import { listNotifications, getUnreadCount } from "@/lib/notifications";
+import { prisma } from "@/lib/prisma";
 
 export default async function DashboardLayout({
   children,
@@ -22,12 +23,17 @@ export default async function DashboardLayout({
   // Workspace activo + lista de espacios: resuelto una vez aquí (no en cada
   // Sidebar/MobileHeader por separado) y pasado como prop — evita que cada
   // uno vuelva a consultar la BD para lo mismo en el mismo render.
-  const [{ workspaceId: activeWorkspaceId, isPersonal }, workspaces, notifications, unreadCount] = await Promise.all([
-    getActiveWorkspace(userId),
-    listMyWorkspaces(),
-    listNotifications(userId, 8),
-    getUnreadCount(userId),
-  ]);
+  const [{ workspaceId: activeWorkspaceId, isPersonal }, workspaces, notifications, unreadCount, currentUser] =
+    await Promise.all([
+      getActiveWorkspace(userId),
+      listMyWorkspaces(),
+      listNotifications(userId, 8),
+      getUnreadCount(userId),
+      // Best-effort: solo decide si se muestra el enlace "Admin" en el
+      // Sidebar, no es un dato imprescindible para poder entrar.
+      prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }).catch(() => null),
+    ]);
+  const isSuperAdmin = currentUser?.isSuperAdmin ?? false;
   // No crítico: si falla, el dashboard sigue funcionando igual, solo sin el
   // modal del resumen del día (no es un dato imprescindible para entrar).
   // Fase Equipo: SIEMPRE el workspace personal, nunca el activo (ver
@@ -53,6 +59,7 @@ export default async function DashboardLayout({
             isPersonal={isPersonal}
             notifications={notifications}
             unreadCount={unreadCount}
+            isSuperAdmin={isSuperAdmin}
           />
           <div className="flex min-w-0 flex-1 flex-col">
             <MobileHeader

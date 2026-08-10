@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import type { Notification } from "@prisma/client";
-import { ChevronsLeft, ChevronsRight, LogOut, Search } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, LogOut, Search, ShieldCheck } from "lucide-react";
 import { logout } from "@/app/actions";
 import type { WorkspaceSummary } from "@/app/(dashboard)/equipo/actions";
 import { NAV_ITEMS } from "./navItems";
@@ -50,19 +50,25 @@ export function Sidebar({
   isPersonal,
   notifications,
   unreadCount,
+  isSuperAdmin = false,
 }: {
   workspaces: WorkspaceSummary[];
   activeWorkspaceId: string;
   isPersonal: boolean;
   notifications: Notification[];
   unreadCount: number;
+  /** Muestra el enlace "Admin" (panel global, fuera del alcance de un OWNER/ADMIN normal de workspace) — ver lib/dal.ts requireSuperAdmin. */
+  isSuperAdmin?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const prefersReducedMotion = usePrefersReducedMotion();
   // Ahorros es siempre personal (ver lib/workspace.ts) — no tiene sentido
   // en un workspace de equipo, así que desaparece del menú al cambiar a uno.
-  const items = isPersonal ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/ahorros");
+  const baseItems = isPersonal ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/ahorros");
+  const items = isSuperAdmin
+    ? [...baseItems, { href: "/admin", label: "Admin", Icon: ShieldCheck }]
+    : baseItems;
 
   return (
     <MotionAside
@@ -109,7 +115,9 @@ export function Sidebar({
 
       <nav aria-label="Navegación principal" className="flex flex-1 flex-col gap-1 p-3">
         {items.map((item) => {
-          const active = pathname === item.href;
+          // startsWith, no ===: /admin tiene subpáginas (/admin/usuarios,
+          // /admin/equipos) que deben seguir marcando "Admin" como activo.
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <div key={item.href}>
               {/* Separador antes de "Cuenta": distingue el contenido (notas,

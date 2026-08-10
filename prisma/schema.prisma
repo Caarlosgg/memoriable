@@ -69,6 +69,15 @@ model User {
   /// basta para distinguir "pendiente de activar" de "no le hace falta".
   accountPending Boolean @default(false)
 
+  /// Acceso al panel de administración global (/admin): ver todos los
+  /// usuarios/equipos de la aplicación, restablecer contraseñas, verificar
+  /// email a mano y eliminar cuentas — fuera del alcance de un
+  /// OWNER/ADMIN normal (que solo administra SUS equipos). No hay UI para
+  /// auto-concederse esto la primera vez a propósito: el primer superadmin
+  /// se designa a mano contra la base de datos (ver SETUP.md), igual que
+  /// cualquier operación de bootstrap sensible.
+  isSuperAdmin Boolean @default(false)
+
   /// Chat de Telegram vinculado a esta cuenta (null hasta que se vincula
   /// con /vincular). Único: un chat solo puede pertenecer a una cuenta.
   telegramChatId    BigInt?   @unique
