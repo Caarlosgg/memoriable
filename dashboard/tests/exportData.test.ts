@@ -27,6 +27,7 @@ function fakeMessage(overrides: Partial<ExportPayload["notas"][number]> = {}): E
     prioridad: "MEDIA",
     etiquetas: [],
     imagenes: [],
+    orden: 0,
     camposExtra: {},
     fecha: new Date("2026-08-01T10:00:00.000Z"),
     userId: "u1",

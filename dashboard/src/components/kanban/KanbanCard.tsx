@@ -1,26 +1,197 @@
 "use client";
 
 import * as React from "react";
-import { useDraggable } from "@dnd-kit/core";
+import { useState } from "react";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Message } from "@prisma/client";
-import { Clock } from "lucide-react";
+import { Clock, Tag, Plus } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
 import { PRIORIDAD_PRESENTATION, PRIORIDAD_ICON, ESTADO_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { KanbanDensity } from "./useKanbanDensity";
+
+interface KanbanCardContentProps {
+  message: Message;
+  density: KanbanDensity;
+  /**
+   * Handlers opcionales: si faltan, la tarjeta se pinta en modo "solo
+   * lectura" (badges planos en vez de botones) — el caso de la copia
+   * fantasma que sigue al puntero durante el arrastre (`DragOverlay` en
+   * KanbanBoard.tsx), que no debe reaccionar a ningún clic.
+   */
+  onCycleEstado?: (messageId: string) => void;
+  onCyclePrioridad?: (messageId: string) => void;
+  onEtiquetaAdd?: (messageId: string, etiqueta: string) => void;
+}
+
+/**
+ * Contenido visual puro de la tarjeta, sin nada de arrastre — separado de
+ * `KanbanCard` para poder reutilizarlo tal cual en el `DragOverlay` (la
+ * copia que sigue al puntero mientras se arrastra), que necesita verse
+ * IGUAL que la tarjeta real pero no es en sí misma arrastrable ni
+ * interactiva.
+ */
+export function KanbanCardContent({
+  message,
+  density,
+  onCycleEstado,
+  onCyclePrioridad,
+  onEtiquetaAdd,
+}: KanbanCardContentProps) {
+  const { Icon: CategoryIcon, color } = presentCategory(message.categoria);
+  const priority = PRIORIDAD_PRESENTATION[message.prioridad];
+  const PriorityIcon = PRIORIDAD_ICON;
+  const EstadoIcon = ESTADO_PRESENTATION[message.estado].Icon;
+  const compacta = density === "compacta";
+
+  const [addingTag, setAddingTag] = useState(false);
+  const [tagValue, setTagValue] = useState("");
+
+  function submitTag() {
+    const value = tagValue.trim();
+    if (value) onEtiquetaAdd?.(message.id, value);
+    setTagValue("");
+    setAddingTag(false);
+  }
+
+  return (
+    <>
+      <p className={cn("flex items-center gap-1.5 font-semibold", color, compacta ? "mb-0.5 text-[11px]" : "mb-1 text-xs")}>
+        <CategoryIcon aria-hidden size={compacta ? 11 : 13} />
+        {presentCategory(message.categoria).label}
+      </p>
+      <p className={cn("font-display leading-snug font-semibold text-ink", compacta ? "text-xs" : "text-sm")}>
+        {message.resumen}
+      </p>
+      {!compacta && <p className="mt-1 line-clamp-2 text-xs text-muted">{message.contenido}</p>}
+
+      {message.etiquetas.length > 0 && (
+        <ul className="mt-1.5 flex flex-wrap gap-1">
+          {message.etiquetas.map((tag) => (
+            <li
+              key={tag}
+              className="flex items-center gap-0.5 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent-strong"
+            >
+              <Tag aria-hidden size={9} /> {tag}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-2 border-t border-paper-line",
+          compacta ? "mt-1.5 pt-1.5" : "mt-2.5 pt-2",
+        )}
+      >
+        {!compacta && (
+          <p className="flex items-center gap-1 text-xs text-muted">
+            <Clock aria-hidden size={11} /> {formatDate(message.fecha)}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {onCycleEstado ? (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCycleEstado(message.id);
+              }}
+              title="Cambiar estado"
+              aria-label={`Estado ${ESTADO_PRESENTATION[message.estado].label}. Cambiar.`}
+              className="flex items-center gap-1 rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-ink transition-[filter] hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <EstadoIcon aria-hidden size={11} />
+              {ESTADO_PRESENTATION[message.estado].label}
+            </button>
+          ) : (
+            <span className="flex items-center gap-1 rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-ink">
+              <EstadoIcon aria-hidden size={11} />
+              {ESTADO_PRESENTATION[message.estado].label}
+            </span>
+          )}
+          {onCyclePrioridad ? (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCyclePrioridad(message.id);
+              }}
+              title="Cambiar prioridad"
+              aria-label={`Prioridad ${priority.label}. Cambiar.`}
+              className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-[filter] hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${priority.colorSoft} ${priority.color}`}
+            >
+              <PriorityIcon aria-hidden size={11} />
+              {priority.label}
+            </button>
+          ) : (
+            <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${priority.colorSoft} ${priority.color}`}>
+              <PriorityIcon aria-hidden size={11} />
+              {priority.label}
+            </span>
+          )}
+          {onEtiquetaAdd &&
+            (addingTag ? (
+              <input
+                autoFocus
+                value={tagValue}
+                onChange={(e) => setTagValue(e.target.value)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    submitTag();
+                  }
+                  if (e.key === "Escape") {
+                    setTagValue("");
+                    setAddingTag(false);
+                  }
+                }}
+                onBlur={submitTag}
+                placeholder="Etiqueta…"
+                aria-label="Nueva etiqueta"
+                className="w-20 rounded-full border border-paper-line bg-paper px-2 py-0.5 text-xs text-ink outline-none focus-visible:border-accent"
+              />
+            ) : (
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAddingTag(true);
+                }}
+                title="Añadir etiqueta"
+                aria-label="Añadir etiqueta"
+                className="flex items-center gap-0.5 rounded-full border border-dashed border-paper-line px-1.5 py-0.5 text-xs text-muted transition-colors hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <Plus aria-hidden size={11} />
+              </button>
+            ))}
+        </div>
+      </div>
+    </>
+  );
+}
 
 interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   message: Message;
+  density: KanbanDensity;
   /**
-   * El cambio de estado/prioridad de un clic lo decide `KanbanBoard` (no
-   * esta tarjeta): solo así puede aplicar la misma actualización optimista
-   * que ya usa el arrastre, moviendo la tarjeta de columna en el estado
-   * local sin esperar a un refresco de página — `revalidatePath` por sí
-   * solo no toca el estado de un Client Component ya montado.
+   * El cambio de estado/prioridad/etiqueta de un clic lo decide
+   * `KanbanBoard` (no esta tarjeta): solo así puede aplicar la misma
+   * actualización optimista que ya usa el arrastre, moviendo la tarjeta de
+   * columna en el estado local sin esperar a un refresco de página —
+   * `revalidatePath` por sí solo no toca el estado de un Client Component
+   * ya montado.
    */
   onCycleEstado: (messageId: string) => void;
   onCyclePrioridad: (messageId: string) => void;
+  onEtiquetaAdd: (messageId: string, etiqueta: string) => void;
 }
 
 /**
@@ -30,32 +201,21 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
  * arrastrable de dnd-kit.
  */
 export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(function KanbanCard(
-  { message, onCycleEstado, onCyclePrioridad, className, ...rest },
+  { message, density, onCycleEstado, onCyclePrioridad, onEtiquetaAdd, className, ...rest },
   forwardedRef,
 ) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: message.id });
-  const { Icon: CategoryIcon, color, borderAccent } = presentCategory(message.categoria);
-  const priority = PRIORIDAD_PRESENTATION[message.prioridad];
-  const PriorityIcon = PRIORIDAD_ICON;
-  const EstadoIcon = ESTADO_PRESENTATION[message.estado].Icon;
+  // useSortable (no useDraggable a secas): registra la tarjeta TAMBIÉN
+  // como zona de soltado (droppable), no solo como arrastrable — sin eso,
+  // `over` durante un arrastre nunca podría resolverse a OTRA tarjeta (solo
+  // a la columna entera), y el reordenado dentro de la misma columna no
+  // tendría forma de saber sobre qué tarjeta se soltó.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: message.id });
+  const { borderAccent } = presentCategory(message.categoria);
 
   function setRefs(node: HTMLLIElement | null) {
     setNodeRef(node);
     if (typeof forwardedRef === "function") forwardedRef(node);
     else if (forwardedRef) forwardedRef.current = node;
-  }
-
-  function handlePriorityClick(e: React.MouseEvent) {
-    // No confundir con un intento de arrastre ni con abrir el modal de
-    // detalle: los botones de acción viven dentro de la tarjeta
-    // arrastrable/clicable, así que paran el evento aquí.
-    e.stopPropagation();
-    onCyclePrioridad(message.id);
-  }
-
-  function handleEstadoClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    onCycleEstado(message.id);
   }
 
   /**
@@ -87,50 +247,22 @@ export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(funct
         rest.onKeyDown?.(e);
         handleCardKeyDown(e);
       }}
-      style={{ transform: CSS.Translate.toString(transform) }}
+      style={{ transform: CSS.Transform.toString(transform), transition: transition ?? undefined }}
       className={cn(
-        "fade-in touch-none rounded-xl border border-l-4 border-paper-line bg-paper-raised p-3 shadow-sm transition-shadow hover:shadow-md",
+        "fade-in touch-none rounded-xl border border-l-4 border-paper-line bg-paper-raised shadow-sm transition-shadow hover:shadow-md",
+        density === "compacta" ? "p-2" : "p-3",
         borderAccent,
         isDragging ? "z-10 opacity-50 shadow-lg" : "",
         className,
       )}
     >
-      <p className={`mb-1 flex items-center gap-1.5 text-xs font-semibold ${color}`}>
-        <CategoryIcon aria-hidden size={13} />
-        {presentCategory(message.categoria).label}
-      </p>
-      <p className="font-display text-sm leading-snug font-semibold text-ink">{message.resumen}</p>
-      <p className="mt-1 line-clamp-2 text-xs text-muted">{message.contenido}</p>
-
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-paper-line pt-2">
-        <p className="flex items-center gap-1 text-xs text-muted">
-          <Clock aria-hidden size={11} /> {formatDate(message.fecha)}
-        </p>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={handleEstadoClick}
-            title="Cambiar estado"
-            aria-label={`Estado ${ESTADO_PRESENTATION[message.estado].label}. Cambiar.`}
-            className="flex items-center gap-1 rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-ink transition-[filter] hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            <EstadoIcon aria-hidden size={11} />
-            {ESTADO_PRESENTATION[message.estado].label}
-          </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={handlePriorityClick}
-            title="Cambiar prioridad"
-            aria-label={`Prioridad ${priority.label}. Cambiar.`}
-            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-[filter] hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${priority.colorSoft} ${priority.color}`}
-          >
-            <PriorityIcon aria-hidden size={11} />
-            {priority.label}
-          </button>
-        </div>
-      </div>
+      <KanbanCardContent
+        message={message}
+        density={density}
+        onCycleEstado={onCycleEstado}
+        onCyclePrioridad={onCyclePrioridad}
+        onEtiquetaAdd={onEtiquetaAdd}
+      />
     </li>
   );
 });

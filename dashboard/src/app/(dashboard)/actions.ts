@@ -30,6 +30,23 @@ export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise
   revalidatePath("/pendientes");
 }
 
+/**
+ * Mueve una tarjeta a una columna Y posición concretas dentro de ella (el
+ * resultado de soltarla al arrastrar). `orden` ya viene calculado por el
+ * cliente (punto medio entre las dos tarjetas vecinas en el destino, o un
+ * valor por encima/debajo si se suelta en un extremo) — aquí solo se
+ * persiste, junto con el cambio de columna si lo hay. Mismo criterio de
+ * dueño que el resto: `updateMany` con userId en el where.
+ */
+export async function moveTask(id: string, estado: EstadoTarea, orden: number): Promise<void> {
+  const userId = await verifySession();
+  await prisma.message.updateMany({
+    where: { id, userId },
+    data: { estado, hecho: estado === "HECHO", orden },
+  });
+  revalidatePath("/pendientes");
+}
+
 /** Cambia la prioridad de una tarjeta del tablero. Mismo criterio de dueño que arriba. */
 export async function updateTaskPriority(id: string, prioridad: Prioridad): Promise<void> {
   const userId = await verifySession();

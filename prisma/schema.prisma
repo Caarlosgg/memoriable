@@ -154,6 +154,13 @@ model Message {
   /// las usa (no hay forma de adjuntar una imagen por Telegram hoy).
   imagenes String[] @default([])
 
+  /// Posición dentro de su columna del tablero kanban del dashboard: al
+  /// crearse, la hora actual en milisegundos (siempre creciente, sin
+  /// consultar el máximo actual). Indexado fraccionario (punto medio entre
+  /// vecinas al arrastrar) — evita renumerar el resto de la columna en
+  /// cada movimiento. El bot no lo usa (no tiene tablero).
+  orden Float @default(0)
+
   /// Dueño de la nota (Fase 2, multiusuario). Obligatorio: el backfill de
   /// las notas previas a esta fase ya se completó (ver migración
   /// 20260804190000_require_user_owner).
@@ -179,6 +186,7 @@ model Message {
   @@index([hecho])
   @@index([userId])
   @@index([estado])
+  @@index([orden])
   @@map("messages")
 }
 

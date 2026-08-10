@@ -148,15 +148,17 @@ export interface BoardColumn {
 }
 
 /**
- * Tablero kanban (Fase 3): tareas y recordatorios agrupados por estado, los
- * más recientes primero dentro de cada columna. Mismo alcance que el viejo
- * "Pendientes" (categorías accionables) — solo que ahora también se ven las
- * ya hechas, en su propia columna, en vez de desaparecer sin más.
+ * Tablero kanban (Fase 3): tareas y recordatorios agrupados por estado,
+ * dentro de cada columna en el orden que el usuario haya dejado al
+ * arrastrarlas (o de creación, si nunca las ha reordenado — `orden` nace
+ * como la fecha en milisegundos). Mismo alcance que el viejo "Pendientes"
+ * (categorías accionables) — solo que ahora también se ven las ya hechas,
+ * en su propia columna, en vez de desaparecer sin más.
  */
 export async function getBoardGroups(userId: string): Promise<BoardColumn[]> {
   const messages = await prisma.message.findMany({
     where: { userId, categoria: { in: [...ACTIONABLE_CATEGORIES] } },
-    orderBy: { fecha: "desc" },
+    orderBy: { orden: "desc" },
   });
 
   return ESTADOS_TABLERO.map((estado) => ({

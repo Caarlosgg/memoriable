@@ -1,24 +1,30 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { Message, EstadoTarea } from "@prisma/client";
 import { ESTADO_PRESENTATION } from "@/lib/kanban";
 import { MessageDetailDialog, type EditableFields } from "@/components/MessageDetailDialog";
 import { KanbanCard } from "./KanbanCard";
+import type { KanbanDensity } from "./useKanbanDensity";
 
 export function KanbanColumn({
   estado,
   messages,
+  density,
   onCycleEstado,
   onCyclePrioridad,
+  onEtiquetaAdd,
   onSaved,
   onDeleted,
   onUndoDelete,
 }: {
   estado: EstadoTarea;
   messages: Message[];
+  density: KanbanDensity;
   onCycleEstado: (messageId: string) => void;
   onCyclePrioridad: (messageId: string) => void;
+  onEtiquetaAdd: (messageId: string, etiqueta: string) => void;
   onSaved: (id: string, patch: EditableFields) => void;
   onDeleted: (id: string) => void;
   onUndoDelete: (id: string) => void;
@@ -44,31 +50,35 @@ export function KanbanColumn({
         </span>
       </h3>
 
-      <ul ref={setNodeRef} className="flex min-h-[80px] flex-col gap-2.5">
-        {messages.length === 0 ? (
-          <li className="rounded-lg border border-dashed border-paper-line p-4 text-center text-xs text-muted">
-            Nada por aquí.
-          </li>
-        ) : (
-          messages.map((message) => (
-            <MessageDetailDialog
-              key={message.id}
-              message={message}
-              defaultEditing
-              onSaved={onSaved}
-              onDeleted={onDeleted}
-              onUndoDelete={onUndoDelete}
-            >
-              <KanbanCard
+      <SortableContext items={messages.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+        <ul ref={setNodeRef} className="flex min-h-[80px] flex-col gap-2.5">
+          {messages.length === 0 ? (
+            <li className="rounded-lg border border-dashed border-paper-line p-4 text-center text-xs text-muted">
+              Nada por aquí.
+            </li>
+          ) : (
+            messages.map((message) => (
+              <MessageDetailDialog
+                key={message.id}
                 message={message}
-                className="cursor-pointer"
-                onCycleEstado={onCycleEstado}
-                onCyclePrioridad={onCyclePrioridad}
-              />
-            </MessageDetailDialog>
-          ))
-        )}
-      </ul>
+                defaultEditing
+                onSaved={onSaved}
+                onDeleted={onDeleted}
+                onUndoDelete={onUndoDelete}
+              >
+                <KanbanCard
+                  message={message}
+                  density={density}
+                  className="cursor-pointer"
+                  onCycleEstado={onCycleEstado}
+                  onCyclePrioridad={onCyclePrioridad}
+                  onEtiquetaAdd={onEtiquetaAdd}
+                />
+              </MessageDetailDialog>
+            ))
+          )}
+        </ul>
+      </SortableContext>
     </section>
   );
 }

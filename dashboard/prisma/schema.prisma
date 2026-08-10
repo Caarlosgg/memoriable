@@ -111,6 +111,14 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
+  /// Posición dentro de su columna del tablero kanban: al crearse, la hora
+  /// actual en milisegundos (siempre creciente, sin necesitar consultar el
+  /// máximo actual). Al arrastrar una tarjeta a una posición nueva, se
+  /// recalcula como el punto medio entre sus dos vecinas — indexado
+  /// fraccionario, evita tener que renumerar el resto de la columna en
+  /// cada arrastre.
+  orden Float @default(0)
+
   /// Ver ../../prisma/schema.prisma: etiquetas libres (Fase F/J).
   etiquetas String[] @default([])
 
@@ -140,6 +148,7 @@ model Message {
   @@index([hecho])
   @@index([userId])
   @@index([estado])
+  @@index([orden])
   @@map("messages")
 }
 

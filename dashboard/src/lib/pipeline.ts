@@ -62,6 +62,9 @@ class DashboardMessageRepository implements MessageRepository {
         categoria: record.categoria,
         resumen: record.resumen,
         userId,
+        // Siempre creciente: la nueva nota nace arriba del todo de su
+        // columna en el tablero, sin tener que consultar el máximo actual.
+        orden: Date.now(),
       },
     });
 

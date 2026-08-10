@@ -14,6 +14,7 @@ function fakeMessage(overrides: Partial<Message> = {}): Message {
     prioridad: "MEDIA",
     etiquetas: [],
     imagenes: [],
+    orden: 0,
     camposExtra: {},
     fecha: new Date("2026-07-28T21:24:00.000Z"),
     userId: "u1",
