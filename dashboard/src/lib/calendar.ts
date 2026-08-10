@@ -83,6 +83,32 @@ export function buildMonthGrid(year: number, month: number, today: Date = new Da
   return days;
 }
 
+export interface WeekDay {
+  date: Date;
+  isToday: boolean;
+}
+
+/**
+ * Los 7 días (lunes a domingo) de la semana que contiene `cursor`. Vista
+ * alternativa a `buildMonthGrid` para cuando el mes entero es demasiado
+ * comprimido para ver bien un día con varios eventos — mismo criterio de
+ * semana-empieza-en-lunes que la vista mensual.
+ */
+export function buildWeekGrid(cursor: Date, today: Date = new Date()): WeekDay[] {
+  const startWeekday = (cursor.getUTCDay() + 6) % 7; // lunes=0 ... domingo=6
+  const start = new Date(cursor);
+  start.setUTCDate(cursor.getUTCDate() - startWeekday);
+
+  const todayKey = dateKey(today);
+  const days: WeekDay[] = [];
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + i);
+    days.push({ date, isToday: dateKey(date) === todayKey });
+  }
+  return days;
+}
+
 /** Los próximos `days` días (incluido hoy), como rango [desde, hasta) para consultar eventos. */
 export function upcomingRange(days: number, today: Date = new Date()): { desde: Date; hasta: Date } {
   const desde = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));

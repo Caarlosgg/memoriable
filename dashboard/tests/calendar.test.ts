@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, upcomingRange, dayLabel, fechaRepeticion } from "../src/lib/calendar";
+import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, buildWeekGrid, upcomingRange, dayLabel, fechaRepeticion } from "../src/lib/calendar";
 
 describe("dateKey", () => {
   it("da la fecha en formato YYYY-MM-DD en UTC", () => {
@@ -89,6 +89,27 @@ describe("buildMonthGrid", () => {
     const todays = grid.filter((d) => d.isToday);
     expect(todays.length).toBe(1);
     expect(todays[0]!.date.getUTCDate()).toBe(15);
+  });
+});
+
+describe("buildWeekGrid", () => {
+  it("genera 7 días", () => {
+    expect(buildWeekGrid(new Date("2026-08-12T12:00:00.000Z")).length).toBe(7);
+  });
+
+  it("empieza en lunes y termina en domingo, conteniendo la fecha pedida", () => {
+    const grid = buildWeekGrid(new Date("2026-08-12T12:00:00.000Z")); // miércoles
+    expect(grid[0]!.date.getUTCDay()).toBe(1);
+    expect(grid[6]!.date.getUTCDay()).toBe(0);
+    expect(grid.some((d) => dateKey(d.date) === "2026-08-12")).toBe(true);
+  });
+
+  it("marca isToday solo en la fecha de referencia pasada", () => {
+    const today = new Date("2026-08-13T09:00:00.000Z");
+    const grid = buildWeekGrid(new Date("2026-08-12T12:00:00.000Z"), today);
+    const todays = grid.filter((d) => d.isToday);
+    expect(todays.length).toBe(1);
+    expect(dateKey(todays[0]!.date)).toBe("2026-08-13");
   });
 });
 
