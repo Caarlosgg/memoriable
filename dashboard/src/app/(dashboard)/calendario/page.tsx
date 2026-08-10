@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { verifySession } from "@/lib/dal";
 import { getActiveWorkspace } from "@/lib/workspace";
 import { getAllEventos, getImportantPending } from "@/lib/eventos";
+import { getWorkspaceMembers } from "@/app/(dashboard)/equipo/actions";
 import { upcomingRange } from "@/lib/calendar";
 import { ResumenSection } from "@/components/calendar/ResumenSection";
 import { CalendarView } from "@/components/calendar/CalendarView";
@@ -20,10 +21,12 @@ export const metadata: Metadata = { title: "Calendario · MemorIAble" };
  */
 async function CalendarSection() {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
-  const [importantPending, allEventos] = await Promise.all([
+  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  const [importantPending, allEventos, members] = await Promise.all([
     getImportantPending(workspaceId),
     getAllEventos(workspaceId),
+    // Solo hace falta en modo equipo — en personal no hay a quién asignar.
+    isPersonal ? Promise.resolve([]) : getWorkspaceMembers(workspaceId).catch(() => []),
   ]);
 
   const { desde, hasta } = upcomingRange(7);
@@ -31,8 +34,8 @@ async function CalendarSection() {
 
   return (
     <>
-      <ResumenSection importantPending={importantPending} upcomingEventos={upcomingEventos} />
-      <CalendarView eventos={allEventos} />
+      <ResumenSection importantPending={importantPending} upcomingEventos={upcomingEventos} members={members} />
+      <CalendarView eventos={allEventos} members={members} />
     </>
   );
 }

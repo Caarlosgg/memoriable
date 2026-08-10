@@ -10,11 +10,15 @@ import { presentCategory } from "@/lib/categories";
 import { PRIORIDAD_PRESENTATION, PRIORIDAD_ICON, ESTADO_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { AssigneeControl } from "@/components/AssigneeControl";
+import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import type { KanbanDensity } from "./useKanbanDensity";
 
 interface KanbanCardContentProps {
   message: Message;
   density: KanbanDensity;
+  /** Miembros del workspace activo, para "Asignar a…" — vacío en modo personal (ver BoardSection.tsx). */
+  members?: WorkspaceMemberInfo[];
   /**
    * Handlers opcionales: si faltan, la tarjeta se pinta en modo "solo
    * lectura" (badges planos en vez de botones) — el caso de la copia
@@ -24,6 +28,7 @@ interface KanbanCardContentProps {
   onCycleEstado?: (messageId: string) => void;
   onCyclePrioridad?: (messageId: string) => void;
   onEtiquetaAdd?: (messageId: string, etiqueta: string) => void;
+  onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
 }
 
 /**
@@ -36,9 +41,11 @@ interface KanbanCardContentProps {
 export function KanbanCardContent({
   message,
   density,
+  members = [],
   onCycleEstado,
   onCyclePrioridad,
   onEtiquetaAdd,
+  onAssigneeChange,
 }: KanbanCardContentProps) {
   const { Icon: CategoryIcon, color } = presentCategory(message.categoria);
   const priority = PRIORIDAD_PRESENTATION[message.prioridad];
@@ -172,6 +179,13 @@ export function KanbanCardContent({
                 <Plus aria-hidden size={11} />
               </button>
             ))}
+          {onAssigneeChange && members.length > 0 && (
+            <AssigneeControl
+              assigneeId={message.assigneeId}
+              members={members}
+              onChange={(assigneeId) => onAssigneeChange(message.id, assigneeId)}
+            />
+          )}
         </div>
       </div>
     </>
@@ -181,8 +195,9 @@ export function KanbanCardContent({
 interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   message: Message;
   density: KanbanDensity;
+  members?: WorkspaceMemberInfo[];
   /**
-   * El cambio de estado/prioridad/etiqueta de un clic lo decide
+   * El cambio de estado/prioridad/etiqueta/asignación de un clic lo decide
    * `KanbanBoard` (no esta tarjeta): solo así puede aplicar la misma
    * actualización optimista que ya usa el arrastre, moviendo la tarjeta de
    * columna en el estado local sin esperar a un refresco de página —
@@ -192,6 +207,7 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   onCycleEstado: (messageId: string) => void;
   onCyclePrioridad: (messageId: string) => void;
   onEtiquetaAdd: (messageId: string, etiqueta: string) => void;
+  onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
 }
 
 /**
@@ -201,7 +217,7 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
  * arrastrable de dnd-kit.
  */
 export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(function KanbanCard(
-  { message, density, onCycleEstado, onCyclePrioridad, onEtiquetaAdd, className, ...rest },
+  { message, density, members, onCycleEstado, onCyclePrioridad, onEtiquetaAdd, onAssigneeChange, className, ...rest },
   forwardedRef,
 ) {
   // useSortable (no useDraggable a secas): registra la tarjeta TAMBIÉN
@@ -259,9 +275,11 @@ export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(funct
       <KanbanCardContent
         message={message}
         density={density}
+        members={members}
         onCycleEstado={onCycleEstado}
         onCyclePrioridad={onCyclePrioridad}
         onEtiquetaAdd={onEtiquetaAdd}
+        onAssigneeChange={onAssigneeChange}
       />
     </li>
   );

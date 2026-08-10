@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import type { Message, Evento } from "@prisma/client";
 import { Square, Clock, ListChecks } from "lucide-react";
 import { updateTaskStatus } from "@/app/(dashboard)/actions";
+import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import { groupByDay, dayLabel } from "@/lib/calendar";
 import { formatEventDate } from "@/lib/format";
+import { Avatar } from "../ui/avatar";
 import { EventDetailDialog } from "../EventDetailDialog";
 
 /**
@@ -19,12 +21,19 @@ import { EventDetailDialog } from "../EventDetailDialog";
 export function ResumenSection({
   importantPending,
   upcomingEventos,
+  members = [],
 }: {
   importantPending: Message[];
   upcomingEventos: Evento[];
+  /** Miembros del workspace activo, para mostrar quién tiene asignado cada evento — vacío en modo personal. */
+  members?: WorkspaceMemberInfo[];
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(importantPending);
+
+  function memberOf(assigneeId: string | null): WorkspaceMemberInfo | undefined {
+    return members.find((m) => m.userId === assigneeId);
+  }
 
   function handleToggleDone(message: Message) {
     setPending((prev) => prev.filter((m) => m.id !== message.id));
@@ -81,15 +90,24 @@ export function ResumenSection({
                 <div key={key}>
                   <p className="mb-1 text-xs font-semibold text-muted uppercase">{dayLabel(key)}</p>
                   <ul className="flex flex-col gap-1">
-                    {eventos.map((evento) => (
-                      <EventDetailDialog key={evento.id} evento={evento} onChanged={() => router.refresh()}>
-                        <li className="flex cursor-pointer items-center gap-2 rounded-lg p-1.5 text-sm text-ink transition-colors hover:bg-accent-soft">
-                          <Clock aria-hidden size={13} className="shrink-0 text-accent" />
-                          <span className="text-xs text-muted">{formatEventDate(evento.fechaInicio)}</span>
-                          {evento.titulo}
-                        </li>
-                      </EventDetailDialog>
-                    ))}
+                    {eventos.map((evento) => {
+                      const assignee = memberOf(evento.assigneeId);
+                      return (
+                        <EventDetailDialog
+                          key={evento.id}
+                          evento={evento}
+                          members={members}
+                          onChanged={() => router.refresh()}
+                        >
+                          <li className="flex cursor-pointer items-center gap-2 rounded-lg p-1.5 text-sm text-ink transition-colors hover:bg-accent-soft">
+                            <Clock aria-hidden size={13} className="shrink-0 text-accent" />
+                            <span className="text-xs text-muted">{formatEventDate(evento.fechaInicio)}</span>
+                            <span className="flex-1 truncate">{evento.titulo}</span>
+                            {assignee && <Avatar email={assignee.email} size="xs" className="shrink-0" />}
+                          </li>
+                        </EventDetailDialog>
+                      );
+                    })}
                   </ul>
                 </div>
               ))}

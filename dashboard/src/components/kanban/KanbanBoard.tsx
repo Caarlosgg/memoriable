@@ -24,7 +24,8 @@ import {
   PRIORIDAD_PRESENTATION,
 } from "@/lib/kanban";
 import { CATEGORIES, CATEGORY_PRESENTATION, presentCategory, type Category } from "@/lib/categories";
-import { updateTaskStatus, updateTaskPriority, moveTask, updateMessage } from "@/app/(dashboard)/actions";
+import { updateTaskStatus, updateTaskPriority, moveTask, updateMessage, assignMessage } from "@/app/(dashboard)/actions";
+import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import type { EditableFields } from "@/components/MessageDetailDialog";
 import { cn } from "@/lib/utils";
 import { KanbanColumn } from "./KanbanColumn";
@@ -44,7 +45,13 @@ function isEstadoTarea(value: string): value is EstadoTarea {
 
 type ByEstado = Record<EstadoTarea, Message[]>;
 
-export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] }) {
+export function KanbanBoard({
+  initialColumns,
+  members = [],
+}: {
+  initialColumns: BoardColumn[];
+  members?: WorkspaceMemberInfo[];
+}) {
   const [byEstado, setByEstado] = useState<ByEstado>(
     () => Object.fromEntries(initialColumns.map((c) => [c.estado, c.messages])) as ByEstado,
   );
@@ -289,6 +296,31 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
     });
   }
 
+  /**
+   * Asignar/desasignar una tarjeta (Fase Equipo) — mismo patrón optimista
+   * que el resto. `assignMessage` no lanza en el caso de validación (p. ej.
+   * el destinatario dejó de ser miembro entre que se cargó la lista y el
+   * clic) — devuelve `{ error }` en vez de rechazar, así que se comprueba
+   * el resultado, no solo el catch.
+   */
+  function handleAssigneeChange(messageId: string, assigneeId: string | null) {
+    const current = findMessage(messageId);
+    if (!current) return;
+    const previousAssigneeId = current.assigneeId;
+    applyLocalUpdate(messageId, { assigneeId });
+    assignMessage(messageId, assigneeId)
+      .then((result) => {
+        if (result.error) {
+          console.error("No se pudo asignar la tarea:", result.error);
+          applyLocalUpdate(messageId, { assigneeId: previousAssigneeId });
+        }
+      })
+      .catch((err) => {
+        console.error("No se pudo asignar la tarea:", err);
+        applyLocalUpdate(messageId, { assigneeId: previousAssigneeId });
+      });
+  }
+
   const activeMessage = activeId ? findMessage(activeId) : undefined;
 
   return (
@@ -360,9 +392,11 @@ export function KanbanBoard({ initialColumns }: { initialColumns: BoardColumn[] 
               estado={estado}
               messages={byEstado[estado].filter(matchesFilter)}
               density={density}
+              members={members}
               onCycleEstado={handleCycleEstado}
               onCyclePrioridad={handleCyclePrioridad}
               onEtiquetaAdd={handleEtiquetaAdd}
+              onAssigneeChange={handleAssigneeChange}
               onSaved={handleSaved}
               onDeleted={handleDeleted}
               onUndoDelete={handleUndoDelete}

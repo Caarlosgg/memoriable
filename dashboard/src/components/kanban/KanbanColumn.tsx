@@ -5,6 +5,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import type { Message, EstadoTarea } from "@prisma/client";
 import { ESTADO_PRESENTATION } from "@/lib/kanban";
 import { MessageDetailDialog, type EditableFields } from "@/components/MessageDetailDialog";
+import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import { KanbanCard } from "./KanbanCard";
 import type { KanbanDensity } from "./useKanbanDensity";
 
@@ -12,9 +13,11 @@ export function KanbanColumn({
   estado,
   messages,
   density,
+  members,
   onCycleEstado,
   onCyclePrioridad,
   onEtiquetaAdd,
+  onAssigneeChange,
   onSaved,
   onDeleted,
   onUndoDelete,
@@ -22,9 +25,11 @@ export function KanbanColumn({
   estado: EstadoTarea;
   messages: Message[];
   density: KanbanDensity;
+  members?: WorkspaceMemberInfo[];
   onCycleEstado: (messageId: string) => void;
   onCyclePrioridad: (messageId: string) => void;
   onEtiquetaAdd: (messageId: string, etiqueta: string) => void;
+  onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
   onSaved: (id: string, patch: EditableFields) => void;
   onDeleted: (id: string) => void;
   onUndoDelete: (id: string) => void;
@@ -69,10 +74,12 @@ export function KanbanColumn({
                 <KanbanCard
                   message={message}
                   density={density}
+                  members={members}
                   className="cursor-pointer"
                   onCycleEstado={onCycleEstado}
                   onCyclePrioridad={onCyclePrioridad}
                   onEtiquetaAdd={onEtiquetaAdd}
+                  onAssigneeChange={onAssigneeChange}
                 />
               </MessageDetailDialog>
             ))

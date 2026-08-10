@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Evento } from "@prisma/client";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, CalendarCheck2 } from "lucide-react";
 import { buildMonthGrid, dateKey, groupByDayRange } from "@/lib/calendar";
+import { formatEventTime } from "@/lib/format";
+import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { EventDetailDialog } from "../EventDetailDialog";
 
@@ -19,12 +22,23 @@ const MAX_CHIPS_PER_DAY = 3;
  * bajo, ver comentario en calendario/page.tsx) y navega entre meses en
  * memoria, sin ida y vuelta al servidor.
  */
-export function CalendarView({ eventos }: { eventos: Evento[] }) {
+export function CalendarView({
+  eventos,
+  members = [],
+}: {
+  eventos: Evento[];
+  /** Miembros del workspace activo, para mostrar quién tiene asignado cada evento — vacío en modo personal. */
+  members?: WorkspaceMemberInfo[];
+}) {
   const router = useRouter();
   const [cursor, setCursor] = useState(() => {
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   });
+  function goToToday() {
+    const now = new Date();
+    setCursor(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
+  }
   // Borrado con margen de deshacer (Tier 1.3), mismo patrón que KanbanBoard.
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   function handleDeleted(id: string) {
@@ -50,6 +64,13 @@ export function CalendarView({ eventos }: { eventos: Evento[] }) {
 
   function goToMonth(delta: number) {
     setCursor((prev) => new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth() + delta, 1)));
+  }
+
+  const now = new Date();
+  const isCurrentMonth = cursor.getUTCFullYear() === now.getUTCFullYear() && cursor.getUTCMonth() === now.getUTCMonth();
+
+  function memberOf(assigneeId: string | null): WorkspaceMemberInfo | undefined {
+    return members.find((m) => m.userId === assigneeId);
   }
 
   return (
@@ -78,7 +99,16 @@ export function CalendarView({ eventos }: { eventos: Evento[] }) {
           >
             <ChevronRight aria-hidden size={18} />
           </button>
-          <EventDetailDialog onChanged={() => router.refresh()}>
+          {!isCurrentMonth && (
+            <button
+              type="button"
+              onClick={goToToday}
+              className="flex items-center gap-1 rounded-full border border-paper-line px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <CalendarCheck2 aria-hidden size={13} /> Hoy
+            </button>
+          )}
+          <EventDetailDialog members={members} onChanged={() => router.refresh()}>
             <Button type="button" size="sm" className="ml-2">
               <Plus aria-hidden size={14} /> Nuevo
             </Button>
@@ -111,22 +141,32 @@ export function CalendarView({ eventos }: { eventos: Evento[] }) {
                 {day.date.getUTCDate()}
               </span>
               <div className="flex flex-col gap-0.5">
-                {dayEventos.slice(0, MAX_CHIPS_PER_DAY).map((evento) => (
-                  <EventDetailDialog
-                    key={evento.id}
-                    evento={evento}
-                    onChanged={() => router.refresh()}
-                    onDeleted={handleDeleted}
-                    onUndoDelete={handleUndoDelete}
-                  >
-                    <button
-                      type="button"
-                      className="truncate rounded bg-accent-soft px-1 py-0.5 text-left text-[11px] font-medium text-accent-strong transition-[filter] hover:brightness-95"
+                {dayEventos.slice(0, MAX_CHIPS_PER_DAY).map((evento) => {
+                  const assignee = memberOf(evento.assigneeId);
+                  return (
+                    <EventDetailDialog
+                      key={evento.id}
+                      evento={evento}
+                      members={members}
+                      onChanged={() => router.refresh()}
+                      onDeleted={handleDeleted}
+                      onUndoDelete={handleUndoDelete}
                     >
-                      {evento.titulo}
-                    </button>
-                  </EventDetailDialog>
-                ))}
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-1 truncate rounded bg-accent-soft px-1 py-0.5 text-left text-[11px] font-medium text-accent-strong transition-[filter] hover:brightness-95"
+                      >
+                        {assignee && <Avatar email={assignee.email} size="xs" className="shrink-0" />}
+                        <span className="truncate">
+                          {formatEventTime(evento.fechaInicio) && (
+                            <span className="font-normal opacity-80">{formatEventTime(evento.fechaInicio)} </span>
+                          )}
+                          {evento.titulo}
+                        </span>
+                      </button>
+                    </EventDetailDialog>
+                  );
+                })}
                 {dayEventos.length > MAX_CHIPS_PER_DAY && (
                   <span className="text-[11px] text-muted">+{dayEventos.length - MAX_CHIPS_PER_DAY} más</span>
                 )}

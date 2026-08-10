@@ -5,7 +5,15 @@ import type { Evento } from "@prisma/client";
 import Link from "next/link";
 import { Pencil, Trash2, Clock, MapPin, Users, FileText } from "lucide-react";
 import { formatEventDate } from "@/lib/format";
-import { createEvento, updateEvento, deleteEvento, type EventoInput } from "@/app/(dashboard)/calendario/actions";
+import {
+  createEvento,
+  updateEvento,
+  deleteEvento,
+  assignEvento,
+  type EventoInput,
+} from "@/app/(dashboard)/calendario/actions";
+import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import { AssigneeControl } from "./AssigneeControl";
 import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -62,6 +70,7 @@ function toInput(fields: EditableEvento): EventoInput {
  */
 export function EventDetailDialog({
   evento,
+  members = [],
   children,
   onChanged,
   onDeleted,
@@ -69,6 +78,8 @@ export function EventDetailDialog({
 }: {
   /** `null`/ausente = modal de creación (arranca en modo edición vacío). */
   evento?: Evento | null;
+  /** Miembros del workspace activo, para "Asignar a…" — vacío en modo personal. */
+  members?: WorkspaceMemberInfo[];
   children: ReactNode;
   /** Se llama tras crear o guardar con éxito, para refrescar la lista del padre. */
   onChanged?: () => void;
@@ -138,6 +149,19 @@ export function EventDetailDialog({
     });
   }
 
+  /** Asignar/desasignar (Fase Equipo) — no toca `editing`, es una acción aparte del formulario. */
+  function handleAssigneeChange(assigneeId: string | null) {
+    if (!evento) return;
+    startTransition(async () => {
+      const result = await assignEvento(evento.id, assigneeId);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      onChanged?.();
+    });
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
@@ -153,6 +177,12 @@ export function EventDetailDialog({
               {formatEventDate(evento.fechaInicio)}
               {evento.fechaFin ? ` — ${formatEventDate(evento.fechaFin)}` : ""}
             </p>
+            {members.length > 0 && (
+              <div className="flex items-center gap-1.5 text-sm text-ink">
+                <span className="text-muted">Asignado a</span>
+                <AssigneeControl assigneeId={evento.assigneeId} members={members} onChange={handleAssigneeChange} />
+              </div>
+            )}
             {evento.ubicacion && (
               <p className="flex items-center gap-1.5 text-sm text-muted">
                 <MapPin aria-hidden size={14} className="shrink-0" /> {evento.ubicacion}

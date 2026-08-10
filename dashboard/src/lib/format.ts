@@ -46,3 +46,22 @@ export function formatEventDate(fecha: Date | string | number | null | undefined
   if (Number.isNaN(date.getTime())) return FALLBACK;
   return EVENT_DATE_FORMATTER.format(date);
 }
+
+const EVENT_TIME_FORMATTER = new Intl.DateTimeFormat("es-ES", {
+  hour: "2-digit",
+  minute: "2-digit",
+  // UTC forzado, no la hora real del navegador (a diferencia de
+  // formatEventDate): esto se pinta en los chips del mes SIEMPRE visibles
+  // (no dentro de un modal que arranca cerrado), así que corre el mismo
+  // riesgo de desajuste de hidratación que formatDate — mismo motivo, misma
+  // solución.
+  timeZone: "UTC",
+});
+
+/** Solo la hora (HH:mm) de un evento — para los chips del calendario, donde no cabe la fecha entera. */
+export function formatEventTime(fecha: Date | string | number | null | undefined): string {
+  if (fecha == null || fecha === "") return "";
+  const date = fecha instanceof Date ? fecha : new Date(fecha);
+  if (Number.isNaN(date.getTime())) return "";
+  return EVENT_TIME_FORMATTER.format(date);
+}
