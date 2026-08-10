@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MessageCircle, Send, CircleCheck, CalendarDays, PiggyBank, Pencil, Trash2 } from "lucide-react";
+import { Send, CircleCheck, CalendarDays, PiggyBank, Pencil, Trash2 } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
 import { formatEventDate } from "@/lib/format";
 import { formatCentimos } from "@/lib/money";
@@ -10,6 +10,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { AssistantMarkdown } from "./AssistantMarkdown";
 import { ConversationSidebar } from "./ConversationSidebar";
+import { PageHeader } from "./PageHeader";
 
 const SUGGESTED_QUESTIONS = [
   "¿Qué tengo pendiente?",
@@ -296,13 +297,17 @@ export function AssistantChat() {
   } = useAssistant();
 
   return (
-    <section aria-labelledby="asistente-heading" className="flex flex-col gap-4">
-      <h2
-        id="asistente-heading"
-        className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.1em] text-accent"
-      >
-        <MessageCircle aria-hidden size={14} /> Asistente
-      </h2>
+    <section aria-label="Asistente" className="flex flex-col gap-4">
+      <PageHeader
+        title="Asistente"
+        help={
+          <>
+            Pregúntale por tus notas, tareas y eventos guardados — responde citando lo que encuentra, en vez de
+            inventarlo. También puede actuar por ti: crear notas y citas, marcar tareas como hechas, editar o
+            borrar eventos, y apuntar/consultar tus ahorros, todo con lenguaje natural.
+          </>
+        }
+      />
 
       <ConversationSidebar
         conversations={conversations}
