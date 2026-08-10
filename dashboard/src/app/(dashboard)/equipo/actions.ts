@@ -5,7 +5,10 @@ import * as Sentry from "@sentry/nextjs";
 import type { WorkspaceRole, MembershipStatus } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { setActiveWorkspaceCookie } from "@/lib/workspace";
+import { setActiveWorkspaceCookie, createPersonalWorkspace } from "@/lib/workspace";
+import { createNotification } from "@/lib/notifications";
+import { createPasswordResetToken } from "@/lib/passwordReset";
+import { sendAccountSetupEmail, resolveBaseUrl } from "@/lib/email";
 
 export interface WorkspaceSummary {
   id: string;
@@ -43,6 +46,8 @@ export interface WorkspaceMemberInfo {
   role: WorkspaceRole;
   status: MembershipStatus;
   isSelf: boolean;
+  /** Cuenta corporativa (ver addMemberByEmail) que aún no ha elegido contraseña. */
+  accountPending: boolean;
 }
 
 /** Lista de miembros de un workspace, para la página /equipo. Lanza si el usuario que pregunta no pertenece a él. */
@@ -55,7 +60,7 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
 
   const memberships = await prisma.membership.findMany({
     where: { workspaceId },
-    include: { user: { select: { email: true } } },
+    include: { user: { select: { email: true, accountPending: true } } },
     orderBy: { joinedAt: "asc" },
   });
   return memberships.map((m) => ({
@@ -64,6 +69,7 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
     role: m.role,
     status: m.status,
     isSelf: m.userId === userId,
+    accountPending: m.user.accountPending,
   }));
 }
 
@@ -103,21 +109,37 @@ export async function createWorkspace(nombre: string): Promise<CreateWorkspaceRe
 export interface AddMemberResult {
   error?: string;
   sent?: boolean;
+  /** true si se ha creado una cuenta nueva (corporativa) — la UI lo dice explícitamente, distinto de invitar a alguien que ya existía. */
+  accountCreated?: boolean;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ASSIGNABLE_ROLES: WorkspaceRole[] = ["MEMBER", "ADMIN"];
 
 /**
- * Añade a alguien a un equipo por email — v1 simple: solo cuentas que YA
- * existen (búsqueda por email exacto). Si no tiene cuenta, se le dice que
- * se registre primero; no hay invitación por correo/token todavía. Deja
- * el membership en PENDING: la otra persona debe aceptarlo antes de tener
- * acceso a nada del workspace.
+ * Añade a alguien a un equipo por email, con el rol elegido por quien
+ * invita (MEMBER o ADMIN — OWNER no se asigna por aquí, es un caso aparte
+ * de transferencia de propiedad que no cubre esta fase). Dos caminos:
+ *
+ * - Ya tiene cuenta: se crea un Membership PENDING con ese rol — sigue
+ *   necesitando aceptar, igual que antes (respeta que esa persona ya
+ *   tenía su propia cuenta y no eligió unirse).
+ * - NO tiene cuenta ("cuenta corporativa"): se crea la cuenta entera
+ *   (con su workspace personal, como cualquier alta) + un Membership YA
+ *   ACTIVE con ese rol — no hay nada que "aceptar", unirse es implícito
+ *   en que el owner/admin decidió crear la cuenta para eso. Se manda un
+ *   correo para que elija contraseña y así active la cuenta (reutiliza
+ *   el mismo token/página que "olvidé mi contraseña" — ver email.ts).
  */
-export async function addMemberByEmail(workspaceId: string, email: string): Promise<AddMemberResult> {
+export async function addMemberByEmail(
+  workspaceId: string,
+  email: string,
+  role: WorkspaceRole = "MEMBER",
+): Promise<AddMemberResult> {
   const userId = await verifySession();
   const normalizedEmail = email.trim().toLowerCase();
   if (!EMAIL_RE.test(normalizedEmail)) return { error: "Escribe un email válido." };
+  if (!ASSIGNABLE_ROLES.includes(role)) return { error: "Ese rol no se puede asignar así." };
 
   try {
     const requester = await prisma.membership.findUnique({
@@ -127,27 +149,159 @@ export async function addMemberByEmail(workspaceId: string, email: string): Prom
       return { error: "No tienes permiso para añadir gente a este equipo." };
     }
 
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { nombre: true } });
+    if (!workspace) return { error: "No se ha encontrado el equipo." };
+
     const target = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (!target) {
-      return { error: "No existe ninguna cuenta con ese email. Dile que se registre primero en MemorIAble." };
+
+    if (target) {
+      const existing = await prisma.membership.findUnique({
+        where: { userId_workspaceId: { userId: target.id, workspaceId } },
+      });
+      if (existing) {
+        return { error: existing.status === "ACTIVE" ? "Ya es miembro de este equipo." : "Ya está invitado a este equipo." };
+      }
+
+      await prisma.membership.create({ data: { userId: target.id, workspaceId, role, status: "PENDING" } });
+      await createNotification({
+        userId: target.id,
+        type: "ADDED_TO_TEAM",
+        title: `Te han invitado al equipo "${workspace.nombre}"`,
+        body: "Acepta la invitación desde el selector de espacios para empezar a colaborar.",
+        link: "/equipo",
+      }).catch((err) => console.error("No se pudo crear la notificación de invitación (no crítico):", err));
+
+      revalidatePath("/equipo");
+      return { sent: true };
     }
 
-    const existing = await prisma.membership.findUnique({
-      where: { userId_workspaceId: { userId: target.id, workspaceId } },
+    // Cuenta corporativa: no existía, se crea entera + workspace personal +
+    // membership ya activa, en una única transacción (mismo criterio que
+    // registro/actions.ts: nunca debe quedar un User a medias).
+    const newUserId = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: { email: normalizedEmail, emailVerified: true, accountPending: true },
+      });
+      await createPersonalWorkspace(tx, user.id);
+      await tx.membership.create({ data: { userId: user.id, workspaceId, role, status: "ACTIVE" } });
+      return user.id;
     });
-    if (existing) {
-      return { error: existing.status === "ACTIVE" ? "Ya es miembro de este equipo." : "Ya está invitado a este equipo." };
-    }
 
-    await prisma.membership.create({
-      data: { userId: target.id, workspaceId, role: "MEMBER", status: "PENDING" },
-    });
+    try {
+      const setupToken = await createPasswordResetToken(newUserId);
+      const baseUrl = await resolveBaseUrl();
+      await sendAccountSetupEmail(normalizedEmail, `${baseUrl}/restablecer-password?token=${setupToken}`, workspace.nombre);
+    } catch (err) {
+      console.error("Cuenta corporativa creada pero falló el envío del correo de activación:", err);
+      Sentry.captureException(err);
+    }
+    await createNotification({
+      userId: newUserId,
+      type: "ADDED_TO_TEAM",
+      title: `Te han añadido al equipo "${workspace.nombre}"`,
+      body: "Activa tu cuenta desde el enlace que te hemos mandado por email.",
+      link: "/equipo",
+    }).catch((err) => console.error("No se pudo crear la notificación de alta (no crítico):", err));
+
     revalidatePath("/equipo");
-    return { sent: true };
+    return { sent: true, accountCreated: true };
   } catch (err) {
     console.error("Error al añadir miembro al equipo:", err);
     Sentry.captureException(err);
     return { error: "No se ha podido añadir. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Cambia el rol de un miembro ya activo. No se puede usar para asignar
+ * OWNER (transferencia de propiedad, fuera de esta fase) ni para
+ * cambiarte el rol a ti mismo (evita que un owner se autodegrade y se
+ * quede sin poder deshacerlo).
+ */
+export async function changeRole(
+  workspaceId: string,
+  targetUserId: string,
+  role: WorkspaceRole,
+): Promise<MembershipActionResult> {
+  const userId = await verifySession();
+  if (!ASSIGNABLE_ROLES.includes(role)) return { error: "Ese rol no se puede asignar así." };
+  if (targetUserId === userId) return { error: "No puedes cambiarte el rol a ti mismo." };
+
+  try {
+    const requester = await prisma.membership.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId } },
+    });
+    if (!requester || requester.status !== "ACTIVE" || (requester.role !== "OWNER" && requester.role !== "ADMIN")) {
+      return { error: "No tienes permiso para cambiar roles en este equipo." };
+    }
+
+    const result = await prisma.membership.updateMany({
+      where: { userId: targetUserId, workspaceId, status: "ACTIVE", role: { not: "OWNER" } },
+      data: { role },
+    });
+    if (result.count === 0) return { error: "No se ha encontrado a esa persona en el equipo." };
+
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { nombre: true } });
+    await createNotification({
+      userId: targetUserId,
+      type: "ROLE_CHANGED",
+      title: `Tu rol en "${workspace?.nombre ?? "el equipo"}" ha cambiado`,
+      body: `Ahora eres ${role === "ADMIN" ? "administrador/a" : "miembro"}.`,
+      link: "/equipo",
+    }).catch((err) => console.error("No se pudo crear la notificación de cambio de rol (no crítico):", err));
+
+    revalidatePath("/equipo");
+    return {};
+  } catch (err) {
+    console.error("Error al cambiar el rol:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido cambiar el rol. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Saca a alguien del equipo. No te puedes quitar a ti mismo por aquí
+ * (evita que un owner/admin se quede fuera sin querer — "salir del
+ * equipo" por decisión propia es una acción futura aparte), ni al último
+ * OWNER (el equipo se quedaría sin nadie que pueda administrarlo).
+ * Limpia también cualquier tarea/evento que tuviera asignado en este
+ * workspace — quedaría asignado a alguien que ya no puede verlo.
+ */
+export async function removeMember(workspaceId: string, targetUserId: string): Promise<MembershipActionResult> {
+  const userId = await verifySession();
+  if (targetUserId === userId) return { error: "No puedes quitarte a ti mismo del equipo." };
+
+  try {
+    const [requester, target] = await Promise.all([
+      prisma.membership.findUnique({ where: { userId_workspaceId: { userId, workspaceId } } }),
+      prisma.membership.findUnique({ where: { userId_workspaceId: { userId: targetUserId, workspaceId } } }),
+    ]);
+    if (!requester || requester.status !== "ACTIVE" || (requester.role !== "OWNER" && requester.role !== "ADMIN")) {
+      return { error: "No tienes permiso para quitar gente de este equipo." };
+    }
+    if (!target) return { error: "Esa persona no está en el equipo." };
+
+    if (target.role === "OWNER") {
+      const otherOwners = await prisma.membership.count({
+        where: { workspaceId, role: "OWNER", status: "ACTIVE", userId: { not: targetUserId } },
+      });
+      if (otherOwners === 0) return { error: "No puedes quitar al único propietario del equipo." };
+    }
+
+    await prisma.$transaction([
+      prisma.membership.delete({ where: { userId_workspaceId: { userId: targetUserId, workspaceId } } }),
+      prisma.message.updateMany({ where: { workspaceId, assigneeId: targetUserId }, data: { assigneeId: null } }),
+      prisma.evento.updateMany({ where: { workspaceId, assigneeId: targetUserId }, data: { assigneeId: null } }),
+    ]);
+
+    revalidatePath("/equipo");
+    revalidatePath("/pendientes");
+    revalidatePath("/calendario");
+    return {};
+  } catch (err) {
+    console.error("Error al quitar del equipo:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido quitar. Inténtalo de nuevo." };
   }
 }
 

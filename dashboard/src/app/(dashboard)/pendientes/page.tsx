@@ -4,6 +4,7 @@ import { BoardSection } from "@/components/kanban/BoardSection";
 import { PendingSkeleton } from "@/components/PendingSkeleton";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { PageHeader } from "@/components/PageHeader";
+import { ActiveWorkspaceBadge } from "@/components/ActiveWorkspaceBadge";
 
 export const metadata: Metadata = { title: "Tablero · MemorIAble" };
 
@@ -20,6 +21,7 @@ export default function PendientesPage() {
           </>
         }
       />
+      <ActiveWorkspaceBadge />
       <SectionErrorBoundary title="Tablero">
         <Suspense fallback={<PendingSkeleton />}>
           <BoardSection />

@@ -1,10 +1,8 @@
-import { Avatar } from "@/components/ui/avatar";
 import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import { AddMemberForm } from "./AddMemberForm";
+import { MemberRow } from "./MemberRow";
 
-const ROLE_LABELS: Record<string, string> = { OWNER: "Propietario", ADMIN: "Admin", MEMBER: "Miembro" };
-
-/** Ficha de un equipo en /equipo: lista de miembros + formulario para añadir (solo si eres owner/admin). */
+/** Ficha de un equipo en /equipo: plantilla (lista de miembros con rol y acciones) + alta de nuevos miembros (solo owner/admin). */
 export function TeamCard({
   workspaceId,
   nombre,
@@ -18,26 +16,20 @@ export function TeamCard({
 }) {
   return (
     <section className="flex flex-col gap-4 rounded-2xl border border-paper-line bg-paper-raised p-5">
-      <h2 className="font-display text-lg font-semibold text-ink">{nombre}</h2>
-      <ul className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-lg font-semibold text-ink">{nombre}</h2>
+        <span className="text-xs text-muted">
+          {members.length} {members.length === 1 ? "persona" : "personas"}
+        </span>
+      </div>
+      <ul className="flex flex-col gap-1.5">
         {members.map((m) => (
-          <li key={m.userId} className="flex items-center gap-3 rounded-lg px-1 py-1.5">
-            <Avatar email={m.email} />
-            <span className="flex-1 truncate text-sm text-ink">
-              {m.email}
-              {m.isSelf && <span className="text-muted"> (tú)</span>}
-            </span>
-            <span className="text-xs text-muted">{ROLE_LABELS[m.role] ?? m.role}</span>
-            {m.status === "PENDING" && (
-              <span className="rounded-full bg-highlight-soft px-2 py-0.5 text-[10px] font-semibold text-highlight-strong">
-                Pendiente
-              </span>
-            )}
-          </li>
+          <MemberRow key={m.userId} workspaceId={workspaceId} member={m} canManage={canManage} />
         ))}
       </ul>
       {canManage && (
         <div className="border-t border-paper-line pt-4">
+          <p className="mb-2 text-sm font-medium text-ink">Añadir a la plantilla</p>
           <AddMemberForm workspaceId={workspaceId} />
         </div>
       )}

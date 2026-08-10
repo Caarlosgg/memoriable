@@ -48,6 +48,9 @@ model User {
   /// nacen ya verificadas (el id_token de Google ya certifica el email).
   emailVerified Boolean @default(false)
 
+  /// Ver ../../prisma/schema.prisma: cuenta corporativa pendiente de activar.
+  accountPending Boolean @default(false)
+
   telegramChatId    BigInt?   @unique
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
@@ -151,6 +154,8 @@ model PasswordResetToken {
 enum NotificationType {
   ASSIGNED_MESSAGE
   ASSIGNED_EVENTO
+  ADDED_TO_TEAM
+  ROLE_CHANGED
 }
 
 /// Ver ../../prisma/schema.prisma: notificación en la app.

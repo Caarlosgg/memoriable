@@ -62,7 +62,10 @@ export async function resetPasswordWithToken(
 
   try {
     await prisma.$transaction([
-      prisma.user.update({ where: { id: found.userId }, data: { passwordHash } }),
+      // `accountPending: false` no molesta a una cuenta normal (ya lo era);
+      // para una cuenta corporativa (ver equipo/actions.ts) esto ES la
+      // activación — elegir contraseña y quedar activo son el mismo paso.
+      prisma.user.update({ where: { id: found.userId }, data: { passwordHash, accountPending: false } }),
       prisma.passwordResetToken.delete({ where: { id: found.id } }),
     ]);
   } catch {

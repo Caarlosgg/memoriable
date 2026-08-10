@@ -10,6 +10,7 @@ import { CalendarView } from "@/components/calendar/CalendarView";
 import { CalendarSkeleton } from "@/components/calendar/CalendarSkeleton";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { PageHeader } from "@/components/PageHeader";
+import { ActiveWorkspaceBadge } from "@/components/ActiveWorkspaceBadge";
 
 export const metadata: Metadata = { title: "Calendario · MemorIAble" };
 
@@ -53,6 +54,7 @@ export default function CalendarioPage() {
           </>
         }
       />
+      <ActiveWorkspaceBadge />
       <SectionErrorBoundary title="Calendario">
         <Suspense fallback={<CalendarSkeleton />}>
           <CalendarSection />

@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Notification } from "@prisma/client";
-import { Bell, CheckCheck, CalendarDays, StickyNote } from "lucide-react";
+import { Bell, CheckCheck, CalendarDays, StickyNote, Users, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { markAsRead, markAllAsRead } from "@/app/(dashboard)/notificaciones/actions";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 const TYPE_ICON: Record<Notification["type"], typeof StickyNote> = {
   ASSIGNED_MESSAGE: StickyNote,
   ASSIGNED_EVENTO: CalendarDays,
+  ADDED_TO_TEAM: Users,
+  ROLE_CHANGED: ShieldCheck,
 };
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("es-ES", {

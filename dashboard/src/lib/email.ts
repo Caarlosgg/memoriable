@@ -118,3 +118,48 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
     return false;
   }
 }
+
+/**
+ * Envía el correo de "activa tu cuenta" — cuenta corporativa creada por un
+ * owner/admin al añadir a alguien a un equipo por email cuando esa persona
+ * TODAVÍA no tenía cuenta en MemorIAble (ver equipo/actions.ts). Reutiliza
+ * el mismo enlace que "restablecer contraseña" (mismo token, misma
+ * página): para quien lo recibe, "pon tu contraseña" es exactamente la
+ * misma acción tanto si viene de olvidar una contraseña como de activar
+ * una cuenta nueva — no hace falta una página aparte, solo un asunto y
+ * texto distintos para que el correo tenga sentido en este contexto.
+ */
+export async function sendAccountSetupEmail(to: string, setupUrl: string, workspaceName: string): Promise<boolean> {
+  const transporter = resolveTransporter();
+  if (!transporter) {
+    console.error("GMAIL_USER/GMAIL_APP_PASSWORD no configuradas: no se envió el correo de activar cuenta a", to);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: `MemorIAble <${process.env.GMAIL_USER}>`,
+      to,
+      subject: `Te han añadido al equipo "${workspaceName}" en MemorIAble`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #1c1b18;">
+          <p style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #157a5f;">MemorIAble</p>
+          <h1 style="font-size: 20px; margin: 8px 0 16px;">Te han añadido a un equipo</h1>
+          <p style="font-size: 14px; line-height: 1.5;">
+            Te han creado una cuenta en MemorIAble para formar parte del equipo <strong>${workspaceName}</strong>.
+            Elige una contraseña para activarla:
+          </p>
+          <p style="margin: 24px 0;">
+            <a href="${setupUrl}" style="background: #157a5f; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">Activar mi cuenta</a>
+          </p>
+          <p style="font-size: 12px; color: #6b6a66;">El enlace caduca en 1 hora. Si crees que esto es un error, puedes ignorar este correo.</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (err) {
+    console.error("Fallo al enviar el correo de activar cuenta:", err);
+    Sentry.captureException(err);
+    return false;
+  }
+}

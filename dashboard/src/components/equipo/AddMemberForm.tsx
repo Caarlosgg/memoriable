@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import type { WorkspaceRole } from "@prisma/client";
 import { UserPlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,14 @@ import { addMemberByEmail, type AddMemberResult } from "@/app/(dashboard)/equipo
 
 const initialState: AddMemberResult = {};
 
+const SELECT_CLASSNAME =
+  "rounded-lg border border-paper-line bg-paper px-2.5 py-2 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
+
 export function AddMemberForm({ workspaceId }: { workspaceId: string }) {
   const action = async (_prev: AddMemberResult, formData: FormData): Promise<AddMemberResult> => {
     const email = String(formData.get("email") ?? "");
-    const result = await addMemberByEmail(workspaceId, email);
-    return result;
+    const role = String(formData.get("role") ?? "MEMBER") as WorkspaceRole;
+    return addMemberByEmail(workspaceId, email, role);
   };
   const [state, formAction, pending] = useActionState(action, initialState);
 
@@ -30,16 +34,34 @@ export function AddMemberForm({ workspaceId }: { workspaceId: string }) {
           placeholder="email@ejemplo.com"
           className="flex-1"
         />
+        <label htmlFor={`add-role-${workspaceId}`} className="sr-only">
+          Rol de la persona a añadir
+        </label>
+        <select id={`add-role-${workspaceId}`} name="role" defaultValue="MEMBER" className={SELECT_CLASSNAME}>
+          <option value="MEMBER">Miembro</option>
+          <option value="ADMIN">Administrador</option>
+        </select>
         <Button type="submit" variant="secondary" size="sm" disabled={pending}>
           <UserPlus aria-hidden size={14} /> {pending ? "Añadiendo…" : "Añadir"}
         </Button>
       </div>
+      <p className="text-xs text-muted">
+        Si ya tiene cuenta en MemorIAble, le llegará una invitación para aceptar. Si no, le creamos la cuenta y le
+        mandamos un enlace para elegir contraseña.
+      </p>
       {state?.error && (
         <p role="alert" className="text-xs text-danger">
           {state.error}
         </p>
       )}
-      {state?.sent && <p className="text-xs text-accent-strong">Invitación enviada — aparecerá como pendiente hasta que la acepte.</p>}
+      {state?.sent && !state.accountCreated && (
+        <p className="text-xs text-accent-strong">Invitación enviada — aparecerá como pendiente hasta que la acepte.</p>
+      )}
+      {state?.sent && state.accountCreated && (
+        <p className="text-xs text-accent-strong">
+          Cuenta creada — le hemos mandado un correo para que elija su contraseña y active la cuenta.
+        </p>
+      )}
     </form>
   );
 }

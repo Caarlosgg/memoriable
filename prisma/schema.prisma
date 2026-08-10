@@ -60,6 +60,15 @@ model User {
   /// nacen ya verificadas (el id_token de Google ya certifica el email).
   emailVerified Boolean @default(false)
 
+  /// Cuenta corporativa creada por un owner/admin al añadir a alguien a un
+  /// equipo por email sin que esa persona tuviera cuenta todavía (ver
+  /// equipo/actions.ts) — true hasta que activa la cuenta eligiendo
+  /// contraseña vía /restablecer-password. Necesario aparte de
+  /// `passwordHash: null`: ese mismo valor también lo tiene una cuenta de
+  /// Google normal (nunca necesita contraseña), así que por sí solo no
+  /// basta para distinguir "pendiente de activar" de "no le hace falta".
+  accountPending Boolean @default(false)
+
   /// Chat de Telegram vinculado a esta cuenta (null hasta que se vincula
   /// con /vincular). Único: un chat solo puede pertenecer a una cuenta.
   telegramChatId    BigInt?   @unique
@@ -194,6 +203,11 @@ model PasswordResetToken {
 enum NotificationType {
   ASSIGNED_MESSAGE
   ASSIGNED_EVENTO
+  /// Te han añadido a un equipo (cuenta nueva creada para ti, o invitación
+  /// pendiente sobre una cuenta ya existente).
+  ADDED_TO_TEAM
+  /// Un owner/admin te ha cambiado el rol dentro de un equipo.
+  ROLE_CHANGED
 }
 
 /// Notificación en la app (Fase Equipo). Sin canal externo (email/push)
