@@ -13,6 +13,7 @@ import { searchAcrossAll, type QuickSearchResult } from "@/lib/quickSearch";
 import { getActiveWorkspace, isActiveMember } from "@/lib/workspace";
 import { createNotification } from "@/lib/notifications";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
+import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } from "@/lib/campoTemplates";
 
 /**
  * Mueve una tarjeta del tablero a otra columna. `hecho` se mantiene
@@ -271,5 +272,53 @@ export async function capture(_prev: CaptureState, formData: FormData): Promise<
   } catch (err) {
     console.error("Error al capturar mensaje desde el dashboard:", err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Plantilla de campos personalizados guardada para esta categoría en el
+ * workspace activo (ver campoTemplates.ts) — array vacío si no hay
+ * ninguna guardada todavía, nunca lanza. Pensada para el botón "Aplicar
+ * plantilla" de MessageDetailDialog.
+ */
+export async function getCampoTemplate(categoria: string): Promise<CampoTemplateField[]> {
+  const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
+  const template = await prisma.campoTemplate.findUnique({
+    where: { workspaceId_categoria: { workspaceId, categoria } },
+    select: { campos: true },
+  });
+  return template ? campoTemplateToArray(template.campos) : [];
+}
+
+export interface SaveCampoTemplateResult {
+  error?: string;
+}
+
+/**
+ * Guarda (o reemplaza entera) la plantilla de campos de esta categoría en
+ * el workspace activo — solo nombre + tipo, nunca el valor concreto de la
+ * nota desde la que se guardó. Botón "Guardar como plantilla".
+ */
+export async function saveCampoTemplate(
+  categoria: string,
+  campos: CampoTemplateField[],
+): Promise<SaveCampoTemplateResult> {
+  const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
+  const campoJson = campoTemplateToJson(campos);
+  if (Object.keys(campoJson).length === 0) return { error: "Añade al menos un campo antes de guardar la plantilla." };
+
+  try {
+    await prisma.campoTemplate.upsert({
+      where: { workspaceId_categoria: { workspaceId, categoria } },
+      create: { workspaceId, categoria, campos: campoJson },
+      update: { campos: campoJson },
+    });
+    return {};
+  } catch (err) {
+    console.error("Error al guardar la plantilla de campos:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido guardar la plantilla. Inténtalo de nuevo." };
   }
 }

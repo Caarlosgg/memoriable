@@ -118,14 +118,41 @@ model Workspace {
   personal  Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  memberships Membership[]
-  messages    Message[]
-  eventos     Evento[]
+  memberships     Membership[]
+  messages        Message[]
+  eventos         Evento[]
+  campoTemplates  CampoTemplate[]
   /// Reverso de User.personalWorkspaceId — como máximo un usuario por
   /// workspace personal (impuesto por el @unique del otro lado).
   personalOf  User?    @relation("PersonalWorkspace")
 
   @@map("workspaces")
+}
+
+/// Plantilla reutilizable de campos personalizados por categoría dentro de
+/// un workspace (uso empresarial: toda nota "Cliente" nace ya con
+/// Empresa/Presupuesto/Contacto en vez de tener que añadirlos a mano cada
+/// vez) — ver dashboard/src/lib/campoTemplates.ts para el shape de
+/// `campos` y MessageDetailDialog.tsx para los botones "Aplicar
+/// plantilla"/"Guardar como plantilla". Como mucho una plantilla por
+/// categoría y workspace (@@unique) — guardar de nuevo sobre la misma
+/// categoría la reemplaza entera, no la mezcla.
+model CampoTemplate {
+  id        String   @id @default(cuid())
+  categoria String
+  /// `Record<nombre, { tipo }>` — mismos tipos que `CampoExtraTipo`
+  /// (texto/numero/fecha), pero SIN `valor`: esto es la definición
+  /// reutilizable, no un dato concreto de una nota.
+  campos    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, categoria])
+  @@index([workspaceId])
+  @@map("campo_templates")
 }
 
 /// Rol dentro de un workspace de equipo. En esta fase SOLO gobierna la

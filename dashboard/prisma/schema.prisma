@@ -83,12 +83,29 @@ model Workspace {
   personal  Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  memberships Membership[]
-  messages    Message[]
-  eventos     Evento[]
-  personalOf  User?    @relation("PersonalWorkspace")
+  memberships    Membership[]
+  messages       Message[]
+  eventos        Evento[]
+  campoTemplates CampoTemplate[]
+  personalOf     User?    @relation("PersonalWorkspace")
 
   @@map("workspaces")
+}
+
+/// Ver ../../prisma/schema.prisma: plantilla de campos personalizados por categoría (Fase Equipo).
+model CampoTemplate {
+  id        String   @id @default(cuid())
+  categoria String
+  campos    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, categoria])
+  @@index([workspaceId])
+  @@map("campo_templates")
 }
 
 /// Ver ../../prisma/schema.prisma: rol dentro de un workspace de equipo (Fase Equipo).

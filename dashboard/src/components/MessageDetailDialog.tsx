@@ -6,7 +6,7 @@ import { Pencil, Clock, Tag, X, Plus, Trash2, ImagePlus, ListChecks } from "luci
 import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION } from "@/lib/categories";
 import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
-import { updateMessage, deleteMessage, uploadImage } from "@/app/(dashboard)/actions";
+import { updateMessage, deleteMessage, uploadImage, getCampoTemplate, saveCampoTemplate } from "@/app/(dashboard)/actions";
 import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtraJson } from "@/lib/camposExtra";
 import { checklistToArray, checklistToJson, type ChecklistItem } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
@@ -101,6 +101,8 @@ export function MessageDetailDialog({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [templateMessage, setTemplateMessage] = useState<string | null>(null);
+  const [templatePending, startTemplatePending] = useTransition();
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -113,6 +115,7 @@ export function MessageDetailDialog({
       setEditing(defaultEditing);
       setError(null);
       setUploadError(null);
+      setTemplateMessage(null);
     }
   }
 
@@ -122,6 +125,7 @@ export function MessageDetailDialog({
     setCamposExtraRows(camposExtraToArray(message.camposExtra));
     setError(null);
     setUploadError(null);
+    setTemplateMessage(null);
     setEditing(false);
   }
 
@@ -171,6 +175,41 @@ export function MessageDetailDialog({
 
   function addCampoExtra() {
     setCamposExtraRows((rows) => [...rows, { nombre: "", tipo: "texto", valor: "" }]);
+  }
+
+  /**
+   * Trae la plantilla guardada para la categoría actual y añade los campos
+   * que falten (por nombre) sin tocar los que ya hay rellenos — aplicar dos
+   * veces, o sobre una nota que ya tiene alguno de esos campos, no duplica
+   * ni pisa nada.
+   */
+  function handleApplyTemplate() {
+    setTemplateMessage(null);
+    startTemplatePending(async () => {
+      const template = await getCampoTemplate(fields.categoria);
+      if (template.length === 0) {
+        setTemplateMessage("No hay ninguna plantilla guardada para esta categoría todavía.");
+        return;
+      }
+      setCamposExtraRows((rows) => {
+        const yaPresentes = new Set(rows.map((r) => r.nombre));
+        const nuevas = template.filter((t) => !yaPresentes.has(t.nombre)).map((t) => ({ ...t, valor: "" }));
+        return [...rows, ...nuevas];
+      });
+      setTemplateMessage("Plantilla aplicada.");
+    });
+  }
+
+  /** Guarda los nombres/tipos de los campos actuales como plantilla reutilizable de esta categoría (nunca el valor). */
+  function handleSaveTemplate() {
+    setTemplateMessage(null);
+    startTemplatePending(async () => {
+      const result = await saveCampoTemplate(
+        fields.categoria,
+        camposExtraRows.map(({ nombre, tipo }) => ({ nombre, tipo })),
+      );
+      setTemplateMessage(result.error ?? "Plantilla guardada para esta categoría.");
+    });
   }
 
   /** El array ES la forma de guardado (a diferencia de camposExtra, que es un diccionario) — se edita `fields.checklist` directamente. */
@@ -461,9 +500,24 @@ export function MessageDetailDialog({
                   </button>
                 </div>
               ))}
-              <Button type="button" variant="secondary" size="sm" onClick={addCampoExtra} className="self-start">
-                <Plus aria-hidden size={14} /> Añadir campo
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={addCampoExtra}>
+                  <Plus aria-hidden size={14} /> Añadir campo
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={handleApplyTemplate} disabled={templatePending}>
+                  Aplicar plantilla
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleSaveTemplate}
+                  disabled={templatePending || camposExtraRows.length === 0}
+                >
+                  Guardar como plantilla
+                </Button>
+              </div>
+              {templateMessage && <p className="text-xs text-muted">{templateMessage}</p>}
             </div>
 
             <div className="flex flex-col gap-2">
