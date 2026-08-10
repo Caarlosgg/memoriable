@@ -40,6 +40,7 @@ const userFindUnique = vi.fn();
 const userCreate = vi.fn();
 const workspaceCreate = vi.fn();
 const workspaceFindUnique = vi.fn();
+const workspaceUpdate = vi.fn();
 const messageUpdateMany = vi.fn();
 const eventoUpdateMany = vi.fn();
 const transaction = vi.fn();
@@ -61,6 +62,7 @@ vi.mock("@/lib/prisma", () => ({
     workspace: {
       create: (...args: unknown[]) => workspaceCreate(...args),
       findUnique: (...args: unknown[]) => workspaceFindUnique(...args),
+      update: (...args: unknown[]) => workspaceUpdate(...args),
     },
     message: { updateMany: (...args: unknown[]) => messageUpdateMany(...args) },
     evento: { updateMany: (...args: unknown[]) => eventoUpdateMany(...args) },
@@ -91,6 +93,7 @@ beforeEach(() => {
   workspaceCreate.mockReset();
   workspaceFindUnique.mockReset();
   workspaceFindUnique.mockResolvedValue({ nombre: "Equipo de prueba" });
+  workspaceUpdate.mockReset();
   messageUpdateMany.mockReset();
   eventoUpdateMany.mockReset();
   transaction.mockReset();
@@ -137,6 +140,47 @@ describe("createWorkspace", () => {
     expect(membershipCreate).toHaveBeenCalledWith({
       data: { userId: "u1", workspaceId: "ws-nuevo", role: "OWNER", status: "ACTIVE" },
     });
+    expect(revalidatePath).toHaveBeenCalledWith("/equipo");
+  });
+});
+
+describe("renameWorkspace", () => {
+  it("rechaza un nombre vacío", async () => {
+    const { renameWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await renameWorkspace("ws1", "   ");
+    expect(result.error).toMatch(/nombre/);
+    expect(membershipFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("rechaza un nombre demasiado largo", async () => {
+    const { renameWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await renameWorkspace("ws1", "a".repeat(61));
+    expect(result.error).toMatch(/no puede tener más de 60/);
+  });
+
+  it("rechaza si quien pide no es OWNER/ADMIN activo", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "MEMBER", status: "ACTIVE" });
+    const { renameWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await renameWorkspace("ws1", "Nuevo nombre");
+    expect(result.error).toMatch(/permiso/);
+    expect(workspaceFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("rechaza renombrar un espacio personal", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "OWNER", status: "ACTIVE" });
+    workspaceFindUnique.mockResolvedValue({ personal: true });
+    const { renameWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await renameWorkspace("ws-personal", "Nuevo nombre");
+    expect(result.error).toMatch(/No se ha encontrado/);
+  });
+
+  it("renombra el equipo si quien pide es OWNER/ADMIN", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "ADMIN", status: "ACTIVE" });
+    workspaceFindUnique.mockResolvedValue({ personal: false });
+    const { renameWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await renameWorkspace("ws1", "  Marketing Global  ");
+    expect(result.error).toBeUndefined();
+    expect(workspaceCreate).not.toHaveBeenCalled();
     expect(revalidatePath).toHaveBeenCalledWith("/equipo");
   });
 });

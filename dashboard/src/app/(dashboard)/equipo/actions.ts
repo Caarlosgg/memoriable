@@ -106,6 +106,41 @@ export async function createWorkspace(nombre: string): Promise<CreateWorkspaceRe
   }
 }
 
+export interface RenameWorkspaceResult {
+  error?: string;
+}
+
+/** Renombra un equipo — solo owner/admin. El espacio personal no se puede renombrar desde aquí (siempre se llama "Personal"). */
+export async function renameWorkspace(workspaceId: string, nombre: string): Promise<RenameWorkspaceResult> {
+  const userId = await verifySession();
+  const trimmed = nombre.trim();
+  if (!trimmed) return { error: "Escribe un nombre para el equipo." };
+  if (trimmed.length > MAX_NOMBRE_LENGTH) {
+    return { error: `El nombre no puede tener más de ${MAX_NOMBRE_LENGTH} caracteres.` };
+  }
+
+  try {
+    const requester = await prisma.membership.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId } },
+    });
+    if (!requester || requester.status !== "ACTIVE" || (requester.role !== "OWNER" && requester.role !== "ADMIN")) {
+      return { error: "No tienes permiso para renombrar este equipo." };
+    }
+
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { personal: true } });
+    if (!workspace || workspace.personal) return { error: "No se ha encontrado ese equipo." };
+
+    await prisma.workspace.update({ where: { id: workspaceId }, data: { nombre: trimmed } });
+    revalidatePath("/equipo");
+    revalidatePath("/", "layout");
+    return {};
+  } catch (err) {
+    console.error("Error al renombrar el equipo:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido renombrar. Inténtalo de nuevo." };
+  }
+}
+
 export interface AddMemberResult {
   error?: string;
   sent?: boolean;

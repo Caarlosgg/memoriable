@@ -18,7 +18,8 @@ export default function RegisterPage() {
           Crea tu cuenta
         </h1>
         <p className="mb-6 text-sm text-muted">
-          Tus notas son privadas: solo tú puedes verlas.
+          Empiezas en tu espacio privado — solo tú lo ves. Más adelante puedes crear un equipo cuando lo
+          necesites.
         </p>
         {isGoogleOAuthConfigured() && (
           <>

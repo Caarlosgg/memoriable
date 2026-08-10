@@ -30,7 +30,7 @@ export default async function LoginPage({
           Tu memoria, siempre a mano
         </h1>
         <p className="mb-6 text-sm text-muted">
-          Entra con tu cuenta para ver tus notas.
+          Notas, tareas y calendario que se organizan solos — a tu manera, o compartidos con tu equipo.
         </p>
         {oauthError && (
           <p role="alert" className="mb-4 text-sm text-danger">
