@@ -416,6 +416,67 @@ describe("removeMember", () => {
   });
 });
 
+describe("leaveWorkspace", () => {
+  it("devuelve error si no pertenece (o ya no está activo) en ese workspace", async () => {
+    membershipFindUnique.mockResolvedValue(null);
+    const { leaveWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await leaveWorkspace("ws-ajeno");
+    expect(result.error).toMatch(/No perteneces/);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("rechaza salir del espacio personal", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "OWNER", status: "ACTIVE", workspace: { personal: true } });
+    const { leaveWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await leaveWorkspace("ws-personal");
+    expect(result.error).toMatch(/espacio personal/);
+  });
+
+  it("rechaza salir si es el único OWNER activo del equipo", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "OWNER", status: "ACTIVE", workspace: { personal: false } });
+    membershipCount.mockResolvedValue(0);
+    const { leaveWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await leaveWorkspace("ws1");
+    expect(result.error).toMatch(/único propietario/);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("permite salir si hay otro OWNER activo", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "OWNER", status: "ACTIVE", workspace: { personal: false } });
+    membershipCount.mockResolvedValue(1);
+    const { leaveWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await leaveWorkspace("ws1");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("un MEMBER normal puede salir sin comprobar propiedad", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "MEMBER", status: "ACTIVE", workspace: { personal: false } });
+    const { leaveWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await leaveWorkspace("ws1");
+    expect(result.error).toBeUndefined();
+    expect(membershipCount).not.toHaveBeenCalled();
+  });
+
+  it("borra la membership propia y libera sus asignaciones", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "MEMBER", status: "ACTIVE", workspace: { personal: false } });
+    transaction.mockResolvedValue(undefined);
+    const { leaveWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await leaveWorkspace("ws1");
+    expect(result.error).toBeUndefined();
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(membershipDelete).toHaveBeenCalledWith({ where: { userId_workspaceId: { userId: "u1", workspaceId: "ws1" } } });
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws1", assigneeId: "u1" },
+      data: { assigneeId: null },
+    });
+    expect(eventoUpdateMany).toHaveBeenCalledWith({
+      where: { workspaceId: "ws1", assigneeId: "u1" },
+      data: { assigneeId: null },
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+});
+
 describe("acceptMembership / declineMembership", () => {
   it("acceptMembership pasa la propia membership PENDING a ACTIVE", async () => {
     membershipUpdateMany.mockResolvedValue({ count: 1 });

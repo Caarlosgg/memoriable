@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Trash2, LogOut } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
-import { changeRole, removeMember, type WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import { changeRole, removeMember, leaveWorkspace, type WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 
 const ROLE_LABELS: Record<string, string> = { OWNER: "Propietario", ADMIN: "Administrador", MEMBER: "Miembro" };
 
@@ -45,6 +45,19 @@ export function MemberRow({
     setError(null);
     startTransition(async () => {
       const result = await removeMember(workspaceId, member.userId);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  function handleLeave() {
+    if (!confirm("¿Salir de este equipo? Dejarás de ver sus notas, tablero y calendario.")) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await leaveWorkspace(workspaceId);
       if (result.error) {
         setError(result.error);
         return;
@@ -97,6 +110,19 @@ export function MemberRow({
             className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-danger-soft hover:text-danger focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
           >
             <Trash2 aria-hidden size={14} />
+          </button>
+        )}
+
+        {member.isSelf && (
+          <button
+            type="button"
+            onClick={handleLeave}
+            disabled={pending}
+            aria-label="Salir de este equipo"
+            title="Salir del equipo"
+            className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-danger-soft hover:text-danger focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          >
+            <LogOut aria-hidden size={14} />
           </button>
         )}
       </div>

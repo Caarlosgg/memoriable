@@ -295,12 +295,11 @@ export async function changeRole(
 }
 
 /**
- * Saca a alguien del equipo. No te puedes quitar a ti mismo por aquí
- * (evita que un owner/admin se quede fuera sin querer — "salir del
- * equipo" por decisión propia es una acción futura aparte), ni al último
- * OWNER (el equipo se quedaría sin nadie que pueda administrarlo).
- * Limpia también cualquier tarea/evento que tuviera asignado en este
- * workspace — quedaría asignado a alguien que ya no puede verlo.
+ * Saca a alguien del equipo. No te puedes quitar a ti mismo por aquí (para
+ * eso está `leaveWorkspace`, con su propio guardado), ni al último OWNER
+ * (el equipo se quedaría sin nadie que pueda administrarlo). Limpia
+ * también cualquier tarea/evento que tuviera asignado en este workspace —
+ * quedaría asignado a alguien que ya no puede verlo.
  */
 export async function removeMember(workspaceId: string, targetUserId: string): Promise<MembershipActionResult> {
   const userId = await verifySession();
@@ -337,6 +336,48 @@ export async function removeMember(workspaceId: string, targetUserId: string): P
     console.error("Error al quitar del equipo:", err);
     Sentry.captureException(err);
     return { error: "No se ha podido quitar. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Salir de un equipo por decisión propia — el "otro lado" de `removeMember`
+ * (que deliberadamente no te deja quitarte a ti mismo). Mismo guardado que
+ * ahí: no puedes salir si eres el único OWNER activo (transfiere la
+ * propiedad a otra persona primero, o elimina el equipo). No se puede usar
+ * sobre el workspace personal — ahí no hay "equipo" del que salir.
+ */
+export async function leaveWorkspace(workspaceId: string): Promise<MembershipActionResult> {
+  const userId = await verifySession();
+
+  try {
+    const membership = await prisma.membership.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId } },
+      select: { role: true, status: true, workspace: { select: { personal: true } } },
+    });
+    if (!membership || membership.status !== "ACTIVE") return { error: "No perteneces a este equipo." };
+    if (membership.workspace.personal) return { error: "No puedes salir de tu espacio personal." };
+
+    if (membership.role === "OWNER") {
+      const otherOwners = await prisma.membership.count({
+        where: { workspaceId, role: "OWNER", status: "ACTIVE", userId: { not: userId } },
+      });
+      if (otherOwners === 0) {
+        return { error: "Eres el único propietario de este equipo. Asigna otro propietario o elimina el equipo antes de salir." };
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.membership.delete({ where: { userId_workspaceId: { userId, workspaceId } } }),
+      prisma.message.updateMany({ where: { workspaceId, assigneeId: userId }, data: { assigneeId: null } }),
+      prisma.evento.updateMany({ where: { workspaceId, assigneeId: userId }, data: { assigneeId: null } }),
+    ]);
+
+    revalidatePath("/", "layout");
+    return {};
+  } catch (err) {
+    console.error("Error al salir del equipo:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido salir del equipo. Inténtalo de nuevo." };
   }
 }
 
