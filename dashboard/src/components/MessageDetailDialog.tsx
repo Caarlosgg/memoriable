@@ -3,13 +3,15 @@
 import { useRef, useState, useTransition, type ReactNode, type ClipboardEvent, type ChangeEvent } from "react";
 import type { Message } from "@prisma/client";
 import { Pencil, Clock, Tag, X, Plus, Trash2, ImagePlus, ListChecks } from "lucide-react";
-import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION } from "@/lib/categories";
+import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION, ACTIONABLE_CATEGORIES } from "@/lib/categories";
 import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
 import { updateMessage, deleteMessage, uploadImage, getCampoTemplate, saveCampoTemplate } from "@/app/(dashboard)/actions";
 import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtraJson } from "@/lib/camposExtra";
 import { checklistToArray, checklistToJson, type ChecklistItem } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
+import { AssigneeControl } from "./AssigneeControl";
+import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -46,6 +48,20 @@ function fieldsFrom(message: Message): EditableFields {
   };
 }
 
+/**
+ * Estado y prioridad son conceptos de tablero (Fase C): solo tarea/
+ * recordatorio aparecen en `/pendientes` (ver `getBoardGroups` en
+ * lib/data.ts, que ya filtra por esto en la consulta) — para el resto de
+ * categorías esos dos campos no significan nada en ningún sitio de la
+ * app, así que mostrarlos en el modal es puro ruido. Se usa para decidir
+ * qué mostrar tanto en vista como en edición, siempre sobre la categoría
+ * ACTUAL de `fields` (reactivo: cambiar la categoría en el propio select
+ * de edición oculta/muestra estos campos al vuelo).
+ */
+function esAccionable(categoria: string): boolean {
+  return (ACTIONABLE_CATEGORIES as readonly string[]).includes(categoria);
+}
+
 function parseEtiquetas(texto: string): string[] {
   return texto
     .split(",")
@@ -63,6 +79,8 @@ export function MessageDetailDialog({
   message,
   children,
   defaultEditing = false,
+  members,
+  onAssigneeChange,
   onSaved,
   onDeleted,
   onUndoDelete,
@@ -72,6 +90,10 @@ export function MessageDetailDialog({
   children: ReactNode;
   /** Abre directamente en modo edición (usado desde el tablero, Fase C). */
   defaultEditing?: boolean;
+  /** Miembros del workspace activo, para poder asignar desde el propio modal — ausente u vacío en modo personal (no hay a quién asignar). */
+  members?: WorkspaceMemberInfo[];
+  /** Ausente si `members` no se pasa — sin él, el control de asignación no se pinta (no tiene sentido mostrarlo si no se puede cambiar nada). */
+  onAssigneeChange?: (id: string, assigneeId: string | null) => void;
   /**
    * Se llama tras guardar con éxito, con los campos editados. El tablero
    * (Fase C) lo usa para actualizar su estado local al vuelo — sin esto la
@@ -299,9 +321,18 @@ export function MessageDetailDialog({
 
         {!editing ? (
           <div className="flex flex-col gap-4">
-            <p className={`flex items-center gap-1.5 text-xs font-semibold ${color}`}>
-              <CategoryIcon aria-hidden size={14} /> {categoryLabel}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className={`flex items-center gap-1.5 text-xs font-semibold ${color}`}>
+                <CategoryIcon aria-hidden size={14} /> {categoryLabel}
+              </p>
+              {members && members.length > 0 && onAssigneeChange && (
+                <AssigneeControl
+                  assigneeId={message.assigneeId}
+                  members={members}
+                  onChange={(assigneeId) => onAssigneeChange(message.id, assigneeId)}
+                />
+              )}
+            </div>
             <p className="text-sm whitespace-pre-wrap text-ink">{message.contenido}</p>
             {message.imagenes.length > 0 && (
               <div className="flex flex-wrap gap-2">
@@ -360,8 +391,12 @@ export function MessageDetailDialog({
               <span className="flex items-center gap-1">
                 <Clock aria-hidden size={12} /> {formatDate(message.fecha)}
               </span>
-              <span>{ESTADO_PRESENTATION[message.estado].label}</span>
-              <span>Prioridad {PRIORIDAD_PRESENTATION[message.prioridad].label}</span>
+              {esAccionable(message.categoria) && (
+                <>
+                  <span>{ESTADO_PRESENTATION[message.estado].label}</span>
+                  <span>Prioridad {PRIORIDAD_PRESENTATION[message.prioridad].label}</span>
+                </>
+              )}
             </div>
             <DialogFooter className="mt-0 justify-between sm:justify-between">
               <Button type="button" variant="outline" onClick={handleDelete} className="text-danger">
@@ -374,6 +409,16 @@ export function MessageDetailDialog({
           </div>
         ) : (
           <div className="flex flex-col gap-4" onPaste={handlePaste}>
+            {members && members.length > 0 && onAssigneeChange && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-ink">Asignado a</span>
+                <AssigneeControl
+                  assigneeId={message.assigneeId}
+                  members={members}
+                  onChange={(assigneeId) => onAssigneeChange(message.id, assigneeId)}
+                />
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <label htmlFor="detalle-resumen" className="text-sm font-medium text-ink">
                 Resumen
@@ -395,7 +440,7 @@ export function MessageDetailDialog({
                 onChange={(e) => setFields((f) => ({ ...f, contenido: e.target.value }))}
               />
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className={cn("grid grid-cols-1 gap-3", esAccionable(fields.categoria) && "sm:grid-cols-3")}>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="detalle-categoria" className="text-sm font-medium text-ink">
                   Categoría
@@ -413,41 +458,51 @@ export function MessageDetailDialog({
                   ))}
                 </select>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="detalle-estado" className="text-sm font-medium text-ink">
-                  Estado
-                </label>
-                <select
-                  id="detalle-estado"
-                  className={SELECT_CLASSNAME}
-                  value={fields.estado}
-                  onChange={(e) => setFields((f) => ({ ...f, estado: e.target.value as Message["estado"] }))}
-                >
-                  {ESTADOS_TABLERO.map((estado) => (
-                    <option key={estado} value={estado}>
-                      {ESTADO_PRESENTATION[estado].label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="detalle-prioridad" className="text-sm font-medium text-ink">
-                  Prioridad
-                </label>
-                <select
-                  id="detalle-prioridad"
-                  className={SELECT_CLASSNAME}
-                  value={fields.prioridad}
-                  onChange={(e) => setFields((f) => ({ ...f, prioridad: e.target.value as Message["prioridad"] }))}
-                >
-                  {PRIORIDADES.map((p) => (
-                    <option key={p} value={p}>
-                      {PRIORIDAD_PRESENTATION[p].label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {esAccionable(fields.categoria) && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="detalle-estado" className="text-sm font-medium text-ink">
+                      Estado
+                    </label>
+                    <select
+                      id="detalle-estado"
+                      className={SELECT_CLASSNAME}
+                      value={fields.estado}
+                      onChange={(e) => setFields((f) => ({ ...f, estado: e.target.value as Message["estado"] }))}
+                    >
+                      {ESTADOS_TABLERO.map((estado) => (
+                        <option key={estado} value={estado}>
+                          {ESTADO_PRESENTATION[estado].label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="detalle-prioridad" className="text-sm font-medium text-ink">
+                      Prioridad
+                    </label>
+                    <select
+                      id="detalle-prioridad"
+                      className={SELECT_CLASSNAME}
+                      value={fields.prioridad}
+                      onChange={(e) => setFields((f) => ({ ...f, prioridad: e.target.value as Message["prioridad"] }))}
+                    >
+                      {PRIORIDADES.map((p) => (
+                        <option key={p} value={p}>
+                          {PRIORIDAD_PRESENTATION[p].label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
+            {!esAccionable(fields.categoria) && (
+              <p className="-mt-2 text-xs text-muted">
+                Esta categoría no aparece en el Tablero, así que no tiene estado ni prioridad — cámbiala a Tarea o
+                Recordatorio si quieres que sí aparezca.
+              </p>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label htmlFor="detalle-etiquetas" className="text-sm font-medium text-ink">

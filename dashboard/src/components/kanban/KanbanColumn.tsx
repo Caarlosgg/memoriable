@@ -106,6 +106,8 @@ function KanbanColumnImpl({
                 key={message.id}
                 message={message}
                 defaultEditing
+                members={members}
+                onAssigneeChange={onAssigneeChange}
                 onSaved={onSaved}
                 onDeleted={onDeleted}
                 onUndoDelete={onUndoDelete}
