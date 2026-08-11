@@ -4,9 +4,12 @@ vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
 
 const isActiveMember = vi.fn();
+const getActiveWorkspace = vi.fn(async () => ({ workspaceId: "ws1", isPersonal: false, role: "OWNER" }));
 vi.mock("@/lib/workspace", () => ({
-  getActiveWorkspace: async () => ({ workspaceId: "ws1", isPersonal: false, role: "OWNER" }),
+  getActiveWorkspace: () => getActiveWorkspace(),
   isActiveMember: (...args: unknown[]) => isActiveMember(...args),
+  canWrite: (role: string) => role !== "VIEWER",
+  READONLY_ROLE_MESSAGE: "Tu rol en este equipo es de solo lectura — no puedes hacer cambios.",
 }));
 
 const messageUpdateMany = vi.fn();
@@ -36,6 +39,8 @@ vi.mock("next/cache", () => ({ revalidatePath: (path: string) => revalidatePath(
 
 beforeEach(() => {
   isActiveMember.mockReset();
+  getActiveWorkspace.mockReset();
+  getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "OWNER" });
   messageUpdateMany.mockReset();
   messageFindUnique.mockReset();
   messageFindUnique.mockResolvedValue({ resumen: "Llamar al fontanero" });
@@ -47,6 +52,15 @@ beforeEach(() => {
 });
 
 describe("assignMessage", () => {
+  it("rechaza asignar con rol VIEWER, sin comprobar membership ni tocar la BD", async () => {
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "VIEWER" });
+    const { assignMessage } = await import("../src/app/(dashboard)/actions");
+    const result = await assignMessage("m1", "u2");
+    expect(result.error).toMatch(/solo lectura/);
+    expect(isActiveMember).not.toHaveBeenCalled();
+    expect(messageUpdateMany).not.toHaveBeenCalled();
+  });
+
   it("rechaza asignar a alguien que no es miembro activo del workspace", async () => {
     isActiveMember.mockResolvedValue(false);
     const { assignMessage } = await import("../src/app/(dashboard)/actions");
@@ -116,6 +130,15 @@ describe("assignMessage", () => {
 });
 
 describe("assignEvento", () => {
+  it("rechaza asignar con rol VIEWER, sin comprobar membership ni tocar la BD", async () => {
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "VIEWER" });
+    const { assignEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    const result = await assignEvento("e1", "u2");
+    expect(result.error).toMatch(/solo lectura/);
+    expect(isActiveMember).not.toHaveBeenCalled();
+    expect(eventoUpdateMany).not.toHaveBeenCalled();
+  });
+
   it("rechaza asignar a alguien que no es miembro activo del workspace", async () => {
     isActiveMember.mockResolvedValue(false);
     const { assignEvento } = await import("../src/app/(dashboard)/calendario/actions");

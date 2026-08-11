@@ -10,7 +10,9 @@ import { ACTIONABLE_CATEGORIES } from "./categories";
 import { findSimilarMessages } from "./vectorSearch";
 import { getCuentasConSaldo } from "./ahorros";
 import { FRECUENCIAS, fechaRepeticion } from "./calendar";
+import { canWrite, READONLY_ROLE_MESSAGE } from "./workspace";
 import { prisma } from "./prisma";
+import type { WorkspaceRole } from "@prisma/client";
 
 /**
  * Normaliza texto para comparar por voz: minúsculas + sin tildes/diacríticos.
@@ -201,7 +203,13 @@ async function encontrarEvento(workspaceId: string, descripcion: string): Promis
  * al bundle — un `import type` se borra en compilación, así que no rompe
  * el límite server-only pese a venir del mismo módulo.
  */
-export function createAssistantTools(userId: string, workspaceId: string) {
+export function createAssistantTools(userId: string, workspaceId: string, role: WorkspaceRole) {
+  // Solo bloquea las 5 tools que escriben notas/eventos del workspace
+  // activo — registrarAhorro/consultarAhorros ignoran el rol a propósito
+  // (Ahorros es siempre personal, ver el comentario de arriba).
+  function requireWrite(): void {
+    if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
+  }
   return {
     crearNota: tool({
       description:
@@ -213,6 +221,7 @@ export function createAssistantTools(userId: string, workspaceId: string) {
           .describe("El texto de la nota/tarea/recordatorio tal como lo diría el usuario, listo para guardar y categorizar."),
       }),
       execute: async ({ contenido }) => {
+        requireWrite();
         let saved;
         try {
           saved = await captureMessage(userId, contenido, workspaceId);
@@ -257,6 +266,7 @@ export function createAssistantTools(userId: string, workspaceId: string) {
         ),
       }),
       execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes, repetir }) => {
+        requireWrite();
         const fecha = new Date(fechaInicio);
         if (Number.isNaN(fecha.getTime())) {
           throw new Error("No he entendido bien la fecha. ¿Puedes decírmela de otra forma (día y hora)?");
@@ -323,6 +333,7 @@ export function createAssistantTools(userId: string, workspaceId: string) {
           .describe("Descripción de la tarea tal como la menciona el usuario, para buscarla entre sus pendientes."),
       }),
       execute: async ({ descripcion }) => {
+        requireWrite();
         let tarea: Message | null;
         try {
           tarea = await encontrarTareaPendiente(workspaceId, descripcion);
@@ -453,6 +464,7 @@ export function createAssistantTools(userId: string, workspaceId: string) {
         ubicacionNueva: z.string().optional().describe("Nueva ubicación, solo si cambia."),
       }),
       execute: async ({ descripcion, tituloNuevo, fechaInicioNueva, fechaFinNueva, ubicacionNueva }) => {
+        requireWrite();
         let evento: Evento | null;
         try {
           evento = await encontrarEvento(workspaceId, descripcion);
@@ -521,6 +533,7 @@ export function createAssistantTools(userId: string, workspaceId: string) {
           .describe("Cómo describe el usuario el evento a borrar, para buscarlo entre los suyos."),
       }),
       execute: async ({ descripcion }) => {
+        requireWrite();
         let evento: Evento | null;
         try {
           evento = await encontrarEvento(workspaceId, descripcion);

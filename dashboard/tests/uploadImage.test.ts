@@ -3,6 +3,13 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
 
+const getActiveWorkspace = vi.fn(async () => ({ workspaceId: "ws1", isPersonal: true, role: "OWNER" }));
+vi.mock("@/lib/workspace", () => ({
+  getActiveWorkspace: () => getActiveWorkspace(),
+  canWrite: (role: string) => role !== "VIEWER",
+  READONLY_ROLE_MESSAGE: "Tu rol en este equipo es de solo lectura — no puedes hacer cambios.",
+}));
+
 const put = vi.fn();
 vi.mock("@vercel/blob", () => ({ put: (...args: unknown[]) => put(...args) }));
 
@@ -17,6 +24,18 @@ describe("uploadImage", () => {
   beforeEach(() => {
     put.mockReset();
     put.mockResolvedValue({ url: "https://blob.vercel-storage.com/notas/u1/abc.png" });
+    getActiveWorkspace.mockReset();
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
+  });
+
+  it("rechaza subir con rol VIEWER, sin llamar a Vercel Blob", async () => {
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "VIEWER" });
+    const fd = new FormData();
+    fd.set("file", fakeImageFile());
+    const { uploadImage } = await import("../src/app/(dashboard)/actions");
+    const result = await uploadImage(fd);
+    expect(result.error).toMatch(/solo lectura/);
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("rechaza si no hay fichero", async () => {

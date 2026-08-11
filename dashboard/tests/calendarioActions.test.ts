@@ -6,8 +6,11 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
+const getActiveWorkspace = vi.fn(async () => ({ workspaceId: "ws1", isPersonal: true, role: "OWNER" }));
 vi.mock("@/lib/workspace", () => ({
-  getActiveWorkspace: async () => ({ workspaceId: "ws1", isPersonal: true, role: "OWNER" }),
+  getActiveWorkspace: () => getActiveWorkspace(),
+  canWrite: (role: string) => role !== "VIEWER",
+  READONLY_ROLE_MESSAGE: "Tu rol en este equipo es de solo lectura — no puedes hacer cambios.",
 }));
 
 const eventoCreate = vi.fn();
@@ -37,6 +40,16 @@ describe("createEvento", () => {
     eventoCreate.mockReset();
     eventoCreate.mockResolvedValue({ id: "e1" });
     revalidatePath.mockReset();
+    getActiveWorkspace.mockReset();
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
+  });
+
+  it("rechaza crear con rol VIEWER, sin tocar la base de datos", async () => {
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "VIEWER" });
+    const { createEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    const result = await createEvento(baseInput);
+    expect(result.error).toMatch(/solo lectura/);
+    expect(eventoCreate).not.toHaveBeenCalled();
   });
 
   it("rechaza un título vacío (o solo espacios) sin tocar la base de datos", async () => {
@@ -123,6 +136,16 @@ describe("updateEvento", () => {
     eventoUpdateMany.mockReset();
     eventoUpdateMany.mockResolvedValue({ count: 1 });
     revalidatePath.mockReset();
+    getActiveWorkspace.mockReset();
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
+  });
+
+  it("rechaza editar con rol VIEWER, sin tocar la base de datos", async () => {
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "VIEWER" });
+    const { updateEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    const result = await updateEvento("e1", baseInput);
+    expect(result.error).toMatch(/solo lectura/);
+    expect(eventoUpdateMany).not.toHaveBeenCalled();
   });
 
   it("actualiza solo si el evento pertenece al workspace activo (updateMany con workspaceId en el where)", async () => {
@@ -150,6 +173,19 @@ describe("updateEvento", () => {
 });
 
 describe("deleteEvento", () => {
+  beforeEach(() => {
+    getActiveWorkspace.mockReset();
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
+  });
+
+  it("rechaza borrar con rol VIEWER, sin tocar la base de datos", async () => {
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "VIEWER" });
+    const { deleteEvento } = await import("../src/app/(dashboard)/calendario/actions");
+    const result = await deleteEvento("e1");
+    expect(result.error).toMatch(/solo lectura/);
+    expect(eventoDeleteMany).not.toHaveBeenCalled();
+  });
+
   it("borra solo si el evento pertenece al workspace activo (deleteMany con workspaceId en el where)", async () => {
     eventoDeleteMany.mockResolvedValue({ count: 1 });
     const { deleteEvento } = await import("../src/app/(dashboard)/calendario/actions");

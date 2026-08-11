@@ -178,7 +178,7 @@ export async function POST(req: Request) {
     model: groq("openai/gpt-oss-120b"),
     system: buildSystemPrompt(buildContextBlock(sources), new Date(), { workspaceLine, ambientBlock }),
     messages: await convertToModelMessages(messages),
-    tools: createAssistantTools(userId, workspaceId),
+    tools: createAssistantTools(userId, workspaceId, role),
     // Permite encadenar la llamada a `crearNota` con la respuesta de texto
     // que la confirma, en el mismo turno (si no, el SDK se pararía justo
     // después de ejecutar la tool sin generar el mensaje final).

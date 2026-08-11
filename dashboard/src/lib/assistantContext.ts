@@ -204,12 +204,13 @@ function madridUtcOffset(now: Date): string {
 }
 
 /** Rol de un miembro dentro de un workspace de equipo (ver lib/workspace.ts). */
-export type AssistantWorkspaceRole = "OWNER" | "ADMIN" | "MEMBER";
+export type AssistantWorkspaceRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 
 const ROLE_LABELS: Record<AssistantWorkspaceRole, string> = {
   OWNER: "propietario/a",
   ADMIN: "administrador/a",
   MEMBER: "miembro",
+  VIEWER: "solo lectura",
 };
 
 /**
@@ -218,7 +219,10 @@ const ROLE_LABELS: Record<AssistantWorkspaceRole, string> = {
  * que siempre, así que no hace falta aclarar nada (ver mismo criterio en
  * ActiveWorkspaceBadge.tsx). En modo equipo, decirle al modelo en qué
  * espacio y con qué rol actúa evita respuestas que suenan "genéricas"
- * cuando en realidad el usuario está gestionando un equipo concreto.
+ * cuando en realidad el usuario está gestionando un equipo concreto. Con
+ * rol VIEWER, además avisa explícitamente de que las tools de escritura
+ * (crearNota, crearEvento...) van a fallar — sin esto, el modelo las
+ * llamaría igual, vería el error, y podría sonar confuso o insistir.
  */
 export function buildWorkspaceContextLine(workspace: {
   isPersonal: boolean;
@@ -227,7 +231,9 @@ export function buildWorkspaceContextLine(workspace: {
 }): string {
   if (workspace.isPersonal || !workspace.nombre) return "";
   const roleLabel = workspace.role ? ROLE_LABELS[workspace.role] : "miembro";
-  return `El usuario está trabajando ahora en el espacio de equipo "${workspace.nombre}" — todo lo que hagas (crear notas, eventos, marcar tareas) se guarda ahí, visible para el resto del equipo, no en su espacio personal. Su rol en este equipo es ${roleLabel}.`;
+  const base = `El usuario está trabajando ahora en el espacio de equipo "${workspace.nombre}" — todo lo que hagas (crear notas, eventos, marcar tareas) se guarda ahí, visible para el resto del equipo, no en su espacio personal. Su rol en este equipo es ${roleLabel}.`;
+  if (workspace.role !== "VIEWER") return base;
+  return `${base} Su acceso es de SOLO LECTURA: no llames a crearNota, crearEvento, completarTarea, editarEvento ni borrarEvento en este espacio — fallarán. Puedes seguir respondiendo preguntas sobre lo que hay guardado con total normalidad.`;
 }
 
 /** Resumen de un evento próximo, ya formateado, para el bloque ambiental. */

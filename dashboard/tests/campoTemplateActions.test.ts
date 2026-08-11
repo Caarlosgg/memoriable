@@ -2,9 +2,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
+const getActiveWorkspace = vi.fn(async () => ({ workspaceId: "ws1", isPersonal: false, role: "ADMIN" }));
 vi.mock("@/lib/workspace", () => ({
-  getActiveWorkspace: async () => ({ workspaceId: "ws1", isPersonal: false, role: "ADMIN" }),
+  getActiveWorkspace: () => getActiveWorkspace(),
   isActiveMember: async () => true,
+  canWrite: (role: string) => role !== "VIEWER",
+  READONLY_ROLE_MESSAGE: "Tu rol en este equipo es de solo lectura — no puedes hacer cambios.",
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/pipeline", () => ({ captureMessage: vi.fn() }));
@@ -25,6 +28,8 @@ vi.mock("@/lib/prisma", () => ({
 beforeEach(() => {
   campoTemplateFindUnique.mockReset();
   campoTemplateUpsert.mockReset();
+  getActiveWorkspace.mockReset();
+  getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "ADMIN" });
 });
 
 describe("getCampoTemplate", () => {
@@ -51,6 +56,14 @@ describe("getCampoTemplate", () => {
 });
 
 describe("saveCampoTemplate", () => {
+  it("rechaza guardar con rol VIEWER, sin tocar la base de datos", async () => {
+    getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "VIEWER" });
+    const { saveCampoTemplate } = await import("../src/app/(dashboard)/actions");
+    const result = await saveCampoTemplate("tarea", [{ nombre: "Empresa", tipo: "texto" }]);
+    expect(result.error).toMatch(/solo lectura/);
+    expect(campoTemplateUpsert).not.toHaveBeenCalled();
+  });
+
   it("rechaza guardar una plantilla vacía", async () => {
     const { saveCampoTemplate } = await import("../src/app/(dashboard)/actions");
     const result = await saveCampoTemplate("tarea", []);

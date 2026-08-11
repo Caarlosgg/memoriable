@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, WorkspaceRole } from "@prisma/client";
 import { prisma } from "./prisma";
 
 export const ACTIVE_WORKSPACE_COOKIE = "active_workspace";
@@ -30,8 +30,24 @@ export async function createPersonalWorkspace(
 export interface ActiveWorkspace {
   workspaceId: string;
   isPersonal: boolean;
-  role: "OWNER" | "ADMIN" | "MEMBER";
+  role: WorkspaceRole;
 }
+
+/**
+ * Solo VIEWER no puede escribir — el resto de roles tienen los mismos
+ * permisos sobre el CONTENIDO del workspace (crear/editar/asignar/borrar
+ * notas y eventos); OWNER/ADMIN se diferencian únicamente en que además
+ * administran el propio workspace (ver equipo/actions.ts). Un único sitio
+ * para esta regla: cada Server Action de escritura la llama antes de
+ * tocar la base de datos, en vez de repetir `role !== "VIEWER"` suelto en
+ * cada una (y arriesgarse a que alguna se quede sin la comprobación).
+ */
+export function canWrite(role: WorkspaceRole): boolean {
+  return role !== "VIEWER";
+}
+
+/** Mensaje consistente para toda acción de escritura rechazada por rol de solo lectura. */
+export const READONLY_ROLE_MESSAGE = "Tu rol en este equipo es de solo lectura — no puedes hacer cambios.";
 
 /**
  * Workspace activo del usuario para esta petición: el que eligió con el

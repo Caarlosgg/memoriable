@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
 import { isCategory } from "@/lib/categories";
 import { searchAcrossAll, type QuickSearchResult } from "@/lib/quickSearch";
-import { getActiveWorkspace, isActiveMember } from "@/lib/workspace";
+import { getActiveWorkspace, isActiveMember, canWrite, READONLY_ROLE_MESSAGE } from "@/lib/workspace";
 import { createNotification } from "@/lib/notifications";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } from "@/lib/campoTemplates";
@@ -29,7 +29,8 @@ import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } fr
  */
 export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise<void> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   await prisma.message.updateMany({
     where: { id, workspaceId },
     data: { estado, hecho: estado === "HECHO" },
@@ -47,7 +48,8 @@ export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise
  */
 export async function moveTask(id: string, estado: EstadoTarea, orden: number): Promise<void> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   await prisma.message.updateMany({
     where: { id, workspaceId },
     data: { estado, hecho: estado === "HECHO", orden },
@@ -58,7 +60,8 @@ export async function moveTask(id: string, estado: EstadoTarea, orden: number): 
 /** Cambia la prioridad de una tarjeta del tablero. Mismo criterio de acceso que arriba. */
 export async function updateTaskPriority(id: string, prioridad: Prioridad): Promise<void> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   await prisma.message.updateMany({ where: { id, workspaceId }, data: { prioridad } });
   revalidatePath("/pendientes");
 }
@@ -77,7 +80,8 @@ export interface AssignTaskResult {
  */
 export async function assignMessage(id: string, assigneeId: string | null): Promise<AssignTaskResult> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
 
   if (assigneeId && !(await isActiveMember(assigneeId, workspaceId))) {
     return { error: "Esa persona no es miembro de este workspace." };
@@ -141,7 +145,8 @@ export interface UpdateMessageResult {
  */
 export async function updateMessage(id: string, input: UpdateMessageInput): Promise<UpdateMessageResult> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
 
   const resumen = input.resumen?.trim();
   const contenido = input.contenido?.trim();
@@ -195,6 +200,8 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "i
  */
 export async function uploadImage(formData: FormData): Promise<UploadImageResult> {
   const userId = await verifySession();
+  const { role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "No se ha recibido ningún fichero." };
@@ -228,7 +235,8 @@ export interface DeleteMessageResult {
  */
 export async function deleteMessage(id: string): Promise<DeleteMessageResult> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
   try {
     const result = await prisma.message.deleteMany({ where: { id, workspaceId } });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
@@ -260,7 +268,8 @@ export interface CaptureState {
  */
 export async function capture(_prev: CaptureState, formData: FormData): Promise<CaptureState> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
 
   const contenido = String(formData.get("contenido") ?? "").trim();
   if (contenido === "") return { error: "Escribe algo antes de guardar." };
@@ -305,7 +314,8 @@ export async function saveCampoTemplate(
   campos: CampoTemplateField[],
 ): Promise<SaveCampoTemplateResult> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
   const campoJson = campoTemplateToJson(campos);
   if (Object.keys(campoJson).length === 0) return { error: "Añade al menos un campo antes de guardar la plantilla." };
 

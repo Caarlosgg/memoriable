@@ -184,6 +184,16 @@ describe("buildWorkspaceContextLine", () => {
     expect(buildWorkspaceContextLine({ isPersonal: false, nombre: "X", role: "OWNER" })).toContain("propietario/a");
     expect(buildWorkspaceContextLine({ isPersonal: false, nombre: "X", role: "MEMBER" })).toContain("miembro");
   });
+
+  it("con rol VIEWER, avisa explícitamente de que las tools de escritura van a fallar", () => {
+    const line = buildWorkspaceContextLine({ isPersonal: false, nombre: "Marketing", role: "VIEWER" });
+    expect(line).toContain("SOLO LECTURA");
+    expect(line).toContain("crearNota");
+    expect(line).toContain("crearEvento");
+    expect(line).toContain("completarTarea");
+    expect(line).toContain("editarEvento");
+    expect(line).toContain("borrarEvento");
+  });
 });
 
 describe("buildAmbientBlock", () => {

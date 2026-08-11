@@ -140,7 +140,7 @@ describe("createAssistantTools", () => {
 
   it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión, e invalida Tablero/Categorías", async () => {
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearNota.execute!(
       { contenido: "Llamar al banco mañana" },
@@ -161,7 +161,7 @@ describe("createAssistantTools", () => {
   it("ante un fallo al guardar, lanza un mensaje en español sin filtrar detalles internos", async () => {
     captureMessage.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.crearNota.execute!({ contenido: "algo" }, { toolCallId: "c", messages: [], context: undefined }),
@@ -178,7 +178,7 @@ describe("createAssistantTools", () => {
       throw new Error("revalidatePath fuera de contexto de petición");
     });
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearNota.execute!(
       { contenido: "Llamar al banco" },
@@ -190,7 +190,7 @@ describe("createAssistantTools", () => {
 
   it("crearEvento guarda la cita ligada al usuario de la sesión e invalida /calendario", async () => {
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearEvento.execute!(
       { titulo: "Cita con el médico", fechaInicio: "2026-08-12T10:00:00.000Z" },
@@ -206,7 +206,7 @@ describe("createAssistantTools", () => {
 
   it("crearEvento con repetir crea toda la serie en una sola llamada a la tool", async () => {
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearEvento.execute!(
       {
@@ -231,7 +231,7 @@ describe("createAssistantTools", () => {
 
   it("crearEvento rechaza una fecha de inicio que no se puede interpretar", async () => {
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.crearEvento.execute!(
@@ -245,7 +245,7 @@ describe("createAssistantTools", () => {
   it("crearEvento: ante un fallo al guardar, lanza un mensaje en español sin detalles internos", async () => {
     eventoCreate.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.crearEvento.execute!(
@@ -260,7 +260,7 @@ describe("createAssistantTools", () => {
       throw new Error("revalidatePath fuera de contexto de petición");
     });
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearEvento.execute!(
       { titulo: "Cita con el médico", fechaInicio: "2026-08-12T10:00:00.000Z" },
@@ -272,7 +272,7 @@ describe("createAssistantTools", () => {
   it("completarTarea encuentra la pendiente por similitud semántica (aunque no repita el texto exacto) y la marca hecha", async () => {
     findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1", resumen: "Llamar al fontanero" })]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
       { descripcion: "ya he llamado al fontanero" },
@@ -294,7 +294,7 @@ describe("createAssistantTools", () => {
       fakePendiente({ id: "la-buena" }),
     ]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
       { descripcion: "algo" },
@@ -307,7 +307,7 @@ describe("createAssistantTools", () => {
     embedQuery.mockResolvedValue(null);
     messageFindFirst.mockResolvedValue(fakePendiente({ id: "p2" }));
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
       { descripcion: "fontanero" },
@@ -319,7 +319,7 @@ describe("createAssistantTools", () => {
 
   it("completarTarea lanza (en español) si no encuentra ninguna coincidencia", async () => {
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.completarTarea.execute!(
@@ -336,7 +336,7 @@ describe("createAssistantTools", () => {
       throw new Error("revalidatePath fuera de contexto de petición");
     });
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
       { descripcion: "algo" },
@@ -349,7 +349,7 @@ describe("createAssistantTools", () => {
   it("registrarAhorro guarda el movimiento en una cuenta existente que coincide por nombre", async () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Fondo de emergencia", userId: "u1" }]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
       { cuenta: "fondo de emergencia", importe: 50 },
@@ -369,7 +369,7 @@ describe("createAssistantTools", () => {
   it("registrarAhorro con repetir registra toda la serie en una sola llamada a la tool", async () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "PruebaTrade", userId: "u1" }]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
       { cuenta: "PruebaTrade", importe: 400, repetir: { frecuencia: "SEMANAL", veces: 5 } },
@@ -384,7 +384,7 @@ describe("createAssistantTools", () => {
     cuentaAhorroFindMany.mockResolvedValue([]);
     cuentaAhorroCreate.mockResolvedValue({ id: "c2", nombre: "Viaje a Japón", userId: "u1" });
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
       { cuenta: "Viaje a Japón", importe: 20, concepto: "paga extra" },
@@ -403,7 +403,7 @@ describe("createAssistantTools", () => {
   it("registrarAhorro acepta un importe negativo como retirada", async () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Viaje", userId: "u1" }]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
       { cuenta: "viaje", importe: -15 },
@@ -418,7 +418,7 @@ describe("createAssistantTools", () => {
 
   it("registrarAhorro rechaza un importe que redondea a cero", async () => {
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.registrarAhorro.execute!(
@@ -432,7 +432,7 @@ describe("createAssistantTools", () => {
   it("registrarAhorro: ante un fallo al buscar/crear la cuenta, lanza un mensaje en español sin detalles internos", async () => {
     cuentaAhorroFindMany.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.registrarAhorro.execute!(
@@ -447,7 +447,7 @@ describe("createAssistantTools", () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Viaje", userId: "u1" }]);
     movimientoAhorroCreate.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.registrarAhorro.execute!(
@@ -463,7 +463,7 @@ describe("createAssistantTools", () => {
       throw new Error("revalidatePath fuera de contexto de petición");
     });
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
       { cuenta: "viaje", importe: 10 },
@@ -476,7 +476,7 @@ describe("createAssistantTools", () => {
   it("editarEvento busca solo entre eventos futuros (hoy incluido) y cambia los campos dados", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.editarEvento.execute!(
       { descripcion: "cita con el médico", fechaInicioNueva: "2026-08-13T17:00:00.000Z" },
@@ -497,7 +497,7 @@ describe("createAssistantTools", () => {
   it("editarEvento encuentra el evento aunque las tildes no coincidan (guardado con tilde, descripción sin ella o al revés)", async () => {
     eventoFindMany.mockResolvedValue([{ ...fakeEvento, titulo: "Reunión de seguimiento" }]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.editarEvento.execute!(
       { descripcion: "la reunion de seguimiento", tituloNuevo: "Reunión de seguimiento (aplazada)" },
@@ -511,7 +511,7 @@ describe("createAssistantTools", () => {
   it("editarEvento lanza si no encuentra ningún evento que coincida", async () => {
     eventoFindMany.mockResolvedValue([]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.editarEvento.execute!(
@@ -525,7 +525,7 @@ describe("createAssistantTools", () => {
   it("editarEvento lanza si no se le da ningún campo que cambiar", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.editarEvento.execute!(
@@ -539,7 +539,7 @@ describe("createAssistantTools", () => {
   it("editarEvento rechaza una fecha nueva que no se puede interpretar", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.editarEvento.execute!(
@@ -553,7 +553,7 @@ describe("createAssistantTools", () => {
   it("borrarEvento encuentra y borra el evento que coincide", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.borrarEvento.execute!(
       { descripcion: "médico" },
@@ -568,7 +568,7 @@ describe("createAssistantTools", () => {
   it("borrarEvento lanza si no encuentra ningún evento que coincida", async () => {
     eventoFindMany.mockResolvedValue([]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.borrarEvento.execute!(
@@ -583,7 +583,7 @@ describe("createAssistantTools", () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
     eventoDeleteMany.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.borrarEvento.execute!({ descripcion: "médico" }, { toolCallId: "c", messages: [], context: undefined }),
@@ -596,7 +596,7 @@ describe("createAssistantTools", () => {
       { id: "c2", nombre: "Fondo de emergencia", saldoCentimos: 12000, objetivoCentimos: null, createdAt: new Date(), userId: "u1" },
     ]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.consultarAhorros.execute!({}, { toolCallId: "c", messages: [], context: undefined });
 
@@ -614,7 +614,7 @@ describe("createAssistantTools", () => {
       { id: "c1", nombre: "Fondo de emergencia", saldoCentimos: 12000, objetivoCentimos: null, createdAt: new Date(), userId: "u1" },
     ]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.consultarAhorros.execute!(
       { cuenta: "emergencia" },
@@ -627,7 +627,7 @@ describe("createAssistantTools", () => {
   it("consultarAhorros lanza si pregunta por una cuenta que no existe", async () => {
     getCuentasConSaldo.mockResolvedValue([]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.consultarAhorros.execute!({ cuenta: "inventada" }, { toolCallId: "c", messages: [], context: undefined }),
@@ -637,10 +637,81 @@ describe("createAssistantTools", () => {
   it("consultarAhorros: ante un fallo al leer, lanza un mensaje en español sin detalles internos", async () => {
     getCuentasConSaldo.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
     const { createAssistantTools } = await import("../src/lib/assistantTools");
-    const tools = createAssistantTools("u1", "w1");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
       tools.consultarAhorros.execute!({}, { toolCallId: "c", messages: [], context: undefined }),
     ).rejects.toThrow(/No he podido consultar tus ahorros/);
+  });
+
+  describe("rol VIEWER (solo lectura)", () => {
+    it("crearNota rechaza con rol VIEWER, sin llegar a guardar nada", async () => {
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      await expect(
+        tools.crearNota.execute!({ contenido: "algo" }, { toolCallId: "c", messages: [], context: undefined }),
+      ).rejects.toThrow(/solo lectura/);
+      expect(captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("crearEvento rechaza con rol VIEWER", async () => {
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      await expect(
+        tools.crearEvento.execute!(
+          { titulo: "Cita", fechaInicio: "2026-08-12T10:00:00.000Z" },
+          { toolCallId: "c", messages: [], context: undefined },
+        ),
+      ).rejects.toThrow(/solo lectura/);
+      expect(eventoCreate).not.toHaveBeenCalled();
+    });
+
+    it("completarTarea rechaza con rol VIEWER", async () => {
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      await expect(
+        tools.completarTarea.execute!({ descripcion: "algo" }, { toolCallId: "c", messages: [], context: undefined }),
+      ).rejects.toThrow(/solo lectura/);
+      expect(messageUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("editarEvento rechaza con rol VIEWER", async () => {
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      await expect(
+        tools.editarEvento.execute!(
+          { descripcion: "cita", fechaInicioNueva: "2026-08-13T17:00:00.000Z" },
+          { toolCallId: "c", messages: [], context: undefined },
+        ),
+      ).rejects.toThrow(/solo lectura/);
+      expect(eventoUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("borrarEvento rechaza con rol VIEWER", async () => {
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      await expect(
+        tools.borrarEvento.execute!({ descripcion: "médico" }, { toolCallId: "c", messages: [], context: undefined }),
+      ).rejects.toThrow(/solo lectura/);
+    });
+
+    it("registrarAhorro NO se bloquea con rol VIEWER (Ahorros es siempre personal)", async () => {
+      cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Fondo de emergencia", userId: "u1" }]);
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      const result = await tools.registrarAhorro.execute!(
+        { cuenta: "fondo de emergencia", importe: 50 },
+        { toolCallId: "c", messages: [], context: undefined },
+      );
+      expect(result).toMatchObject({ movimientos: [{ cuentaId: "c1", centimos: 5000 }] });
+    });
+
+    it("consultarAhorros NO se bloquea con rol VIEWER (Ahorros es siempre personal)", async () => {
+      getCuentasConSaldo.mockResolvedValue([{ nombre: "Fondo de emergencia", saldoCentimos: 12000 }]);
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      const result = await tools.consultarAhorros.execute!({}, { toolCallId: "c", messages: [], context: undefined });
+      expect(result).toMatchObject({ totalCentimos: 12000 });
+    });
   });
 });

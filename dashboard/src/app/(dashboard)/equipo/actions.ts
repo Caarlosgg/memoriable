@@ -149,7 +149,14 @@ export interface AddMemberResult {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ASSIGNABLE_ROLES: WorkspaceRole[] = ["MEMBER", "ADMIN"];
+const ASSIGNABLE_ROLES: WorkspaceRole[] = ["MEMBER", "ADMIN", "VIEWER"];
+
+/** Etiqueta en español de cada rol asignable, para la notificación de cambio de rol (ver changeRole). */
+const ROLE_LABEL: Record<"MEMBER" | "ADMIN" | "VIEWER", string> = {
+  ADMIN: "administrador/a",
+  MEMBER: "miembro",
+  VIEWER: "solo lectura (no puedes crear ni editar)",
+};
 
 /**
  * Añade a alguien a un equipo por email, con el rol elegido por quien
@@ -281,7 +288,7 @@ export async function changeRole(
       userId: targetUserId,
       type: "ROLE_CHANGED",
       title: `Tu rol en "${workspace?.nombre ?? "el equipo"}" ha cambiado`,
-      body: `Ahora eres ${role === "ADMIN" ? "administrador/a" : "miembro"}.`,
+      body: `Ahora tienes rol de ${ROLE_LABEL[role as "MEMBER" | "ADMIN" | "VIEWER"]}.`,
       link: "/equipo",
     }).catch((err) => console.error("No se pudo crear la notificación de cambio de rol (no crítico):", err));
 

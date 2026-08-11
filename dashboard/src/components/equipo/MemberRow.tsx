@@ -6,7 +6,12 @@ import { Trash2, LogOut } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { changeRole, removeMember, leaveWorkspace, type WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 
-const ROLE_LABELS: Record<string, string> = { OWNER: "Propietario", ADMIN: "Administrador", MEMBER: "Miembro" };
+const ROLE_LABELS: Record<string, string> = {
+  OWNER: "Propietario",
+  ADMIN: "Administrador",
+  MEMBER: "Miembro",
+  VIEWER: "Solo lectura",
+};
 
 /**
  * Fila de un miembro en /equipo: rol y acciones (cambiar rol, quitar) solo
@@ -31,7 +36,7 @@ export function MemberRow({
   function handleRoleChange(role: string) {
     setError(null);
     startTransition(async () => {
-      const result = await changeRole(workspaceId, member.userId, role as "MEMBER" | "ADMIN");
+      const result = await changeRole(workspaceId, member.userId, role as "MEMBER" | "ADMIN" | "VIEWER");
       if (result.error) {
         setError(result.error);
         return;
@@ -96,6 +101,7 @@ export function MemberRow({
           >
             <option value="MEMBER">Miembro</option>
             <option value="ADMIN">Administrador</option>
+            <option value="VIEWER">Solo lectura</option>
           </select>
         ) : (
           <span className="shrink-0 text-xs text-muted">{ROLE_LABELS[member.role] ?? member.role}</span>

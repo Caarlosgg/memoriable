@@ -247,6 +247,17 @@ describe("addMemberByEmail", () => {
     expect(sendAccountSetupEmail).not.toHaveBeenCalled();
   });
 
+  it("permite invitar con rol VIEWER (solo lectura)", async () => {
+    membershipFindUnique.mockResolvedValueOnce({ role: "OWNER", status: "ACTIVE" }).mockResolvedValueOnce(null);
+    userFindUnique.mockResolvedValue({ id: "u2", email: "cliente@example.com" });
+    const { addMemberByEmail } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await addMemberByEmail("ws1", "cliente@example.com", "VIEWER");
+    expect(result.sent).toBe(true);
+    expect(membershipCreate).toHaveBeenCalledWith({
+      data: { userId: "u2", workspaceId: "ws1", role: "VIEWER", status: "PENDING" },
+    });
+  });
+
   it("crea una cuenta corporativa nueva (workspace personal + membership ACTIVE) si el email no tiene cuenta", async () => {
     membershipFindUnique.mockResolvedValueOnce({ role: "OWNER", status: "ACTIVE" });
     userFindUnique.mockResolvedValue(null);
@@ -347,6 +358,22 @@ describe("changeRole", () => {
       expect.objectContaining({ userId: "u2", type: "ROLE_CHANGED" }),
     );
     expect(revalidatePath).toHaveBeenCalledWith("/equipo");
+  });
+
+  it("permite cambiar a rol VIEWER, con notificación que menciona el acceso de solo lectura", async () => {
+    membershipFindUnique.mockResolvedValue({ role: "OWNER", status: "ACTIVE" });
+    membershipUpdateMany.mockResolvedValue({ count: 1 });
+    const { changeRole } = await import("../src/app/(dashboard)/equipo/actions");
+    const result = await changeRole("ws1", "u2", "VIEWER");
+    expect(result.error).toBeUndefined();
+    expect(membershipUpdateMany).toHaveBeenCalledWith({
+      where: { userId: "u2", workspaceId: "ws1", status: "ACTIVE", role: { not: "OWNER" } },
+      data: { role: "VIEWER" },
+    });
+    await vi.waitFor(() => expect(createNotification).toHaveBeenCalled());
+    expect(createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "u2", type: "ROLE_CHANGED", body: expect.stringMatching(/solo lectura/) }),
+    );
   });
 });
 

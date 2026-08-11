@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { getActiveWorkspace, isActiveMember } from "@/lib/workspace";
+import { getActiveWorkspace, isActiveMember, canWrite, READONLY_ROLE_MESSAGE } from "@/lib/workspace";
 import { createNotification } from "@/lib/notifications";
 import { fechaRepeticion, type Frecuencia } from "@/lib/calendar";
 
@@ -63,7 +63,8 @@ function parseEventoInput(input: EventoInput): { data: Omit<EventoInput, "fechaI
  */
 export async function createEvento(input: EventoInput): Promise<EventoResult> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
   const parsed = parseEventoInput(input);
   if ("error" in parsed) return { error: parsed.error };
 
@@ -103,7 +104,8 @@ export async function createEvento(input: EventoInput): Promise<EventoResult> {
 /** Edita un evento. `updateMany` con workspaceId en el where (mismo criterio de acceso que el resto de acciones). */
 export async function updateEvento(id: string, input: EventoInput): Promise<EventoResult> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
   const parsed = parseEventoInput(input);
   if ("error" in parsed) return { error: parsed.error };
 
@@ -132,7 +134,8 @@ export async function updateEvento(id: string, input: EventoInput): Promise<Even
 /** Borra un evento. Mismo criterio de acceso: solo borra si pertenece al workspace activo. */
 export async function deleteEvento(id: string): Promise<EventoResult> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
   try {
     await prisma.evento.deleteMany({ where: { id, workspaceId } });
     revalidatePath("/calendario");
@@ -151,7 +154,8 @@ export async function deleteEvento(id: string): Promise<EventoResult> {
  */
 export async function assignEvento(id: string, assigneeId: string | null): Promise<EventoResult> {
   const userId = await verifySession();
-  const { workspaceId } = await getActiveWorkspace(userId);
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
 
   if (assigneeId && !(await isActiveMember(assigneeId, workspaceId))) {
     return { error: "Esa persona no es miembro de este workspace." };

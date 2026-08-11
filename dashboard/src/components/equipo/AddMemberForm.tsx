@@ -40,6 +40,7 @@ export function AddMemberForm({ workspaceId }: { workspaceId: string }) {
         <select id={`add-role-${workspaceId}`} name="role" defaultValue="MEMBER" className={SELECT_CLASSNAME}>
           <option value="MEMBER">Miembro</option>
           <option value="ADMIN">Administrador</option>
+          <option value="VIEWER">Solo lectura</option>
         </select>
         <Button type="submit" variant="secondary" size="sm" disabled={pending}>
           <UserPlus aria-hidden size={14} /> {pending ? "Añadiendo…" : "Añadir"}

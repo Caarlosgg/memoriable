@@ -51,11 +51,12 @@ export default function EquipoPage() {
         title="Equipo"
         help={
           <>
-            Gestión de plantilla: crea equipos, añade gente y decide su rol (Miembro o Administrador, quien
-            además puede añadir/quitar personas). Si ya tiene cuenta en MemorIAble le llega una invitación para
-            aceptar; si no tiene, se le crea la cuenta y elige su contraseña desde el enlace que le mandamos. Tu
-            espacio Personal sigue intacto y solo tú lo ves — cambia de espacio activo desde el selector de
-            arriba de la barra lateral en cualquier momento.
+            Gestión de plantilla: crea equipos, añade gente y decide su rol — Miembro (crea/edita todo),
+            Administrador (además añade/quita personas) o Solo lectura (ve el tablero/calendario compartido sin
+            poder tocar nada, ideal para un cliente o colaborador externo). Si ya tiene cuenta en MemorIAble le
+            llega una invitación para aceptar; si no tiene, se le crea la cuenta y elige su contraseña desde el
+            enlace que le mandamos. Tu espacio Personal sigue intacto y solo tú lo ves — cambia de espacio
+            activo desde el selector de arriba de la barra lateral en cualquier momento.
           </>
         }
       />

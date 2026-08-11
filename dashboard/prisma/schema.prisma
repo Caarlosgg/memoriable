@@ -111,11 +111,12 @@ model CampoTemplate {
   @@map("campo_templates")
 }
 
-/// Ver ../../prisma/schema.prisma: rol dentro de un workspace de equipo (Fase Equipo).
+/// Ver ../../prisma/schema.prisma: rol dentro de un workspace de equipo (Fase Equipo). VIEWER = solo lectura.
 enum WorkspaceRole {
   OWNER
   ADMIN
   MEMBER
+  VIEWER
 }
 
 /// Ver ../../prisma/schema.prisma: estado de una membresía (Fase Equipo).

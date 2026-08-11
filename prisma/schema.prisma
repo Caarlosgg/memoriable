@@ -164,15 +164,20 @@ model CampoTemplate {
   @@map("campo_templates")
 }
 
-/// Rol dentro de un workspace de equipo. En esta fase SOLO gobierna la
-/// administración del propio workspace (añadir/quitar miembros) — no
-/// permisos por tarea: cualquier miembro ACTIVE puede crear/editar/
-/// asignar/borrar cualquier tarea del workspace. Ampliar esto a permisos
-/// más finos es una mejora futura, no de esta fase.
+/// Rol dentro de un workspace de equipo. OWNER/ADMIN administran el propio
+/// workspace (añadir/quitar miembros, renombrar); MEMBER puede crear/
+/// editar/asignar/borrar cualquier nota o evento del workspace. VIEWER es
+/// la única excepción a "mismos permisos sobre el contenido": solo lectura
+/// — pensado para un cliente o stakeholder externo que necesita ver el
+/// tablero/calendario compartido sin poder tocar nada. La comprobación
+/// vive en cada Server Action de escritura (`canWrite()` en
+/// dashboard/src/lib/workspace.ts), no aquí: Postgres no puede expresar
+/// "todos los roles menos uno" como constraint.
 enum WorkspaceRole {
   OWNER
   ADMIN
   MEMBER
+  VIEWER
 }
 
 /// PENDING = se ha añadido a alguien por email pero aún no lo ha aceptado
