@@ -34,6 +34,8 @@ function fakeMessage(overrides: Partial<ExportPayload["notas"][number]> = {}): E
     checklist: [],
     fecha: new Date("2026-08-01T10:00:00.000Z"),
     fechaLimite: null,
+    enProgresoPorId: null,
+    enProgresoDesde: null,
     userId: "u1",
     ...overrides,
   };

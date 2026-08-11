@@ -12,5 +12,5 @@ export async function BoardSection() {
     // Solo hace falta en modo equipo — en personal no hay a quién asignar.
     isPersonal ? Promise.resolve([]) : getWorkspaceMembers(workspaceId).catch(() => []),
   ]);
-  return <KanbanBoard initialColumns={columns} members={members} />;
+  return <KanbanBoard initialColumns={columns} members={members} currentUserId={userId} />;
 }

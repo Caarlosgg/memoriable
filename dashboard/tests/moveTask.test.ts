@@ -54,7 +54,7 @@ describe("moveTask", () => {
 
     expect(messageUpdateMany).toHaveBeenCalledWith({
       where: { id: "m1", workspaceId: "ws1" },
-      data: { estado: "HECHO", hecho: true, orden: 500 },
+      data: { estado: "HECHO", hecho: true, orden: 500, enProgresoPorId: null, enProgresoDesde: null },
     });
   });
 });

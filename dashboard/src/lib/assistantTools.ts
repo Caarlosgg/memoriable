@@ -370,7 +370,7 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
           // comprobarlo.
           const { count } = await prisma.message.updateMany({
             where: { id: tarea.id, workspaceId },
-            data: { estado: "HECHO", hecho: true },
+            data: { estado: "HECHO", hecho: true, enProgresoPorId: null, enProgresoDesde: null },
           });
           if (count === 0) throw new Error("La tarea encontrada ya no está en este workspace.");
         } catch (err) {

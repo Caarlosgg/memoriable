@@ -16,6 +16,16 @@ import type { StoredMessage } from "@/lib/botPipeline/repository";
 import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } from "@/lib/campoTemplates";
 
 /**
+ * Al marcar HECHA una tarjeta, "en curso ahora" deja de tener sentido —
+ * se limpia sola, igual que desaparecería de una lista de seguimiento en
+ * vivo cualquier tarea ya terminada. Un único sitio para no repetir este
+ * `if` en cada Server Action que puede llevar una tarjeta a HECHO.
+ */
+function clearEnProgresoIfDone(estado: EstadoTarea): Prisma.MessageUncheckedUpdateManyInput {
+  return estado === "HECHO" ? { enProgresoPorId: null, enProgresoDesde: null } : {};
+}
+
+/**
  * Mueve una tarjeta del tablero a otra columna. `hecho` se mantiene
  * sincronizado con `estado` (hecho = estado === HECHO): el bot y el resumen
  * diario siguen leyendo `hecho` tal cual, sin saber nada del tablero.
@@ -33,7 +43,7 @@ export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   await prisma.message.updateMany({
     where: { id, workspaceId },
-    data: { estado, hecho: estado === "HECHO" },
+    data: { estado, hecho: estado === "HECHO", ...clearEnProgresoIfDone(estado) },
   });
   revalidatePath("/pendientes");
 }
@@ -52,7 +62,7 @@ export async function moveTask(id: string, estado: EstadoTarea, orden: number): 
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   await prisma.message.updateMany({
     where: { id, workspaceId },
-    data: { estado, hecho: estado === "HECHO", orden },
+    data: { estado, hecho: estado === "HECHO", orden, ...clearEnProgresoIfDone(estado) },
   });
   revalidatePath("/pendientes");
 }
@@ -78,6 +88,75 @@ export async function postponeMessage(id: string, fechaLimite: Date | null): Pro
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   await prisma.message.updateMany({ where: { id, workspaceId }, data: { fechaLimite } });
   revalidatePath("/pendientes");
+}
+
+/**
+ * "Empezar" una tarjeta: te marca como quien está trabajando en ella AHORA
+ * MISMO (visible para el resto del equipo, ver `listEnProgresoAhora`), y de
+ * paso la mueve a EN_PROGRESO — no tiene sentido estar "en curso" en una
+ * columna distinta. Cualquiera puede empezar una tarjeta asignada a otro o
+ * sin asignar (asignación = quién la tiene encargada; esto = quién la está
+ * haciendo AHORA, dos cosas distintas — ver el comentario del campo en el
+ * esquema).
+ */
+export async function startWorkingOn(id: string): Promise<void> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
+  await prisma.message.updateMany({
+    where: { id, workspaceId },
+    data: { enProgresoPorId: userId, enProgresoDesde: new Date(), estado: "EN_PROGRESO" },
+  });
+  revalidatePath("/pendientes");
+}
+
+/**
+ * Suelta una tarjeta "en curso" sin cambiar su columna — quien la soltó
+ * puede retomarla luego, u otro puede empezarla. Cualquier miembro con
+ * permiso de escritura puede soltarla (no solo quien la empezó): una
+ * tarjeta que se quedó "en curso" porque alguien cerró el portátil sin
+ * soltarla no debe quedar bloqueada para el resto del equipo.
+ */
+export async function stopWorkingOn(id: string): Promise<void> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
+  await prisma.message.updateMany({
+    where: { id, workspaceId },
+    data: { enProgresoPorId: null, enProgresoDesde: null },
+  });
+  revalidatePath("/pendientes");
+}
+
+export interface EnProgresoItem {
+  id: string;
+  resumen: string;
+  categoria: string;
+  enProgresoPorId: string;
+  enProgresoDesde: string;
+}
+
+/**
+ * Quién está trabajando en qué, AHORA MISMO, en el workspace activo — la
+ * fuente de datos del sondeo corto desde el cliente (`CurrentTaskBar`,
+ * ver su comentario para el porqué de sondeo y no WebSocket/SSE). Lectura
+ * pura: cualquier rol (incluido VIEWER) puede verla.
+ */
+export async function listEnProgresoAhora(): Promise<EnProgresoItem[]> {
+  const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
+  const rows = await prisma.message.findMany({
+    where: { workspaceId, enProgresoPorId: { not: null } },
+    select: { id: true, resumen: true, categoria: true, enProgresoPorId: true, enProgresoDesde: true },
+    orderBy: { enProgresoDesde: "desc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    resumen: r.resumen,
+    categoria: r.categoria,
+    enProgresoPorId: r.enProgresoPorId!,
+    enProgresoDesde: r.enProgresoDesde!.toISOString(),
+  }));
 }
 
 export interface AssignTaskResult {
@@ -179,7 +258,9 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
         ...(resumen !== undefined ? { resumen } : {}),
         ...(contenido !== undefined ? { contenido } : {}),
         ...(input.categoria !== undefined ? { categoria: input.categoria } : {}),
-        ...(input.estado !== undefined ? { estado: input.estado, hecho: input.estado === "HECHO" } : {}),
+        ...(input.estado !== undefined
+          ? { estado: input.estado, hecho: input.estado === "HECHO", ...clearEnProgresoIfDone(input.estado) }
+          : {}),
         ...(input.prioridad !== undefined ? { prioridad: input.prioridad } : {}),
         ...(input.etiquetas !== undefined ? { etiquetas: input.etiquetas } : {}),
         ...(input.camposExtra !== undefined ? { camposExtra: input.camposExtra } : {}),

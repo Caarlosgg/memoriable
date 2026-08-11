@@ -282,7 +282,7 @@ describe("createAssistantTools", () => {
     expect(embedQuery).toHaveBeenCalledWith("ya he llamado al fontanero");
     expect(messageUpdateMany).toHaveBeenCalledWith({
       where: { id: "p1", workspaceId: "w1" },
-      data: { estado: "HECHO", hecho: true },
+      data: { estado: "HECHO", hecho: true, enProgresoPorId: null, enProgresoDesde: null },
     });
     expect(result).toMatchObject({ id: "p1", resumen: "Llamar al fontanero" });
   });

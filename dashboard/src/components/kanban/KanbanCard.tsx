@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Message } from "@prisma/client";
-import { Clock, Tag, Plus, ListChecks } from "lucide-react";
+import { Clock, Tag, Plus, ListChecks, Play, Square } from "lucide-react";
 import { presentCategory, esAccionable } from "@/lib/categories";
 import { PRIORIDAD_PRESENTATION, PRIORIDAD_ICON, ESTADO_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
@@ -21,6 +21,8 @@ interface KanbanCardContentProps {
   density: KanbanDensity;
   /** Miembros del workspace activo, para "Asignar a…" — vacío en modo personal (ver BoardSection.tsx). */
   members?: WorkspaceMemberInfo[];
+  /** Quién ha iniciado sesión — para saber si "en curso" eres tú o alguien más (ver `WorkingOnControl`). */
+  currentUserId?: string;
   /**
    * Handlers opcionales: si faltan, la tarjeta se pinta en modo "solo
    * lectura" (badges planos en vez de botones) — el caso de la copia
@@ -32,6 +34,73 @@ interface KanbanCardContentProps {
   onEtiquetaAdd?: (messageId: string, etiqueta: string) => void;
   onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
   onPostpone?: (messageId: string, fechaLimite: Date | null) => void;
+  onStartWorking?: (messageId: string) => void;
+  onStopWorking?: (messageId: string) => void;
+}
+
+/**
+ * "Empezar"/"en curso"/"trabajando" — Fase "en curso ahora": una tarjeta
+ * accionable sin terminar puede tener a alguien trabajando en ella EN ESTE
+ * MOMENTO, distinto de a quién está asignada (ver el comentario del campo
+ * en el esquema). Solo botón/badge, sin dropdown: es una acción binaria
+ * (empezar/soltar), no hace falta el peso de un menú para eso.
+ */
+function WorkingOnControl({
+  message,
+  currentUserId,
+  members,
+  onStartWorking,
+  onStopWorking,
+}: {
+  message: Message;
+  currentUserId: string;
+  members: WorkspaceMemberInfo[];
+  onStartWorking: (messageId: string) => void;
+  onStopWorking: (messageId: string) => void;
+}) {
+  if (message.enProgresoPorId === null) {
+    return (
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStartWorking(message.id);
+        }}
+        title="Empezar a trabajar en esto ahora"
+        className="flex items-center gap-1 rounded-full border border-dashed border-paper-line px-2 py-0.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <Play aria-hidden size={11} /> Empezar
+      </button>
+    );
+  }
+
+  if (message.enProgresoPorId === currentUserId) {
+    return (
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStopWorking(message.id);
+        }}
+        title="Dejar de trabajar en esto"
+        className="flex items-center gap-1 rounded-full border border-accent bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-strong transition-colors hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <Square aria-hidden size={10} /> Trabajando…
+      </button>
+    );
+  }
+
+  const email = members.find((m) => m.userId === message.enProgresoPorId)?.email;
+  return (
+    <span
+      title={email ? `${email} está trabajando en esto ahora` : "Alguien está trabajando en esto ahora"}
+      className="flex items-center gap-1 rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-ink"
+    >
+      <Play aria-hidden size={11} className="text-accent" /> {email ? email.split("@")[0] : "en curso"}
+    </span>
+  );
 }
 
 /**
@@ -45,11 +114,14 @@ export function KanbanCardContent({
   message,
   density,
   members = [],
+  currentUserId,
   onCycleEstado,
   onCyclePrioridad,
   onEtiquetaAdd,
   onAssigneeChange,
   onPostpone,
+  onStartWorking,
+  onStopWorking,
 }: KanbanCardContentProps) {
   const { Icon: CategoryIcon, color } = presentCategory(message.categoria);
   const priority = PRIORIDAD_PRESENTATION[message.prioridad];
@@ -200,6 +272,15 @@ export function KanbanCardContent({
               onChange={(fechaLimite) => onPostpone(message.id, fechaLimite)}
             />
           )}
+          {onStartWorking && onStopWorking && currentUserId && esAccionable(message.categoria) && message.estado !== "HECHO" && (
+            <WorkingOnControl
+              message={message}
+              currentUserId={currentUserId}
+              members={members}
+              onStartWorking={onStartWorking}
+              onStopWorking={onStopWorking}
+            />
+          )}
           {onAssigneeChange && members.length > 0 && (
             <AssigneeControl
               assigneeId={message.assigneeId}
@@ -217,6 +298,7 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   message: Message;
   density: KanbanDensity;
   members?: WorkspaceMemberInfo[];
+  currentUserId?: string;
   /**
    * El cambio de estado/prioridad/etiqueta/asignación de un clic lo decide
    * `KanbanBoard` (no esta tarjeta): solo así puede aplicar la misma
@@ -230,6 +312,8 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   onEtiquetaAdd: (messageId: string, etiqueta: string) => void;
   onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
   onPostpone?: (messageId: string, fechaLimite: Date | null) => void;
+  onStartWorking?: (messageId: string) => void;
+  onStopWorking?: (messageId: string) => void;
 }
 
 /**
@@ -243,11 +327,14 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
     message,
     density,
     members,
+    currentUserId,
     onCycleEstado,
     onCyclePrioridad,
     onEtiquetaAdd,
     onAssigneeChange,
     onPostpone,
+    onStartWorking,
+    onStopWorking,
     className,
     ...rest
   },
@@ -309,11 +396,14 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
         message={message}
         density={density}
         members={members}
+        currentUserId={currentUserId}
         onCycleEstado={onCycleEstado}
         onCyclePrioridad={onCyclePrioridad}
         onEtiquetaAdd={onEtiquetaAdd}
         onAssigneeChange={onAssigneeChange}
         onPostpone={onPostpone}
+        onStartWorking={onStartWorking}
+        onStopWorking={onStopWorking}
       />
     </li>
   );

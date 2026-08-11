@@ -64,6 +64,7 @@ model User {
 
   messages         Message[]           @relation("MessageAuthor")
   assignedMessages Message[]           @relation("MessageAssignee")
+  enProgresoMessages Message[]         @relation("MessageEnProgreso")
   exchanges        AssistantExchange[]
   conversations    Conversation[]
   eventos          Evento[]            @relation("EventoAuthor")
@@ -270,6 +271,11 @@ model Message {
   assigneeId String?
   assignee   User?   @relation("MessageAssignee", fields: [assigneeId], references: [id])
 
+  /// Ver ../../prisma/schema.prisma: "en curso ahora" (Fase Equipo).
+  enProgresoPorId String?
+  enProgresoPor   User?     @relation("MessageEnProgreso", fields: [enProgresoPorId], references: [id])
+  enProgresoDesde DateTime?
+
   /// Ver ../../prisma/schema.prisma para el porqué de las dimensiones y del
   /// acceso vía $queryRaw/$executeRaw (Prisma no soporta Unsupported en el
   /// cliente tipado).
@@ -287,6 +293,7 @@ model Message {
   @@index([orden])
   @@index([workspaceId])
   @@index([assigneeId])
+  @@index([enProgresoPorId])
   @@map("messages")
 }
 

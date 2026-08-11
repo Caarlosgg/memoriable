@@ -6,9 +6,10 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { UndoToastProvider } from "@/components/UndoToast";
 import { AssistantProvider } from "@/components/AssistantProvider";
 import { DailyBriefingModal } from "@/components/DailyBriefingModal";
+import { CurrentTaskBar } from "@/components/CurrentTaskBar";
 import { getDailyBriefing } from "@/lib/dailyBriefing";
 import { getActiveWorkspace, getPersonalWorkspaceId } from "@/lib/workspace";
-import { listMyWorkspaces } from "@/app/(dashboard)/equipo/actions";
+import { listMyWorkspaces, getWorkspaceMembers } from "@/app/(dashboard)/equipo/actions";
 import { listNotifications, getUnreadCount } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 
@@ -46,6 +47,18 @@ export default async function DashboardLayout({
       return null;
     });
 
+  // Solo hace falta en modo equipo — en personal nadie más puede estar "en
+  // curso" en nada. No crítico: si falla, `CurrentTaskBar` sigue mostrando
+  // tu propia tarea activa, solo sin nombrar a nadie más.
+  const memberEmailById = isPersonal
+    ? {}
+    : await getWorkspaceMembers(activeWorkspaceId)
+        .then((members) => Object.fromEntries(members.map((m) => [m.userId, m.email])))
+        .catch((err) => {
+          console.error("No se pudieron cargar los miembros del equipo para «en curso ahora» (no crítico):", err);
+          return {};
+        });
+
   return (
     <UndoToastProvider>
       {/* En el layout, no en /asistente: así el chat sigue respondiendo en
@@ -76,6 +89,7 @@ export default async function DashboardLayout({
           <BottomTabs isPersonal={isPersonal} />
           <CommandPalette />
           {briefing && <DailyBriefingModal userId={userId} data={briefing} />}
+          <CurrentTaskBar currentUserId={userId} memberEmailById={memberEmailById} />
         </div>
       </AssistantProvider>
     </UndoToastProvider>

@@ -24,6 +24,7 @@ import {
   PRIORIDAD_PRESENTATION,
 } from "@/lib/kanban";
 import { CATEGORIES, CATEGORY_PRESENTATION, presentCategory, type Category } from "@/lib/categories";
+import { notifyEnProgresoChanged, TASK_PATCHED_ELSEWHERE_EVENT, type TaskPatchedElsewhereDetail } from "@/lib/enProgresoEvents";
 import {
   updateTaskStatus,
   updateTaskPriority,
@@ -31,6 +32,8 @@ import {
   updateMessage,
   assignMessage,
   postponeMessage,
+  startWorkingOn,
+  stopWorkingOn,
 } from "@/app/(dashboard)/actions";
 import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import type { EditableFields } from "@/components/MessageDetailDialog";
@@ -55,9 +58,11 @@ type ByEstado = Record<EstadoTarea, Message[]>;
 export function KanbanBoard({
   initialColumns,
   members = [],
+  currentUserId,
 }: {
   initialColumns: BoardColumn[];
   members?: WorkspaceMemberInfo[];
+  currentUserId: string;
 }) {
   const [byEstado, setByEstado] = useState<ByEstado>(
     () => Object.fromEntries(initialColumns.map((c) => [c.estado, c.messages])) as ByEstado,
@@ -170,6 +175,19 @@ export function KanbanBoard({
     });
   }
 
+  // `CurrentTaskBar` vive en el layout, fuera de este componente — cuando
+  // marca hecha o suelta TU tarjeta activa desde ahí, esta es la única
+  // forma de que este tablero ya montado se entere sin esperar a un
+  // refresco de página (ver el comentario en lib/enProgresoEvents.ts).
+  useEffect(() => {
+    function onPatchedElsewhere(e: Event) {
+      const { messageId, patch } = (e as CustomEvent<TaskPatchedElsewhereDetail>).detail;
+      applyLocalUpdate(messageId, patch);
+    }
+    window.addEventListener(TASK_PATCHED_ELSEWHERE_EVENT, onPatchedElsewhere);
+    return () => window.removeEventListener(TASK_PATCHED_ELSEWHERE_EVENT, onPatchedElsewhere);
+  }, []);
+
   const [activeId, setActiveId] = useState<string | null>(null);
   // Foto del tablero justo antes de empezar a arrastrar: si el guardado en
   // el servidor falla, o el arrastre se cancela (Esc) a medio camino entre
@@ -270,7 +288,13 @@ export function KanbanBoard({
     else if (below) newOrden = below.orden + ORDEN_STEP;
     else newOrden = Date.now();
 
-    const finalList = reordered.map((m) => (m.id === activeIdStr ? { ...m, orden: newOrden } : m));
+    // Igual que `clearEnProgresoIfDone` en el servidor: soltarla en HECHO
+    // también suelta "en curso ahora".
+    const finalList = reordered.map((m) =>
+      m.id === activeIdStr
+        ? { ...m, orden: newOrden, ...(container === "HECHO" ? { enProgresoPorId: null, enProgresoDesde: null } : {}) }
+        : m,
+    );
     const original = findContainer(activeIdStr, snapshot);
     const originalMessage = original ? snapshot[original].find((m) => m.id === activeIdStr) : undefined;
 
@@ -280,10 +304,14 @@ export function KanbanBoard({
       setAnnouncement(`«${originalMessage?.resumen ?? ""}» movida a ${ESTADO_PRESENTATION[container].label}.`);
     }
 
-    moveTask(activeIdStr, container, newOrden).catch((err) => {
-      console.error("No se pudo mover la tarjeta:", err);
-      setByEstado(snapshot);
-    });
+    moveTask(activeIdStr, container, newOrden)
+      .then(() => {
+        if (container === "HECHO") notifyEnProgresoChanged();
+      })
+      .catch((err) => {
+        console.error("No se pudo mover la tarjeta:", err);
+        setByEstado(snapshot);
+      });
   }
 
   // Las cinco de abajo van en `useCallback` con deps vacías (identidad
@@ -295,13 +323,24 @@ export function KanbanBoard({
     const current = findMessage(messageId);
     if (!current) return;
     const target = nextEstado(current.estado);
+    // Igual que en el servidor (ver `clearEnProgresoIfDone`): marcarla
+    // HECHA suelta también "en curso ahora" — no tendría sentido que
+    // siguiera apareciendo como que alguien la está haciendo.
+    const clearEnProgreso = target === "HECHO" ? { enProgresoPorId: null, enProgresoDesde: null } : {};
 
-    applyLocalUpdate(messageId, { estado: target, hecho: target === "HECHO" });
+    applyLocalUpdate(messageId, { estado: target, hecho: target === "HECHO", ...clearEnProgreso });
     setAnnouncement(`«${current.resumen}» ahora está ${ESTADO_PRESENTATION[target].label}.`);
-    updateTaskStatus(messageId, target).catch((err) => {
-      console.error("No se pudo cambiar el estado:", err);
-      applyLocalUpdate(messageId, { estado: current.estado, hecho: current.hecho });
-    });
+    updateTaskStatus(messageId, target)
+      .then(() => {
+        // Se avisa DESPUÉS de que el servidor confirme, no antes: `CurrentTaskBar`
+        // reacciona a este evento releyendo del servidor, y si avisara antes,
+        // podría releer justo antes de que el propio cambio se hubiera guardado.
+        if (target === "HECHO") notifyEnProgresoChanged();
+      })
+      .catch((err) => {
+        console.error("No se pudo cambiar el estado:", err);
+        applyLocalUpdate(messageId, { estado: current.estado, hecho: current.hecho });
+      });
   }, [findMessage]);
 
   const handleCyclePrioridad = useCallback((messageId: string) => {
@@ -377,6 +416,43 @@ export function KanbanBoard({
       console.error("No se pudo aplazar la tarea:", err);
       applyLocalUpdate(messageId, { fechaLimite: previousFechaLimite });
     });
+  }, [findMessage]);
+
+  /**
+   * "Empezar"/"soltar" una tarjeta (Fase "en curso ahora"): empezarla
+   * también la mueve a EN_PROGRESO local, igual que hace `startWorkingOn`
+   * en el servidor — mismo criterio optimista que el resto.
+   */
+  const handleStartWorking = useCallback((messageId: string) => {
+    const current = findMessage(messageId);
+    if (!current) return;
+    const previous = { enProgresoPorId: current.enProgresoPorId, enProgresoDesde: current.enProgresoDesde, estado: current.estado };
+    applyLocalUpdate(messageId, { enProgresoPorId: currentUserId, enProgresoDesde: new Date(), estado: "EN_PROGRESO" });
+    // Se avisa DESPUÉS de que el servidor confirme (no antes): `CurrentTaskBar`
+    // relee del servidor al recibir este evento, y avisar antes se arriesgaba a
+    // releer justo antes de que la propia escritura se hubiera guardado —
+    // verificado en vivo (la barra no recogía el cambio recién hecho).
+    startWorkingOn(messageId)
+      .then(() => notifyEnProgresoChanged())
+      .catch((err) => {
+        console.error("No se pudo empezar la tarea:", err);
+        applyLocalUpdate(messageId, previous);
+        notifyEnProgresoChanged();
+      });
+  }, [findMessage, currentUserId]);
+
+  const handleStopWorking = useCallback((messageId: string) => {
+    const current = findMessage(messageId);
+    if (!current) return;
+    const previous = { enProgresoPorId: current.enProgresoPorId, enProgresoDesde: current.enProgresoDesde };
+    applyLocalUpdate(messageId, { enProgresoPorId: null, enProgresoDesde: null });
+    stopWorkingOn(messageId)
+      .then(() => notifyEnProgresoChanged())
+      .catch((err) => {
+        console.error("No se pudo soltar la tarea:", err);
+        applyLocalUpdate(messageId, previous);
+        notifyEnProgresoChanged();
+      });
   }, [findMessage]);
 
   const activeMessage = activeId ? findInState(byEstado, activeId) : undefined;
@@ -468,6 +544,7 @@ export function KanbanBoard({
               messages={byEstado[estado]}
               density={density}
               members={members}
+              currentUserId={currentUserId}
               filtroCategoria={filtroCategoria}
               filtroPrioridad={filtroPrioridad}
               filtroAsignado={filtroAsignado}
@@ -477,6 +554,8 @@ export function KanbanBoard({
               onEtiquetaAdd={handleEtiquetaAdd}
               onAssigneeChange={handleAssigneeChange}
               onPostpone={handlePostpone}
+              onStartWorking={handleStartWorking}
+              onStopWorking={handleStopWorking}
               onSaved={handleSaved}
               onDeleted={handleDeleted}
               onUndoDelete={handleUndoDelete}

@@ -98,6 +98,7 @@ model User {
 
   messages         Message[]           @relation("MessageAuthor")
   assignedMessages Message[]           @relation("MessageAssignee")
+  enProgresoMessages Message[]         @relation("MessageEnProgreso")
   exchanges        AssistantExchange[]
   conversations    Conversation[]
   eventos          Evento[]            @relation("EventoAuthor")
@@ -380,6 +381,17 @@ model Message {
   assigneeId String?
   assignee   User?   @relation("MessageAssignee", fields: [assigneeId], references: [id])
 
+  /// "En curso ahora" (Fase Equipo): quién está trabajando activamente en
+  /// esta tarea/recordatorio EN ESTE MOMENTO, visible en vivo para el
+  /// resto del equipo (sondeo corto desde el cliente, sin WebSocket/SSE).
+  /// Distinto de `assigneeId` (quién la tiene asignada, permanente) —
+  /// cualquiera puede "empezar" una tarea asignada a otro o sin asignar.
+  /// Null = nadie está en ello ahora mismo. Se limpia sola al marcar la
+  /// tarea como HECHA (ver updateTaskStatus/moveTask/updateMessage).
+  enProgresoPorId String?
+  enProgresoPor   User?     @relation("MessageEnProgreso", fields: [enProgresoPorId], references: [id])
+  enProgresoDesde DateTime?
+
   /// Vector de embedding para búsqueda semántica (Fase 2), generado con
   /// gemini-embedding-001 truncado a 768 dimensiones (Matryoshka Representation
   /// Learning: 768 conserva calidad de recuperación suficiente para este caso
@@ -403,6 +415,7 @@ model Message {
   @@index([orden])
   @@index([workspaceId])
   @@index([assigneeId])
+  @@index([enProgresoPorId])
   @@map("messages")
 }
 

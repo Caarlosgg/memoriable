@@ -17,6 +17,7 @@ interface KanbanColumnProps {
   messages: Message[];
   density: KanbanDensity;
   members?: WorkspaceMemberInfo[];
+  currentUserId: string;
   filtroCategoria: Category | "todas";
   filtroPrioridad: Prioridad | "todas";
   filtroAsignado: string;
@@ -26,6 +27,8 @@ interface KanbanColumnProps {
   onEtiquetaAdd: (messageId: string, etiqueta: string) => void;
   onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
   onPostpone: (messageId: string, fechaLimite: Date | null) => void;
+  onStartWorking: (messageId: string) => void;
+  onStopWorking: (messageId: string) => void;
   onSaved: (id: string, patch: EditableFields) => void;
   onDeleted: (id: string) => void;
   onUndoDelete: (id: string) => void;
@@ -47,6 +50,7 @@ function KanbanColumnImpl({
   messages,
   density,
   members,
+  currentUserId,
   filtroCategoria,
   filtroPrioridad,
   filtroAsignado,
@@ -56,6 +60,8 @@ function KanbanColumnImpl({
   onEtiquetaAdd,
   onAssigneeChange,
   onPostpone,
+  onStartWorking,
+  onStopWorking,
   onSaved,
   onDeleted,
   onUndoDelete,
@@ -118,12 +124,15 @@ function KanbanColumnImpl({
                   message={message}
                   density={density}
                   members={members}
+                  currentUserId={currentUserId}
                   className="cursor-pointer"
                   onCycleEstado={onCycleEstado}
                   onCyclePrioridad={onCyclePrioridad}
                   onEtiquetaAdd={onEtiquetaAdd}
                   onAssigneeChange={onAssigneeChange}
                   onPostpone={onPostpone}
+                  onStartWorking={onStartWorking}
+                  onStopWorking={onStopWorking}
                 />
               </MessageDetailDialog>
             ))
