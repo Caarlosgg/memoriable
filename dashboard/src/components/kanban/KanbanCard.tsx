@@ -228,7 +228,7 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
  * que necesita inyectar `onClick`/`ref` sin dejar de ser el `<li>`
  * arrastrable de dnd-kit.
  */
-export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(function KanbanCard(
+const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function KanbanCard(
   { message, density, members, onCycleEstado, onCyclePrioridad, onEtiquetaAdd, onAssigneeChange, className, ...rest },
   forwardedRef,
 ) {
@@ -296,3 +296,12 @@ export const KanbanCard = React.forwardRef<HTMLLIElement, KanbanCardProps>(funct
     </li>
   );
 });
+
+/**
+ * `memo`: cuando `KanbanColumn` re-renderiza (p. ej. porque otra tarjeta de
+ * la misma columna cambió), las tarjetas cuyo `message` y callbacks no han
+ * cambiado no tienen por qué volver a montarse — con muchas tarjetas en una
+ * columna (tablero de equipo cargado) esto es la diferencia entre notar el
+ * arrastre fluido o con tirones.
+ */
+export const KanbanCard = React.memo(KanbanCardImpl);

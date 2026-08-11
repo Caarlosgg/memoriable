@@ -317,6 +317,19 @@ describe("createAssistantTools", () => {
     expect(result).toMatchObject({ id: "p2" });
   });
 
+  it("completarTarea: si semántica y texto encuentran candidatos distintos, gana la semántica (misma calidad que antes, ahora en paralelo)", async () => {
+    findSimilarMessages.mockResolvedValue([fakePendiente({ id: "por-semantica" })]);
+    messageFindFirst.mockResolvedValue(fakePendiente({ id: "por-texto" }));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    const result = await tools.completarTarea.execute!(
+      { descripcion: "algo" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+    expect(result).toMatchObject({ id: "por-semantica" });
+  });
+
   it("completarTarea lanza (en español) si no encuentra ninguna coincidencia", async () => {
     const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");

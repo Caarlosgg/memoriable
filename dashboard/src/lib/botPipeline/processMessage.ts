@@ -62,9 +62,16 @@ export async function processMessage(
   const clean: IncomingMessage = { tipo: message.tipo, contenido: sanitized.contenido };
 
   try {
-    const analysis = await categorizer.analyze(clean);
-    onAnalysis?.(analysis);
-    const embedding = (await embedder?.embedDocument(clean.contenido)) ?? null;
+    // Ver ../../../../src/pipeline/processMessage.ts: categorizar y
+    // generar el embedding no dependen entre sí, así que van en paralelo.
+    const embeddingPromise: Promise<number[] | null> = embedder
+      ? embedder.embedDocument(clean.contenido)
+      : Promise.resolve(null);
+    const analysisPromise = categorizer.analyze(clean).then((a) => {
+      onAnalysis?.(a);
+      return a;
+    });
+    const [analysis, embedding] = await Promise.all([analysisPromise, embeddingPromise]);
     const stored = await repository.save(userId, { ...clean, ...analysis, embedding });
 
     log.info('message.processed', {

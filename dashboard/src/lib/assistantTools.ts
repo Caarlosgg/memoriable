@@ -102,26 +102,32 @@ function isPendienteAccionable(m: Message): boolean {
 
 /**
  * Busca, entre las tareas/recordatorios pendientes del workspace activo,
- * la que mejor coincide con una descripción libre. Semántica primero
- * (misma infraestructura que las fuentes citadas del propio Asistente)
- * porque el usuario rara vez repite el texto exacto de la nota original
- * ("ya he llamado al fontanero" vs. "Llamar al fontanero para revisar la
- * caldera") — un ILIKE de texto exacto fallaría casi siempre. Cae a texto
- * si no hay embedder configurado o no encontró nada.
+ * la que mejor coincide con una descripción libre. Prefiere el resultado
+ * semántico (misma infraestructura que las fuentes citadas del propio
+ * Asistente) porque el usuario rara vez repite el texto exacto de la nota
+ * original ("ya he llamado al fontanero" vs. "Llamar al fontanero para
+ * revisar la caldera") — un ILIKE de texto exacto fallaría casi siempre.
+ *
+ * Las dos búsquedas van EN PARALELO, no una tras otra: si fueran en serie
+ * (semántica, y solo si falla, texto), el caso común en el que la
+ * semántica no encuentra nada acabaría esperando las dos búsquedas de
+ * todos modos, pero una detrás de la otra — el doble de lento que
+ * lanzarlas a la vez y quedarse con la semántica si la hay.
  */
 async function encontrarTareaPendiente(workspaceId: string, descripcion: string): Promise<Message | null> {
-  try {
-    const embedding = await resolveEmbedder().embedQuery(descripcion);
-    if (embedding) {
+  const semantica = (async (): Promise<Message | null> => {
+    try {
+      const embedding = await resolveEmbedder().embedQuery(descripcion);
+      if (!embedding) return null;
       const similares = await findSimilarMessages(workspaceId, embedding, { limit: 8 });
-      const match = similares.find(isPendienteAccionable);
-      if (match) return match;
+      return similares.find(isPendienteAccionable) ?? null;
+    } catch (err) {
+      console.error("No se pudo buscar la tarea semánticamente (se usa el resultado por texto):", err);
+      return null;
     }
-  } catch (err) {
-    console.error("No se pudo buscar la tarea semánticamente (se prueba con texto):", err);
-  }
+  })();
 
-  return prisma.message.findFirst({
+  const porTexto = prisma.message.findFirst({
     where: {
       workspaceId,
       categoria: { in: [...ACTIONABLE_CATEGORIES] },
@@ -133,6 +139,9 @@ async function encontrarTareaPendiente(workspaceId: string, descripcion: string)
     },
     orderBy: { fecha: "desc" },
   });
+
+  const [matchSemantico, matchPorTexto] = await Promise.all([semantica, porTexto]);
+  return matchSemantico ?? matchPorTexto;
 }
 
 /**

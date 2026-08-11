@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -69,16 +69,16 @@ export function KanbanBoard({
   // Borrado con margen de deshacer (Tier 1.3): igual que el filtro, no toca
   // `byEstado` — solo lo que se renderiza. Ver MessageDetailDialog.tsx.
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
-  function handleDeleted(messageId: string) {
+  const handleDeleted = useCallback((messageId: string) => {
     setHiddenIds((prev) => new Set(prev).add(messageId));
-  }
-  function handleUndoDelete(messageId: string) {
+  }, []);
+  const handleUndoDelete = useCallback((messageId: string) => {
     setHiddenIds((prev) => {
       const next = new Set(prev);
       next.delete(messageId);
       return next;
     });
-  }
+  }, []);
 
   // Anuncio para lectores de pantalla (Tier 1.4): el cambio visual del
   // botón "Cambiar estado/prioridad" ya lo ve quien usa el ratón, pero
@@ -86,28 +86,44 @@ export function KanbanBoard({
   // los botones no navegan de sitio, así que el foco no se mueve solo.
   const [announcement, setAnnouncement] = useState("");
 
-  function matchesFilter(message: Message): boolean {
-    if (hiddenIds.has(message.id)) return false;
-    if (filtroCategoria !== "todas" && message.categoria !== filtroCategoria) return false;
-    if (filtroPrioridad !== "todas" && message.prioridad !== filtroPrioridad) return false;
-    if (filtroAsignado === "sin-asignar" && message.assigneeId !== null) return false;
-    if (filtroAsignado !== "todas" && filtroAsignado !== "sin-asignar" && message.assigneeId !== filtroAsignado) {
-      return false;
-    }
-    return true;
-  }
-
   // Distancia mínima antes de considerarlo arrastre: sin esto, un tap normal
   // en móvil (o un click) se interpretaría como el inicio de un drag.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  function findMessage(messageId: string): Message | undefined {
+  // `findMessage` lee de esta ref (siempre al día vía el efecto de abajo)
+  // en vez de cerrar sobre `byEstado` directamente — así los handlers que
+  // la usan (handleCycleEstado, handleCyclePrioridad...) pueden ir en
+  // `useCallback` con deps vacías (identidad estable entre renders) sin
+  // quedarse con una versión obsoleta de `byEstado`. Sin esto, cada
+  // render de KanbanBoard (p. ej. cada evento de arrastre) recreaba estos
+  // handlers, lo que a su vez rompía el `memo` de KanbanColumn/KanbanCard
+  // — la columna entera se re-renderizaba aunque sus propias tarjetas no
+  // hubieran cambiado.
+  const byEstadoRef = useRef(byEstado);
+  useEffect(() => {
+    byEstadoRef.current = byEstado;
+  }, [byEstado]);
+
+  function findInState(state: ByEstado, messageId: string): Message | undefined {
     for (const estado of ESTADOS_TABLERO) {
-      const found = byEstado[estado].find((m) => m.id === messageId);
+      const found = state[estado].find((m) => m.id === messageId);
       if (found) return found;
     }
     return undefined;
   }
+
+  // Solo para usar DENTRO de handlers/efectos, nunca durante el render:
+  // leer un ref en el cuerpo del componente rompe la regla de refs de
+  // React (el valor podría no reflejar el commit que se está pintando).
+  // Para el render (p. ej. `activeMessage` más abajo) se usa
+  // `findInState(byEstado, id)` directamente, con el estado de verdad.
+  // `useCallback` con deps vacías: solo toca la ref (siempre al día por
+  // definición), así que su propia identidad puede ser estable para
+  // siempre — eso permite listarla sin problema como dependencia de los
+  // handlers de abajo sin que eso los obligue a recrearse en cada render.
+  const findMessage = useCallback((messageId: string): Message | undefined => {
+    return findInState(byEstadoRef.current, messageId);
+  }, []);
 
   function findContainer(id: string, state: ByEstado): EstadoTarea | undefined {
     if (isEstadoTarea(id)) return id;
@@ -218,45 +234,57 @@ export function KanbanBoard({
     const activeIdStr = String(active.id);
     const overIdStr = String(over.id);
 
-    setByEstado((prev) => {
-      const container = findContainer(activeIdStr, prev);
-      if (!container) return prev;
+    // Todo el cálculo es puro y se hace ANTES de tocar el estado — antes,
+    // `moveTask` (Server Action) y `setAnnouncement` se llamaban DENTRO
+    // de la función de actualización pasada a `setByEstado`. React puede
+    // invocar esa función más de una vez (p. ej. en Strict Mode, en
+    // desarrollo), y hacerlo disparaba dos peticiones de red duplicadas
+    // por cada tarjeta arrastrada — verificado en vivo, se veían dos
+    // llamadas a `moveTask` seguidas por el mismo arrastre. Ahora
+    // `setByEstado` recibe una función pura de verdad (solo calcula y
+    // devuelve el nuevo estado) y los efectos secundarios van aparte,
+    // una sola vez.
+    const prevState = byEstadoRef.current;
+    const container = findContainer(activeIdStr, prevState);
+    if (!container) return;
 
-      const items = prev[container];
-      const activeIndex = items.findIndex((m) => m.id === activeIdStr);
-      const overIndex = isEstadoTarea(overIdStr) ? items.length - 1 : items.findIndex((m) => m.id === overIdStr);
+    const items = prevState[container];
+    const activeIndex = items.findIndex((m) => m.id === activeIdStr);
+    const overIndex = isEstadoTarea(overIdStr) ? items.length - 1 : items.findIndex((m) => m.id === overIdStr);
 
-      const reordered = overIndex >= 0 && activeIndex !== overIndex ? arrayMove(items, activeIndex, overIndex) : items;
+    const reordered = overIndex >= 0 && activeIndex !== overIndex ? arrayMove(items, activeIndex, overIndex) : items;
 
-      const finalIndex = reordered.findIndex((m) => m.id === activeIdStr);
-      const above = reordered[finalIndex - 1];
-      const below = reordered[finalIndex + 1];
-      let newOrden: number;
-      if (above && below) newOrden = (above.orden + below.orden) / 2;
-      else if (above) newOrden = above.orden - ORDEN_STEP;
-      else if (below) newOrden = below.orden + ORDEN_STEP;
-      else newOrden = Date.now();
+    const finalIndex = reordered.findIndex((m) => m.id === activeIdStr);
+    const above = reordered[finalIndex - 1];
+    const below = reordered[finalIndex + 1];
+    let newOrden: number;
+    if (above && below) newOrden = (above.orden + below.orden) / 2;
+    else if (above) newOrden = above.orden - ORDEN_STEP;
+    else if (below) newOrden = below.orden + ORDEN_STEP;
+    else newOrden = Date.now();
 
-      const finalList = reordered.map((m) => (m.id === activeIdStr ? { ...m, orden: newOrden } : m));
-      const original = findContainer(activeIdStr, snapshot);
-      const originalMessage = original ? snapshot[original].find((m) => m.id === activeIdStr) : undefined;
+    const finalList = reordered.map((m) => (m.id === activeIdStr ? { ...m, orden: newOrden } : m));
+    const original = findContainer(activeIdStr, snapshot);
+    const originalMessage = original ? snapshot[original].find((m) => m.id === activeIdStr) : undefined;
 
-      if (originalMessage?.estado !== container) {
-        setAnnouncement(
-          `«${originalMessage?.resumen ?? ""}» movida a ${ESTADO_PRESENTATION[container].label}.`,
-        );
-      }
+    setByEstado((current) => ({ ...current, [container]: finalList }));
 
-      moveTask(activeIdStr, container, newOrden).catch((err) => {
-        console.error("No se pudo mover la tarjeta:", err);
-        setByEstado(snapshot);
-      });
+    if (originalMessage?.estado !== container) {
+      setAnnouncement(`«${originalMessage?.resumen ?? ""}» movida a ${ESTADO_PRESENTATION[container].label}.`);
+    }
 
-      return { ...prev, [container]: finalList };
+    moveTask(activeIdStr, container, newOrden).catch((err) => {
+      console.error("No se pudo mover la tarjeta:", err);
+      setByEstado(snapshot);
     });
   }
 
-  function handleCycleEstado(messageId: string) {
+  // Las cinco de abajo van en `useCallback` con deps vacías (identidad
+  // estable entre renders de KanbanBoard) — ver el comentario junto a
+  // `byEstadoRef` más arriba para el porqué. Todas leen datos "actuales"
+  // vía `findMessage` (que ya lee de la ref) o vía el propio parámetro del
+  // evento, nunca cierran sobre `byEstado` directamente.
+  const handleCycleEstado = useCallback((messageId: string) => {
     const current = findMessage(messageId);
     if (!current) return;
     const target = nextEstado(current.estado);
@@ -267,9 +295,9 @@ export function KanbanBoard({
       console.error("No se pudo cambiar el estado:", err);
       applyLocalUpdate(messageId, { estado: current.estado, hecho: current.hecho });
     });
-  }
+  }, [findMessage]);
 
-  function handleCyclePrioridad(messageId: string) {
+  const handleCyclePrioridad = useCallback((messageId: string) => {
     const current = findMessage(messageId);
     if (!current) return;
     const target = nextPriority(current.prioridad);
@@ -280,11 +308,11 @@ export function KanbanBoard({
       console.error("No se pudo cambiar la prioridad:", err);
       applyLocalUpdate(messageId, { prioridad: current.prioridad });
     });
-  }
+  }, [findMessage]);
 
-  function handleSaved(messageId: string, patch: EditableFields) {
+  const handleSaved = useCallback((messageId: string, patch: EditableFields) => {
     applyLocalUpdate(messageId, patch);
-  }
+  }, []);
 
   /**
    * Añadir una etiqueta directamente desde la tarjeta, sin abrir el modal
@@ -292,7 +320,7 @@ export function KanbanBoard({
    * que el modal de edición usa para guardar `etiquetas`, entre otros
    * campos), no hace falta una acción dedicada.
    */
-  function handleEtiquetaAdd(messageId: string, etiqueta: string) {
+  const handleEtiquetaAdd = useCallback((messageId: string, etiqueta: string) => {
     const current = findMessage(messageId);
     if (!current || current.etiquetas.includes(etiqueta)) return;
     const etiquetas = [...current.etiquetas, etiqueta];
@@ -301,7 +329,7 @@ export function KanbanBoard({
       console.error("No se pudo añadir la etiqueta:", err);
       applyLocalUpdate(messageId, { etiquetas: current.etiquetas });
     });
-  }
+  }, [findMessage]);
 
   /**
    * Asignar/desasignar una tarjeta (Fase Equipo) — mismo patrón optimista
@@ -310,7 +338,7 @@ export function KanbanBoard({
    * clic) — devuelve `{ error }` en vez de rechazar, así que se comprueba
    * el resultado, no solo el catch.
    */
-  function handleAssigneeChange(messageId: string, assigneeId: string | null) {
+  const handleAssigneeChange = useCallback((messageId: string, assigneeId: string | null) => {
     const current = findMessage(messageId);
     if (!current) return;
     const previousAssigneeId = current.assigneeId;
@@ -326,9 +354,9 @@ export function KanbanBoard({
         console.error("No se pudo asignar la tarea:", err);
         applyLocalUpdate(messageId, { assigneeId: previousAssigneeId });
       });
-  }
+  }, [findMessage]);
 
-  const activeMessage = activeId ? findMessage(activeId) : undefined;
+  const activeMessage = activeId ? findInState(byEstado, activeId) : undefined;
 
   return (
     <div className="flex flex-col gap-3">
@@ -414,9 +442,13 @@ export function KanbanBoard({
             <KanbanColumn
               key={estado}
               estado={estado}
-              messages={byEstado[estado].filter(matchesFilter)}
+              messages={byEstado[estado]}
               density={density}
               members={members}
+              filtroCategoria={filtroCategoria}
+              filtroPrioridad={filtroPrioridad}
+              filtroAsignado={filtroAsignado}
+              hiddenIds={hiddenIds}
               onCycleEstado={handleCycleEstado}
               onCyclePrioridad={handleCyclePrioridad}
               onEtiquetaAdd={handleEtiquetaAdd}

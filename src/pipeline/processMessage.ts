@@ -69,12 +69,25 @@ export async function processMessage(
   const clean: IncomingMessage = { tipo: message.tipo, contenido: sanitized.contenido };
 
   try {
-    const analysis = await categorizer.analyze(clean);
-    onAnalysis?.(analysis);
-    // Nunca bloquea el guardado: un fallo aquí ya vuelve `null` (ver
-    // ai/embedder.ts), y sin `embedder` inyectado (tests, simulación) el
-    // mensaje se guarda igual, solo que sin embedding.
-    const embedding = (await embedder?.embedDocument(clean.contenido)) ?? null;
+    // Categorizar (Groq) y generar el embedding (Gemini) no dependen entre
+    // sí — los dos parten de `clean`, ninguno usa el resultado del otro —
+    // así que van en paralelo en vez de en serie: recorta a la mitad la
+    // latencia de este paso, que es justo lo que nota el usuario como
+    // "tarda mucho" al crear una nota (desde la captura rápida o desde la
+    // tool crearNota del Asistente, que reutiliza esta misma función).
+    // `onAnalysis` sigue disparándose en cuanto categorizar resuelve, sin
+    // esperar al embedding, para no romper su contrato ("justo después de
+    // categorizar"). El embedding nunca bloquea el guardado: un fallo ya
+    // vuelve `null` (ver ai/embedder.ts), y sin `embedder` inyectado
+    // (tests, simulación) el mensaje se guarda igual, solo que sin él.
+    const embeddingPromise: Promise<number[] | null> = embedder
+      ? embedder.embedDocument(clean.contenido)
+      : Promise.resolve(null);
+    const analysisPromise = categorizer.analyze(clean).then((a) => {
+      onAnalysis?.(a);
+      return a;
+    });
+    const [analysis, embedding] = await Promise.all([analysisPromise, embeddingPromise]);
     const stored = await repository.save(userId, { ...clean, ...analysis, embedding });
 
     log.info('message.processed', {
