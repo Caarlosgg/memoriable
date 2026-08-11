@@ -230,6 +230,9 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
+  /// Ver ../../prisma/schema.prisma: fecha límite/recordatorio ("aplazar tarea").
+  fechaLimite DateTime?
+
   /// Ver ../../prisma/schema.prisma: etiquetas libres (Fase F/J).
   etiquetas String[] @default([])
 
@@ -277,6 +280,7 @@ model Message {
 
   @@index([categoria])
   @@index([fecha])
+  @@index([fechaLimite])
   @@index([hecho])
   @@index([userId])
   @@index([estado])

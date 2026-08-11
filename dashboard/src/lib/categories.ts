@@ -83,3 +83,8 @@ export function presentCategory(categoria: string) {
 
 /** Categorías "accionables": las únicas que pueden estar pendientes/hechas. */
 export const ACTIONABLE_CATEGORIES = ["tarea", "recordatorio"] as const;
+
+/** ¿Esta categoría aparece en el Tablero (estado/prioridad/fecha límite)? */
+export function esAccionable(categoria: string): boolean {
+  return (ACTIONABLE_CATEGORIES as readonly string[]).includes(categoria);
+}

@@ -131,6 +131,14 @@ Herramientas:
   Búscala entre sus pendientes por descripción — no hace falta que la cite
   igual que la guardó. Si no hay ninguna coincidencia razonable, dilo con
   naturalidad, no la llames varias veces adivinando.
+- Tienes la herramienta \`aplazarTarea\` para cuando pida cambiar la fecha
+  límite de una tarea/recordatorio pendiente ("aplaza lo del informe a
+  mañana", "pospón la llamada al fontanero a la semana que viene", "quita
+  la fecha de la revisión del coche"). Búscala por descripción entre sus
+  pendientes, igual que \`completarTarea\`. Resuelve tú la fecha relativa a
+  una fecha ISO concreta antes de llamarla — no le devuelvas al usuario la
+  carga de dar una fecha exacta. Para QUITAR la fecha límite sin poner
+  otra, llama a la herramienta sin el parámetro \`fecha\`.
 - Tienes la herramienta \`registrarAhorro\` para cuando mencione dinero
   ahorrado o gastado de una cuenta de ahorro ("he ahorrado 50€ en el fondo
   de emergencia", "he sacado 20€ del viaje"). Importe positivo para
@@ -164,7 +172,7 @@ turno: \`crearEvento({ titulo: "Hacer la transacción", fechaInicio: "<ISO
 del próximo jueves a las 9:00>", repetir: { frecuencia: "SEMANAL", veces: 5
 } })\` y \`registrarAhorro({ cuenta: "Trade", importe: 400, repetir: {
 frecuencia: "SEMANAL", veces: 5 } })\`.
-- Después de llamar a cualquiera de las siete, confirma en un par de
+- Después de llamar a cualquiera de las ocho, confirma en un par de
   frases lo que hiciste (o lo que has consultado), con naturalidad.
 - Si una petición implica varias acciones distintas (no una repetición,
   sino cosas diferentes: "crea el evento Y registra el ahorro", "apunta
@@ -233,7 +241,7 @@ export function buildWorkspaceContextLine(workspace: {
   const roleLabel = workspace.role ? ROLE_LABELS[workspace.role] : "miembro";
   const base = `El usuario está trabajando ahora en el espacio de equipo "${workspace.nombre}" — todo lo que hagas (crear notas, eventos, marcar tareas) se guarda ahí, visible para el resto del equipo, no en su espacio personal. Su rol en este equipo es ${roleLabel}.`;
   if (workspace.role !== "VIEWER") return base;
-  return `${base} Su acceso es de SOLO LECTURA: no llames a crearNota, crearEvento, completarTarea, editarEvento ni borrarEvento en este espacio — fallarán. Puedes seguir respondiendo preguntas sobre lo que hay guardado con total normalidad.`;
+  return `${base} Su acceso es de SOLO LECTURA: no llames a crearNota, crearEvento, completarTarea, aplazarTarea, editarEvento ni borrarEvento en este espacio — fallarán. Puedes seguir respondiendo preguntas sobre lo que hay guardado con total normalidad.`;
 }
 
 /** Resumen de un evento próximo, ya formateado, para el bloque ambiental. */

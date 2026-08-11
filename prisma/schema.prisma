@@ -312,6 +312,14 @@ model Message {
   /// Fecha de recepción/procesamiento.
   fecha     DateTime @default(now())
 
+  /// Fecha límite/recordatorio de una tarea o recordatorio ("aplazar
+  /// tarea"), distinta de `fecha` (que es cuándo se creó, no cuándo
+  /// vence). Nullable: la mayoría de notas no tienen fecha límite. Solo
+  /// tiene sentido para categorías accionables, pero no se restringe a
+  /// nivel de esquema — igual que `estado`/`prioridad`, que ya conviven
+  /// sin usarse en categorías no accionables.
+  fechaLimite DateTime?
+
   /// Etiquetas libres (Fase F/J): a mayores de la categoría fija, texto
   /// suelto que el usuario añade desde el modal de detalle para filtrar
   /// más fino en el buscador. Sin tabla de definición aparte — un array
@@ -388,6 +396,7 @@ model Message {
 
   @@index([categoria])
   @@index([fecha])
+  @@index([fechaLimite])
   @@index([hecho])
   @@index([userId])
   @@index([estado])

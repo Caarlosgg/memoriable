@@ -24,7 +24,14 @@ import {
   PRIORIDAD_PRESENTATION,
 } from "@/lib/kanban";
 import { CATEGORIES, CATEGORY_PRESENTATION, presentCategory, type Category } from "@/lib/categories";
-import { updateTaskStatus, updateTaskPriority, moveTask, updateMessage, assignMessage } from "@/app/(dashboard)/actions";
+import {
+  updateTaskStatus,
+  updateTaskPriority,
+  moveTask,
+  updateMessage,
+  assignMessage,
+  postponeMessage,
+} from "@/app/(dashboard)/actions";
 import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import type { EditableFields } from "@/components/MessageDetailDialog";
 import { cn } from "@/lib/utils";
@@ -356,6 +363,22 @@ export function KanbanBoard({
       });
   }, [findMessage]);
 
+  /**
+   * Aplazar (o quitar, con `fechaLimite: null`) la fecha límite — mismo
+   * patrón optimista que el resto: aplica en local primero, y si
+   * `postponeMessage` falla, se revierte.
+   */
+  const handlePostpone = useCallback((messageId: string, fechaLimite: Date | null) => {
+    const current = findMessage(messageId);
+    if (!current) return;
+    const previousFechaLimite = current.fechaLimite;
+    applyLocalUpdate(messageId, { fechaLimite });
+    postponeMessage(messageId, fechaLimite).catch((err) => {
+      console.error("No se pudo aplazar la tarea:", err);
+      applyLocalUpdate(messageId, { fechaLimite: previousFechaLimite });
+    });
+  }, [findMessage]);
+
   const activeMessage = activeId ? findInState(byEstado, activeId) : undefined;
 
   return (
@@ -453,6 +476,7 @@ export function KanbanBoard({
               onCyclePrioridad={handleCyclePrioridad}
               onEtiquetaAdd={handleEtiquetaAdd}
               onAssigneeChange={handleAssigneeChange}
+              onPostpone={handlePostpone}
               onSaved={handleSaved}
               onDeleted={handleDeleted}
               onUndoDelete={handleUndoDelete}

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Send, CircleCheck, CalendarDays, PiggyBank, Pencil, Trash2 } from "lucide-react";
+import { Send, CircleCheck, CalendarDays, CalendarClock, PiggyBank, Pencil, Trash2 } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
 import { formatEventDate } from "@/lib/format";
+import { dayLabel, dateKey } from "@/lib/calendar";
 import { formatCentimos } from "@/lib/money";
 import { useAssistant, type AssistantMessage } from "./AssistantProvider";
 import { Button } from "./ui/button";
@@ -124,6 +125,41 @@ function CompletarTareaResult({ part }: { part: CompletarTareaPart }) {
       <p className="flex items-center gap-1.5 font-medium text-ink">
         <CircleCheck aria-hidden size={14} className="text-accent" />
         <Icon aria-hidden size={13} className={color} /> Marcada como hecha
+      </p>
+      <p className="mt-0.5 line-clamp-2 text-muted">{t.resumen}</p>
+    </div>
+  );
+}
+
+type AplazarTareaPart = Extract<AssistantMessage["parts"][number], { type: "tool-aplazarTarea" }>;
+
+function isAplazarTareaPart(part: AssistantMessage["parts"][number]): part is AplazarTareaPart {
+  return part.type === "tool-aplazarTarea";
+}
+
+/** Tarjeta de confirmación cuando el Asistente cambia (o quita) la fecha límite de una tarea/recordatorio. */
+function AplazarTareaResult({ part }: { part: AplazarTareaPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        {part.errorText || "No he encontrado esa tarea."}
+      </div>
+    );
+  }
+
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Buscando…</div>;
+  }
+
+  const t = part.output;
+  const { Icon, color } = presentCategory(t.categoria);
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <CircleCheck aria-hidden size={14} className="text-accent" />
+        <Icon aria-hidden size={13} className={color} />
+        <CalendarClock aria-hidden size={13} className="text-accent-strong" />
+        {t.fechaLimite ? `Aplazada a ${dayLabel(dateKey(new Date(t.fechaLimite))).toLowerCase()}` : "Fecha límite quitada"}
       </p>
       <p className="mt-0.5 line-clamp-2 text-muted">{t.resumen}</p>
     </div>
@@ -303,8 +339,8 @@ export function AssistantChat() {
         help={
           <>
             Pregúntale por tus notas, tareas y eventos guardados — responde citando lo que encuentra, en vez de
-            inventarlo. También puede actuar por ti: crear notas y citas, marcar tareas como hechas, editar o
-            borrar eventos, y apuntar/consultar tus ahorros, todo con lenguaje natural.
+            inventarlo. También puede actuar por ti: crear notas y citas, marcar tareas como hechas o aplazarlas,
+            editar o borrar eventos, y apuntar/consultar tus ahorros, todo con lenguaje natural.
           </>
         }
       />
@@ -345,6 +381,7 @@ export function AssistantChat() {
             const crearNotaParts = message.parts.filter(isCrearNotaPart);
             const crearEventoParts = message.parts.filter(isCrearEventoPart);
             const completarTareaParts = message.parts.filter(isCompletarTareaPart);
+            const aplazarTareaParts = message.parts.filter(isAplazarTareaPart);
             const registrarAhorroParts = message.parts.filter(isRegistrarAhorroPart);
             const editarEventoParts = message.parts.filter(isEditarEventoPart);
             const borrarEventoParts = message.parts.filter(isBorrarEventoPart);
@@ -353,6 +390,7 @@ export function AssistantChat() {
               crearNotaParts.length > 0 ||
               crearEventoParts.length > 0 ||
               completarTareaParts.length > 0 ||
+              aplazarTareaParts.length > 0 ||
               registrarAhorroParts.length > 0 ||
               editarEventoParts.length > 0 ||
               borrarEventoParts.length > 0 ||
@@ -374,6 +412,9 @@ export function AssistantChat() {
                     ))}
                     {completarTareaParts.map((part) => (
                       <CompletarTareaResult key={part.toolCallId} part={part} />
+                    ))}
+                    {aplazarTareaParts.map((part) => (
+                      <AplazarTareaResult key={part.toolCallId} part={part} />
                     ))}
                     {registrarAhorroParts.map((part) => (
                       <RegistrarAhorroResultCard key={part.toolCallId} part={part} />

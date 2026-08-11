@@ -109,6 +109,73 @@ export function buildWeekGrid(cursor: Date, today: Date = new Date()): WeekDay[]
   return days;
 }
 
+/** Minutos por hora — para convertir HH:mm a "minutos desde medianoche" y viceversa. */
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
+
+/** Minutos desde medianoche (00:00) de un evento, en las mismas horas UTC "forzadas" que ya usa `formatEventTime` — así una tarjeta y su posición en la rejilla siempre coinciden. */
+function minutesSinceMidnight(d: Date): number {
+  return d.getUTCHours() * MINUTES_PER_HOUR + d.getUTCMinutes();
+}
+
+export interface DayEventLayout<T> {
+  item: T;
+  /** Minutos desde medianoche a los que empieza, recortado a [0, 1440). */
+  topMinutes: number;
+  /** Duración en minutos, con un mínimo para que un evento puntual siga siendo legible/clicable. */
+  durationMinutes: number;
+  /** Carril (0-indexado) dentro del día — para eventos que se solapan, se reparten el ancho de la columna. */
+  lane: number;
+  /** Carriles totales que usa ESE día — todos los eventos del mismo día comparten este número, para dividir el ancho a partes iguales. */
+  lanesInDay: number;
+}
+
+const MIN_EVENT_DURATION_MINUTES = 30;
+
+/**
+ * Reparte los eventos de UN día en "carriles" horizontales para una rejilla
+ * horaria (vista semanal): un algoritmo voraz de asignación de intervalos —
+ * ordena por inicio y mete cada evento en el primer carril cuyo último
+ * evento ya haya terminado, o abre uno nuevo si no cabe en ninguno. Es la
+ * misma idea que usan Google Calendar/Outlook para eventos solapados
+ * ("reunión de 10 a 11" y "llamada de 10:30 a 11:30" acaban uno al lado del
+ * otro, no superpuestos). Pura y testeable: recibe fechas ya resueltas, no
+ * consulta nada.
+ */
+export function layoutDayEvents<T>(
+  items: readonly T[],
+  getRange: (item: T) => { start: Date; end: Date | null },
+): DayEventLayout<T>[] {
+  const withMinutes = items
+    .map((item) => {
+      const { start, end } = getRange(item);
+      const topMinutes = Math.max(0, Math.min(MINUTES_PER_DAY - 1, minutesSinceMidnight(start)));
+      const rawEnd = end && end > start ? minutesSinceMidnight(end) : topMinutes + MIN_EVENT_DURATION_MINUTES;
+      const durationMinutes = Math.max(MIN_EVENT_DURATION_MINUTES, Math.min(MINUTES_PER_DAY - topMinutes, rawEnd - topMinutes));
+      return { item, topMinutes, durationMinutes };
+    })
+    // Los que empiezan antes van primero; a igualdad, el más largo primero
+    // (así ocupa un carril "de fondo" y los cortos se acomodan al lado).
+    .sort((a, b) => a.topMinutes - b.topMinutes || b.durationMinutes - a.durationMinutes);
+
+  // Fin (en minutos) del último evento metido en cada carril, por índice.
+  const laneEnds: number[] = [];
+  const withLane = withMinutes.map((entry) => {
+    const endMinutes = entry.topMinutes + entry.durationMinutes;
+    let lane = laneEnds.findIndex((end) => end <= entry.topMinutes);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(endMinutes);
+    } else {
+      laneEnds[lane] = endMinutes;
+    }
+    return { ...entry, lane };
+  });
+
+  const lanesInDay = Math.max(1, laneEnds.length);
+  return withLane.map((entry) => ({ ...entry, lanesInDay }));
+}
+
 /** Los próximos `days` días (incluido hoy), como rango [desde, hasta) para consultar eventos. */
 export function upcomingRange(days: number, today: Date = new Date()): { desde: Date; hasta: Date } {
   const desde = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
@@ -134,6 +201,11 @@ export function dayLabel(key: string, today: Date = new Date()): string {
   if (key === dateKey(tomorrow)) return "Mañana";
 
   return WEEKDAY_FORMATTER.format(new Date(`${key}T00:00:00.000Z`));
+}
+
+/** ¿Una fecha límite ("aplazar tarea") ya pasó? Compara por día, no por hora — "hoy" nunca cuenta como vencida. */
+export function isOverdue(fechaLimite: Date, today: Date = new Date()): boolean {
+  return dateKey(fechaLimite) < dateKey(today);
 }
 
 /**

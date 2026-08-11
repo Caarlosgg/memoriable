@@ -6,12 +6,13 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Message } from "@prisma/client";
 import { Clock, Tag, Plus, ListChecks } from "lucide-react";
-import { presentCategory } from "@/lib/categories";
+import { presentCategory, esAccionable } from "@/lib/categories";
 import { PRIORIDAD_PRESENTATION, PRIORIDAD_ICON, ESTADO_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
 import { checklistToArray, checklistProgress } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
 import { AssigneeControl } from "@/components/AssigneeControl";
+import { PostponeControl } from "@/components/PostponeControl";
 import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 import type { KanbanDensity } from "./useKanbanDensity";
 
@@ -30,6 +31,7 @@ interface KanbanCardContentProps {
   onCyclePrioridad?: (messageId: string) => void;
   onEtiquetaAdd?: (messageId: string, etiqueta: string) => void;
   onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
+  onPostpone?: (messageId: string, fechaLimite: Date | null) => void;
 }
 
 /**
@@ -47,6 +49,7 @@ export function KanbanCardContent({
   onCyclePrioridad,
   onEtiquetaAdd,
   onAssigneeChange,
+  onPostpone,
 }: KanbanCardContentProps) {
   const { Icon: CategoryIcon, color } = presentCategory(message.categoria);
   const priority = PRIORIDAD_PRESENTATION[message.prioridad];
@@ -191,6 +194,12 @@ export function KanbanCardContent({
                 <Plus aria-hidden size={11} />
               </button>
             ))}
+          {onPostpone && esAccionable(message.categoria) && (
+            <PostponeControl
+              fechaLimite={message.fechaLimite}
+              onChange={(fechaLimite) => onPostpone(message.id, fechaLimite)}
+            />
+          )}
           {onAssigneeChange && members.length > 0 && (
             <AssigneeControl
               assigneeId={message.assigneeId}
@@ -220,6 +229,7 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   onCyclePrioridad: (messageId: string) => void;
   onEtiquetaAdd: (messageId: string, etiqueta: string) => void;
   onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
+  onPostpone?: (messageId: string, fechaLimite: Date | null) => void;
 }
 
 /**
@@ -229,7 +239,18 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
  * arrastrable de dnd-kit.
  */
 const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function KanbanCard(
-  { message, density, members, onCycleEstado, onCyclePrioridad, onEtiquetaAdd, onAssigneeChange, className, ...rest },
+  {
+    message,
+    density,
+    members,
+    onCycleEstado,
+    onCyclePrioridad,
+    onEtiquetaAdd,
+    onAssigneeChange,
+    onPostpone,
+    className,
+    ...rest
+  },
   forwardedRef,
 ) {
   // useSortable (no useDraggable a secas): registra la tarjeta TAMBIÉN
@@ -292,6 +313,7 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
         onCyclePrioridad={onCyclePrioridad}
         onEtiquetaAdd={onEtiquetaAdd}
         onAssigneeChange={onAssigneeChange}
+        onPostpone={onPostpone}
       />
     </li>
   );

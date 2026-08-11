@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, buildWeekGrid, upcomingRange, dayLabel, fechaRepeticion } from "../src/lib/calendar";
+import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, buildWeekGrid, upcomingRange, dayLabel, fechaRepeticion, layoutDayEvents, isOverdue } from "../src/lib/calendar";
 
 describe("dateKey", () => {
   it("da la fecha en formato YYYY-MM-DD en UTC", () => {
@@ -110,6 +110,90 @@ describe("buildWeekGrid", () => {
     const todays = grid.filter((d) => d.isToday);
     expect(todays.length).toBe(1);
     expect(dateKey(todays[0]!.date)).toBe("2026-08-13");
+  });
+});
+
+describe("layoutDayEvents", () => {
+  // Mismo día de referencia para todos los casos — solo importa la hora.
+  function at(hhmm: string): Date {
+    return new Date(`2026-08-12T${hhmm}:00.000Z`);
+  }
+  interface FakeEvent {
+    id: string;
+    start: Date;
+    end: Date | null;
+  }
+  function evt(id: string, startHHMM: string, endHHMM: string | null): FakeEvent {
+    return { id, start: at(startHHMM), end: endHHMM ? at(endHHMM) : null };
+  }
+  const getRange = (e: FakeEvent) => ({ start: e.start, end: e.end });
+
+  it("un solo evento: minutos/duración correctos, un único carril", () => {
+    const [result] = layoutDayEvents([evt("a", "10:00", "11:00")], getRange);
+    expect(result).toMatchObject({ topMinutes: 600, durationMinutes: 60, lane: 0, lanesInDay: 1 });
+  });
+
+  it("sin fechaFin, usa la duración mínima (30 min)", () => {
+    const [result] = layoutDayEvents([evt("a", "10:00", null)], getRange);
+    expect(result.durationMinutes).toBe(30);
+  });
+
+  it("fechaFin anterior a fechaInicio (dato mal introducido): se trata como sin duración, no negativa", () => {
+    const [result] = layoutDayEvents([evt("a", "10:00", "09:00")], getRange);
+    expect(result.durationMinutes).toBe(30);
+  });
+
+  it("un evento muy corto se redondea a la duración mínima, para seguir siendo clicable", () => {
+    const [result] = layoutDayEvents([evt("a", "10:00", "10:05")], getRange);
+    expect(result.durationMinutes).toBe(30);
+  });
+
+  it("dos eventos que NO se solapan comparten el mismo carril (0) y lanesInDay=1", () => {
+    const results = layoutDayEvents([evt("a", "09:00", "10:00"), evt("b", "10:00", "11:00")], getRange);
+    expect(results.map((r) => r.lane)).toEqual([0, 0]);
+    expect(results[0]!.lanesInDay).toBe(1);
+  });
+
+  it("dos eventos que SÍ se solapan van a carriles distintos y lanesInDay=2", () => {
+    const results = layoutDayEvents([evt("a", "10:00", "11:00"), evt("b", "10:30", "11:30")], getRange);
+    const byId = Object.fromEntries(results.map((r) => [(r.item as FakeEvent).id, r]));
+    expect(byId.a!.lane).not.toBe(byId.b!.lane);
+    expect(byId.a!.lanesInDay).toBe(2);
+    expect(byId.b!.lanesInDay).toBe(2);
+  });
+
+  it("un tercer evento que solapa con los dos anteriores reutiliza un carril libre en cuanto se libera", () => {
+    // a: 10-11, b: 10:30-11:30 (se solapan, carriles 0 y 1); c: 11:15-12:00 solo solapa con b, cabe en el carril de a (ya libre a las 11:00).
+    const results = layoutDayEvents(
+      [evt("a", "10:00", "11:00"), evt("b", "10:30", "11:30"), evt("c", "11:15", "12:00")],
+      getRange,
+    );
+    const byId = Object.fromEntries(results.map((r) => [(r.item as FakeEvent).id, r]));
+    expect(byId.a!.lane).toBe(0);
+    expect(byId.b!.lane).toBe(1);
+    expect(byId.c!.lane).toBe(0);
+    expect(byId.a!.lanesInDay).toBe(2);
+  });
+
+  it("devuelve un array vacío para una lista vacía", () => {
+    expect(layoutDayEvents([], getRange)).toEqual([]);
+  });
+});
+
+describe("isOverdue", () => {
+  const today = new Date("2026-08-11T09:00:00.000Z");
+
+  it("un día anterior a hoy está vencido", () => {
+    expect(isOverdue(new Date("2026-08-10T23:00:00.000Z"), today)).toBe(true);
+  });
+
+  it("hoy mismo NO cuenta como vencido, sea cual sea la hora", () => {
+    expect(isOverdue(new Date("2026-08-11T00:00:00.000Z"), today)).toBe(false);
+    expect(isOverdue(new Date("2026-08-11T23:59:00.000Z"), today)).toBe(false);
+  });
+
+  it("un día futuro no está vencido", () => {
+    expect(isOverdue(new Date("2026-08-12T00:00:00.000Z"), today)).toBe(false);
   });
 });
 

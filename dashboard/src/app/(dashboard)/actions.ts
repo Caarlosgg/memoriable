@@ -66,6 +66,20 @@ export async function updateTaskPriority(id: string, prioridad: Prioridad): Prom
   revalidatePath("/pendientes");
 }
 
+/**
+ * Aplaza (o quita, con `fechaLimite: null`) la fecha límite de una tarjeta
+ * del tablero — la acción rápida "Aplazar" de la tarjeta, sin pasar por el
+ * modal de edición completo. Mismo criterio de acceso que el resto:
+ * `updateMany` con `workspaceId` en el where.
+ */
+export async function postponeMessage(id: string, fechaLimite: Date | null): Promise<void> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
+  await prisma.message.updateMany({ where: { id, workspaceId }, data: { fechaLimite } });
+  revalidatePath("/pendientes");
+}
+
 export interface AssignTaskResult {
   error?: string;
 }
@@ -131,6 +145,8 @@ export interface UpdateMessageInput {
   camposExtra?: Prisma.InputJsonValue;
   checklist?: Prisma.InputJsonValue;
   imagenes?: string[];
+  /** `null` para quitar la fecha límite. `undefined` para no tocarla. */
+  fechaLimite?: Date | null;
 }
 
 export interface UpdateMessageResult {
@@ -169,6 +185,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
         ...(input.camposExtra !== undefined ? { camposExtra: input.camposExtra } : {}),
         ...(input.checklist !== undefined ? { checklist: input.checklist } : {}),
         ...(input.imagenes !== undefined ? { imagenes: input.imagenes } : {}),
+        ...(input.fechaLimite !== undefined ? { fechaLimite: input.fechaLimite } : {}),
       },
     });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };

@@ -3,9 +3,10 @@
 import { useRef, useState, useTransition, type ReactNode, type ClipboardEvent, type ChangeEvent } from "react";
 import type { Message } from "@prisma/client";
 import { Pencil, Clock, Tag, X, Plus, Trash2, ImagePlus, ListChecks } from "lucide-react";
-import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION, ACTIONABLE_CATEGORIES } from "@/lib/categories";
+import { presentCategory, CATEGORIES, CATEGORY_PRESENTATION, esAccionable } from "@/lib/categories";
 import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import { formatDate } from "@/lib/format";
+import { isOverdue, dayLabel, dateKey } from "@/lib/calendar";
 import { updateMessage, deleteMessage, uploadImage, getCampoTemplate, saveCampoTemplate } from "@/app/(dashboard)/actions";
 import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtraJson } from "@/lib/camposExtra";
 import { checklistToArray, checklistToJson, type ChecklistItem } from "@/lib/checklist";
@@ -32,6 +33,7 @@ export interface EditableFields {
   camposExtra: CamposExtraJson;
   checklist: ChecklistItem[];
   imagenes: string[];
+  fechaLimite: Date | null;
 }
 
 function fieldsFrom(message: Message): EditableFields {
@@ -45,21 +47,13 @@ function fieldsFrom(message: Message): EditableFields {
     camposExtra: message.camposExtra as CamposExtraJson,
     checklist: checklistToArray(message.checklist),
     imagenes: message.imagenes,
+    fechaLimite: message.fechaLimite,
   };
 }
 
-/**
- * Estado y prioridad son conceptos de tablero (Fase C): solo tarea/
- * recordatorio aparecen en `/pendientes` (ver `getBoardGroups` en
- * lib/data.ts, que ya filtra por esto en la consulta) — para el resto de
- * categorías esos dos campos no significan nada en ningún sitio de la
- * app, así que mostrarlos en el modal es puro ruido. Se usa para decidir
- * qué mostrar tanto en vista como en edición, siempre sobre la categoría
- * ACTUAL de `fields` (reactivo: cambiar la categoría en el propio select
- * de edición oculta/muestra estos campos al vuelo).
- */
-function esAccionable(categoria: string): boolean {
-  return (ACTIONABLE_CATEGORIES as readonly string[]).includes(categoria);
+/** Valor `YYYY-MM-DD` para un `<input type="date">`, en UTC (mismo criterio que el resto del calendario). */
+function toDateInputValue(d: Date | null): string {
+  return d ? d.toISOString().slice(0, 10) : "";
 }
 
 function parseEtiquetas(texto: string): string[] {
@@ -395,6 +389,11 @@ export function MessageDetailDialog({
                 <>
                   <span>{ESTADO_PRESENTATION[message.estado].label}</span>
                   <span>Prioridad {PRIORIDAD_PRESENTATION[message.prioridad].label}</span>
+                  {message.fechaLimite && (
+                    <span className={isOverdue(message.fechaLimite) ? "font-medium text-danger" : undefined}>
+                      Aplazada a {dayLabel(dateKey(message.fechaLimite)).toLowerCase()}
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -502,6 +501,36 @@ export function MessageDetailDialog({
                 Esta categoría no aparece en el Tablero, así que no tiene estado ni prioridad — cámbiala a Tarea o
                 Recordatorio si quieres que sí aparezca.
               </p>
+            )}
+            {esAccionable(fields.categoria) && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="detalle-fecha-limite" className="text-sm font-medium text-ink">
+                  Fecha límite
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="detalle-fecha-limite"
+                    type="date"
+                    className="max-w-[180px]"
+                    value={toDateInputValue(fields.fechaLimite)}
+                    onChange={(e) =>
+                      setFields((f) => ({
+                        ...f,
+                        fechaLimite: e.target.value ? new Date(`${e.target.value}T00:00:00.000Z`) : null,
+                      }))
+                    }
+                  />
+                  {fields.fechaLimite && (
+                    <button
+                      type="button"
+                      onClick={() => setFields((f) => ({ ...f, fechaLimite: null }))}
+                      className="text-xs text-muted underline-offset-2 hover:text-accent-strong hover:underline"
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
 
             <div className="flex flex-col gap-1.5">

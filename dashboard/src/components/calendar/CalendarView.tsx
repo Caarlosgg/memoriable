@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Evento } from "@prisma/client";
 import { ChevronLeft, ChevronRight, Plus, CalendarCheck2 } from "lucide-react";
-import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, type WeekDay } from "@/lib/calendar";
+import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, type WeekDay } from "@/lib/calendar";
 import { formatEventTime } from "@/lib/format";
 import { avatarColorClass } from "@/lib/avatar";
 import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
@@ -16,7 +16,18 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("es-ES", { month: "long", year: 
 const WEEK_RANGE_FORMATTER = new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short", timeZone: "UTC" });
 const WEEKDAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const MAX_CHIPS_PER_DAY_MONTH = 3;
-const MAX_CHIPS_PER_DAY_WEEK = 8;
+
+/** Vista semana: rejilla horaria real (estilo Google Calendar/Outlook) en vez de chips apilados — ver `layoutDayEvents`. */
+const HOUR_HEIGHT = 56;
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const WEEK_GRID_COLUMNS = "40px repeat(7, minmax(90px, 1fr))";
+/** Cada cuánto se recalcula la línea de "ahora" en la columna de hoy — no hace falta más fino que esto. */
+const NOW_LINE_REFRESH_MS = 5 * 60 * 1000;
+
+/** Un evento es "de todo el día" (o de varios días) cuando su fin cae en otra fecha — no tiene sentido posicionarlo por hora. */
+function isAllDay(evento: Evento): boolean {
+  return !!evento.fechaFin && dateKey(evento.fechaFin) !== dateKey(evento.fechaInicio);
+}
 
 type CalendarViewMode = "mes" | "semana";
 
@@ -65,10 +76,29 @@ export function CalendarView({
     });
   }
 
+  // Línea de "ahora" en la vista semana (columna de hoy) — se recalcula cada
+  // pocos minutos, no hace falta al segundo para que siga siendo útil.
+  const [nowTick, setNowTick] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(new Date()), NOW_LINE_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Al entrar en vista semana (o cambiar de semana), la rejilla arranca
+  // centrada sobre la hora actual en vez de en 00:00 — nadie quiere hacer
+  // scroll manual para ver "qué tengo ahora".
+  const hourGridRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (view !== "semana" || !hourGridRef.current) return;
+    const nowMinutes = nowTick.getUTCHours() * 60 + nowTick.getUTCMinutes();
+    hourGridRef.current.scrollTop = Math.max(0, (nowMinutes / 60) * HOUR_HEIGHT - HOUR_HEIGHT * 2);
+    // Solo al cambiar de vista/semana — no en cada tick de nowTick, o se
+    // pelearía con el scroll manual del usuario.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, cursor]);
+
   const monthGrid = buildMonthGrid(cursor.getUTCFullYear(), cursor.getUTCMonth());
   const weekGrid = buildWeekGrid(cursor);
-  const grid = view === "mes" ? monthGrid : weekGrid;
-  const maxChipsPerDay = view === "mes" ? MAX_CHIPS_PER_DAY_MONTH : MAX_CHIPS_PER_DAY_WEEK;
   // "Calendario por periodos": un evento con fechaFin en otro día aparece
   // en TODOS los días que ocupa, no solo el primero — antes solo se veía
   // el día de inicio, así que una actividad de varios días "desaparecía"
@@ -176,66 +206,207 @@ export function CalendarView({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted">
-        {WEEKDAY_LABELS.map((d) => (
-          <div key={d}>{d}</div>
-        ))}
-      </div>
+      {view === "mes" ? (
+        <>
+          <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted">
+            {WEEKDAY_LABELS.map((d) => (
+              <div key={d}>{d}</div>
+            ))}
+          </div>
 
-      <div className="grid grid-cols-7 gap-1">
-        {grid.map((day) => {
-          const key = dateKey(day.date);
-          const dayEventos = byDay.get(key) ?? [];
-          const inMonth = "inMonth" in day ? day.inMonth : true;
-          return (
-            <div
-              key={key}
-              className={`flex ${view === "mes" ? "min-h-[80px]" : "min-h-[220px]"} flex-col gap-1 rounded-lg border p-1.5 text-xs ${
-                inMonth ? "border-paper-line bg-paper" : "border-transparent bg-paper/40"
-              } ${day.isToday ? "border-accent ring-1 ring-accent" : ""}`}
-            >
-              <span
-                className={`font-medium ${
-                  day.isToday ? "text-accent-strong" : inMonth ? "text-ink" : "text-muted"
-                }`}
+          <div className="grid grid-cols-7 gap-1">
+            {monthGrid.map((day) => {
+              const key = dateKey(day.date);
+              const dayEventos = byDay.get(key) ?? [];
+              const inMonth = day.inMonth;
+              return (
+                <div
+                  key={key}
+                  className={`flex min-h-[80px] flex-col gap-1 rounded-lg border p-1.5 text-xs ${
+                    inMonth ? "border-paper-line bg-paper" : "border-transparent bg-paper/40"
+                  } ${day.isToday ? "border-accent ring-1 ring-accent" : ""}`}
+                >
+                  <span
+                    className={`font-medium ${
+                      day.isToday ? "text-accent-strong" : inMonth ? "text-ink" : "text-muted"
+                    }`}
+                  >
+                    {day.date.getUTCDate()}
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    {dayEventos.slice(0, MAX_CHIPS_PER_DAY_MONTH).map((evento) => {
+                      const assignee = memberOf(evento.assigneeId);
+                      return (
+                        <EventDetailDialog
+                          key={evento.id}
+                          evento={evento}
+                          members={members}
+                          onChanged={() => router.refresh()}
+                          onDeleted={handleDeleted}
+                          onUndoDelete={handleUndoDelete}
+                        >
+                          <button
+                            type="button"
+                            className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] font-medium transition-[filter] hover:brightness-95 ${chipColorClass(assignee)}`}
+                          >
+                            {assignee && <Avatar email={assignee.email} size="xs" className="shrink-0" />}
+                            <span className="truncate">
+                              {formatEventTime(evento.fechaInicio) && (
+                                <span className="font-normal opacity-80">{formatEventTime(evento.fechaInicio)} </span>
+                              )}
+                              {evento.titulo}
+                            </span>
+                          </button>
+                        </EventDetailDialog>
+                      );
+                    })}
+                    {dayEventos.length > MAX_CHIPS_PER_DAY_MONTH && (
+                      <span className="text-[11px] text-muted">+{dayEventos.length - MAX_CHIPS_PER_DAY_MONTH} más</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div className="overflow-x-auto">
+          <div style={{ minWidth: 40 + 7 * 90 }}>
+            <div className="grid gap-px pb-1" style={{ gridTemplateColumns: WEEK_GRID_COLUMNS }}>
+              <div />
+              {weekGrid.map((day, i) => (
+                <div key={dateKey(day.date)} className="text-center text-xs font-semibold text-muted">
+                  {WEEKDAY_LABELS[i]}{" "}
+                  <span
+                    className={
+                      day.isToday
+                        ? "inline-block rounded-full bg-accent px-1.5 py-0.5 text-accent-ink"
+                        : "text-ink"
+                    }
+                  >
+                    {day.date.getUTCDate()}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {weekGrid.some((day) => (byDay.get(dateKey(day.date)) ?? []).some(isAllDay)) && (
+              <div
+                className="grid gap-px border-b border-paper-line pb-1"
+                style={{ gridTemplateColumns: WEEK_GRID_COLUMNS }}
               >
-                {day.date.getUTCDate()}
-              </span>
-              <div className="flex flex-col gap-0.5">
-                {dayEventos.slice(0, maxChipsPerDay).map((evento) => {
-                  const assignee = memberOf(evento.assigneeId);
+                <span className="pt-0.5 text-[9px] text-muted">todo el día</span>
+                {weekGrid.map((day) => {
+                  const key = dateKey(day.date);
+                  const allDayEventos = (byDay.get(key) ?? []).filter(isAllDay);
                   return (
-                    <EventDetailDialog
-                      key={evento.id}
-                      evento={evento}
-                      members={members}
-                      onChanged={() => router.refresh()}
-                      onDeleted={handleDeleted}
-                      onUndoDelete={handleUndoDelete}
-                    >
-                      <button
-                        type="button"
-                        className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] font-medium transition-[filter] hover:brightness-95 ${chipColorClass(assignee)}`}
-                      >
-                        {assignee && <Avatar email={assignee.email} size="xs" className="shrink-0" />}
-                        <span className="truncate">
-                          {formatEventTime(evento.fechaInicio) && (
-                            <span className="font-normal opacity-80">{formatEventTime(evento.fechaInicio)} </span>
-                          )}
-                          {evento.titulo}
-                        </span>
-                      </button>
-                    </EventDetailDialog>
+                    <div key={key} className="flex flex-col gap-0.5 px-0.5">
+                      {allDayEventos.map((evento) => {
+                        const assignee = memberOf(evento.assigneeId);
+                        return (
+                          <EventDetailDialog
+                            key={evento.id}
+                            evento={evento}
+                            members={members}
+                            onChanged={() => router.refresh()}
+                            onDeleted={handleDeleted}
+                            onUndoDelete={handleUndoDelete}
+                          >
+                            <button
+                              type="button"
+                              className={`w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium transition-[filter] hover:brightness-95 ${chipColorClass(assignee)}`}
+                            >
+                              {evento.titulo}
+                            </button>
+                          </EventDetailDialog>
+                        );
+                      })}
+                    </div>
                   );
                 })}
-                {dayEventos.length > maxChipsPerDay && (
-                  <span className="text-[11px] text-muted">+{dayEventos.length - maxChipsPerDay} más</span>
-                )}
+              </div>
+            )}
+
+            <div ref={hourGridRef} className="overflow-y-auto" style={{ maxHeight: 480 }}>
+              <div className="grid" style={{ gridTemplateColumns: WEEK_GRID_COLUMNS }}>
+                <div className="relative" style={{ height: HOUR_HEIGHT * 24 }}>
+                  {HOURS.map((h) => (
+                    <span
+                      key={h}
+                      className="absolute right-1 -translate-y-1/2 text-[10px] text-muted"
+                      style={{ top: h * HOUR_HEIGHT }}
+                    >
+                      {String(h).padStart(2, "0")}:00
+                    </span>
+                  ))}
+                </div>
+                {weekGrid.map((day) => {
+                  const key = dateKey(day.date);
+                  const timedEventos = (byDay.get(key) ?? []).filter((e) => !isAllDay(e));
+                  const laidOut = layoutDayEvents(timedEventos, (e) => ({ start: e.fechaInicio, end: e.fechaFin }));
+                  const nowMinutes = day.isToday ? nowTick.getUTCHours() * 60 + nowTick.getUTCMinutes() : null;
+                  return (
+                    <div
+                      key={key}
+                      className={`relative border-l border-paper-line ${day.isToday ? "bg-accent-soft/20" : ""}`}
+                      style={{ height: HOUR_HEIGHT * 24 }}
+                    >
+                      {HOURS.map((h) => (
+                        <div
+                          key={h}
+                          className="absolute inset-x-0 border-t border-paper-line/60"
+                          style={{ top: h * HOUR_HEIGHT }}
+                        />
+                      ))}
+                      {nowMinutes !== null && (
+                        <div
+                          className="absolute inset-x-0 z-10 border-t-2 border-accent"
+                          style={{ top: (nowMinutes / 60) * HOUR_HEIGHT }}
+                        >
+                          <span className="absolute -left-1 -top-1 block h-2 w-2 rounded-full bg-accent" />
+                        </div>
+                      )}
+                      {laidOut.map(({ item: evento, topMinutes, durationMinutes, lane, lanesInDay }) => {
+                        const assignee = memberOf(evento.assigneeId);
+                        const widthPct = 100 / lanesInDay;
+                        return (
+                          <EventDetailDialog
+                            key={evento.id}
+                            evento={evento}
+                            members={members}
+                            onChanged={() => router.refresh()}
+                            onDeleted={handleDeleted}
+                            onUndoDelete={handleUndoDelete}
+                          >
+                            <button
+                              type="button"
+                              className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[10px] font-medium leading-tight transition-[filter] hover:z-20 hover:brightness-95 ${chipColorClass(assignee)}`}
+                              style={{
+                                top: (topMinutes / 60) * HOUR_HEIGHT,
+                                height: (durationMinutes / 60) * HOUR_HEIGHT,
+                                left: `${lane * widthPct}%`,
+                                width: `calc(${widthPct}% - 2px)`,
+                              }}
+                            >
+                              {formatEventTime(evento.fechaInicio) && (
+                                <span className="block opacity-80">{formatEventTime(evento.fechaInicio)}</span>
+                              )}
+                              <span className="flex items-center gap-1 truncate">
+                                {assignee && <Avatar email={assignee.email} size="xs" className="shrink-0" />}
+                                <span className="truncate">{evento.titulo}</span>
+                              </span>
+                            </button>
+                          </EventDetailDialog>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

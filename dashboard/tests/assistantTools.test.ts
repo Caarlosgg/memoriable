@@ -359,6 +359,63 @@ describe("createAssistantTools", () => {
     expect(result).toMatchObject({ id: "p3" });
   });
 
+  it("aplazarTarea encuentra la pendiente y le pone la nueva fecha límite", async () => {
+    findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1", resumen: "Llamar al fontanero" })]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    const result = await tools.aplazarTarea.execute!(
+      { descripcion: "llamar al fontanero", fecha: "2026-08-15T00:00:00.000Z" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: { id: "p1", workspaceId: "w1" },
+      data: { fechaLimite: new Date("2026-08-15T00:00:00.000Z") },
+    });
+    expect(result).toMatchObject({ id: "p1", fechaLimite: "2026-08-15T00:00:00.000Z" });
+  });
+
+  it("aplazarTarea sin `fecha` quita la fecha límite", async () => {
+    findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1" })]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    const result = await tools.aplazarTarea.execute!(
+      { descripcion: "llamar al fontanero" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdateMany).toHaveBeenCalledWith({ where: { id: "p1", workspaceId: "w1" }, data: { fechaLimite: null } });
+    expect(result).toMatchObject({ id: "p1", fechaLimite: null });
+  });
+
+  it("aplazarTarea lanza (en español) si la fecha no se entiende", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    await expect(
+      tools.aplazarTarea.execute!(
+        { descripcion: "algo", fecha: "no-es-una-fecha" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he entendido bien la fecha/);
+    expect(messageUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("aplazarTarea lanza (en español) si no encuentra ninguna coincidencia", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    await expect(
+      tools.aplazarTarea.execute!(
+        { descripcion: "algo que no existe", fecha: "2026-08-15T00:00:00.000Z" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he encontrado ninguna tarea pendiente/);
+    expect(messageUpdateMany).not.toHaveBeenCalled();
+  });
+
   it("registrarAhorro guarda el movimiento en una cuenta existente que coincide por nombre", async () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Fondo de emergencia", userId: "u1" }]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
@@ -684,6 +741,18 @@ describe("createAssistantTools", () => {
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       await expect(
         tools.completarTarea.execute!({ descripcion: "algo" }, { toolCallId: "c", messages: [], context: undefined }),
+      ).rejects.toThrow(/solo lectura/);
+      expect(messageUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("aplazarTarea rechaza con rol VIEWER", async () => {
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      await expect(
+        tools.aplazarTarea.execute!(
+          { descripcion: "algo", fecha: "2026-08-15T00:00:00.000Z" },
+          { toolCallId: "c", messages: [], context: undefined },
+        ),
       ).rejects.toThrow(/solo lectura/);
       expect(messageUpdateMany).not.toHaveBeenCalled();
     });

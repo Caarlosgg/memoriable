@@ -46,6 +46,13 @@ export interface CompletarTareaResult {
   categoria: string;
 }
 
+export interface AplazarTareaResult {
+  id: string;
+  resumen: string;
+  categoria: string;
+  fechaLimite: string | null;
+}
+
 export interface RegistrarAhorroResult {
   cuentaId: string;
   cuentaNombre: string;
@@ -380,6 +387,68 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
         }
 
         const result: CompletarTareaResult = { id: tarea.id, resumen: tarea.resumen, categoria: tarea.categoria };
+        return result;
+      },
+    }),
+    aplazarTarea: tool({
+      description:
+        "Cambia la fecha límite de una tarea o recordatorio pendiente (\"aplaza lo del informe a mañana\", \"pospón la llamada al fontanero a la semana que viene\", \"quita la fecha de la revisión del coche\"). Busca entre sus pendientes la que mejor coincide con la descripción. Resuelve tú la fecha relativa (\"mañana\", \"el viernes\", \"la semana que viene\") a una fecha ISO concreta antes de llamar — no le pases al usuario la carga de dar una fecha exacta. Para quitar la fecha límite sin poner otra, no pases `fecha`.",
+      inputSchema: z.object({
+        descripcion: z
+          .string()
+          .min(1)
+          .describe("Descripción de la tarea tal como la menciona el usuario, para buscarla entre sus pendientes."),
+        fecha: z
+          .string()
+          .optional()
+          .describe("Nueva fecha límite, en formato ISO 8601 (solo la fecha basta). Omite este campo para QUITAR la fecha límite."),
+      }),
+      execute: async ({ descripcion, fecha }) => {
+        requireWrite();
+        let nuevaFecha: Date | null = null;
+        if (fecha) {
+          nuevaFecha = new Date(fecha);
+          if (Number.isNaN(nuevaFecha.getTime())) {
+            throw new Error("No he entendido bien la fecha. ¿Puedes decírmela de otra forma?");
+          }
+        }
+
+        let tarea: Message | null;
+        try {
+          tarea = await encontrarTareaPendiente(workspaceId, descripcion);
+        } catch (err) {
+          console.error("La tool aplazarTarea no pudo buscar la tarea:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.");
+        }
+        if (!tarea) {
+          throw new Error("No he encontrado ninguna tarea pendiente que coincida con eso.");
+        }
+
+        try {
+          const { count } = await prisma.message.updateMany({
+            where: { id: tarea.id, workspaceId },
+            data: { fechaLimite: nuevaFecha },
+          });
+          if (count === 0) throw new Error("La tarea encontrada ya no está en este workspace.");
+        } catch (err) {
+          console.error("La tool aplazarTarea no pudo cambiar la fecha:", err);
+          Sentry.captureException(err);
+          throw new Error("No se ha podido aplazar. Inténtalo de nuevo en un momento.");
+        }
+
+        try {
+          revalidatePath("/pendientes");
+        } catch (err) {
+          console.error("No se pudo invalidar la caché tras aplazar la tarea (no crítico):", err);
+        }
+
+        const result: AplazarTareaResult = {
+          id: tarea.id,
+          resumen: tarea.resumen,
+          categoria: tarea.categoria,
+          fechaLimite: nuevaFecha ? nuevaFecha.toISOString() : null,
+        };
         return result;
       },
     }),

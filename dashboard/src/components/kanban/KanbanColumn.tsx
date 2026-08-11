@@ -25,6 +25,7 @@ interface KanbanColumnProps {
   onCyclePrioridad: (messageId: string) => void;
   onEtiquetaAdd: (messageId: string, etiqueta: string) => void;
   onAssigneeChange?: (messageId: string, assigneeId: string | null) => void;
+  onPostpone: (messageId: string, fechaLimite: Date | null) => void;
   onSaved: (id: string, patch: EditableFields) => void;
   onDeleted: (id: string) => void;
   onUndoDelete: (id: string) => void;
@@ -54,6 +55,7 @@ function KanbanColumnImpl({
   onCyclePrioridad,
   onEtiquetaAdd,
   onAssigneeChange,
+  onPostpone,
   onSaved,
   onDeleted,
   onUndoDelete,
@@ -121,6 +123,7 @@ function KanbanColumnImpl({
                   onCyclePrioridad={onCyclePrioridad}
                   onEtiquetaAdd={onEtiquetaAdd}
                   onAssigneeChange={onAssigneeChange}
+                  onPostpone={onPostpone}
                 />
               </MessageDetailDialog>
             ))
