@@ -145,6 +145,20 @@ describe("resolverMiembro", () => {
     expect(resolverMiembro("Maria", withAccent)).toMatchObject({ userId: "u-x" });
   });
 
+  it("una coincidencia exacta de la parte local gana a una parcial anterior en la lista (no depende del orden)", async () => {
+    // Bug real encontrado en revisión de código: antes, la comprobación
+    // exacta y la parcial vivían en el mismo `.find()`, así que si
+    // "ana.garcia@..." aparecía ANTES que "ana@..." en la lista,
+    // `.includes("ana")` la hacía ganar por delante de la coincidencia
+    // exacta — asignando en silencio a la persona equivocada.
+    const { resolverMiembro } = await import("../src/lib/assistantTools");
+    const conAmbas = [
+      { userId: "u-ana-garcia", email: "ana.garcia@example.com", isSelf: false },
+      { userId: "u-ana", email: "ana@example.com", isSelf: false },
+    ];
+    expect(resolverMiembro("ana", conAmbas)).toMatchObject({ userId: "u-ana" });
+  });
+
   it("devuelve null si nadie encaja — nunca asigna 'a lo que más se parezca' sin overlap real", async () => {
     const { resolverMiembro } = await import("../src/lib/assistantTools");
     expect(resolverMiembro("pedro", members)).toBeNull();
@@ -232,6 +246,24 @@ describe("createAssistantTools", () => {
 
     expect(messageUpdate).not.toHaveBeenCalled();
     expect(result).toMatchObject({ asignadoA: null, asignacionNoEncontrada: "nadie-conocido" });
+  });
+
+  it("crearNota: si el miembro se resuelve pero la escritura de assigneeId falla, NO informa la asignación como hecha", async () => {
+    // Bug real encontrado en revisión de código: el catch solo registraba
+    // el error, pero el resultado seguía usando `asignado.email` como si
+    // la escritura hubiera funcionado — el Asistente decía "asignada a X"
+    // aunque la nota se hubiera guardado sin asignar de verdad.
+    messageUpdate.mockRejectedValueOnce(new Error("conexión perdida"));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.crearNota.execute!(
+      { contenido: "Revisar la propuesta", asignadoA: "ana" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdate).toHaveBeenCalled();
+    expect(result).toMatchObject({ asignadoA: null });
   });
 
   it("ante un fallo al guardar, lanza un mensaje en español sin filtrar detalles internos", async () => {
@@ -802,6 +834,27 @@ describe("createAssistantTools", () => {
 
     const result = await tools.editarEvento.execute!(
       { descripcion: "cita con el médico", quitarAsignacion: true },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoUpdateMany).toHaveBeenCalledWith({
+      where: { id: "e1", workspaceId: "w1" },
+      data: { assigneeId: null },
+    });
+    expect(result).toMatchObject({ asignadoA: null });
+  });
+
+  it("editarEvento: si llegan asignadoA Y quitarAsignacion a la vez, quitarAsignacion gana en la escritura Y en lo que se informa", async () => {
+    // Bug real encontrado en revisión de código: la escritura ya hacía
+    // ganar a quitarAsignacion (assigneeId: null), pero el resultado
+    // seguía reportando `asignadoA: asignado.email` — el Asistente podía
+    // decir "asignada a X" con el evento en realidad guardado sin asignar.
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.editarEvento.execute!(
+      { descripcion: "cita con el médico", asignadoA: "benitoelrey", quitarAsignacion: true },
       { toolCallId: "c", messages: [], context: undefined },
     );
 

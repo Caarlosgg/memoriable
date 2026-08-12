@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Send, CircleCheck, CalendarDays, CalendarClock, PiggyBank, Pencil, Trash2, UserRound, UserRoundX } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
-import { formatEventDate } from "@/lib/format";
+import { formatEventDate, shortEmailName } from "@/lib/format";
 import { dayLabel, dateKey } from "@/lib/calendar";
 import { formatCentimos } from "@/lib/money";
 import { useAssistant, type AssistantMessage } from "./AssistantProvider";
@@ -27,16 +27,12 @@ function textOf(message: AssistantMessage): string {
     .join("");
 }
 
-function shortName(email: string): string {
-  return email.split("@")[0] ?? email;
-}
-
 /** Línea "asignado a X" (o aviso de que no se encontró a esa persona) — reutilizada por las tarjetas de crear/editar/asignar. */
 function AsignadoLine({ asignadoA, asignacionNoEncontrada }: { asignadoA: string | null; asignacionNoEncontrada?: string }) {
   if (asignadoA) {
     return (
       <p className="mt-0.5 flex items-center gap-1 text-muted">
-        <UserRound aria-hidden size={11} /> Asignado a {shortName(asignadoA)}
+        <UserRound aria-hidden size={11} /> Asignado a {shortEmailName(asignadoA)}
       </p>
     );
   }
@@ -218,7 +214,7 @@ function AsignarTareaResult({ part }: { part: AsignarTareaPart }) {
       <p className="flex items-center gap-1.5 font-medium text-ink">
         <CircleCheck aria-hidden size={14} className="text-accent" />
         <Icon aria-hidden size={13} className={color} />
-        {t.asignadoA ? `Asignada a ${shortName(t.asignadoA)}` : "Asignación quitada"}
+        {t.asignadoA ? `Asignada a ${shortEmailName(t.asignadoA)}` : "Asignación quitada"}
       </p>
       <p className="mt-0.5 line-clamp-2 text-muted">{t.resumen}</p>
     </div>

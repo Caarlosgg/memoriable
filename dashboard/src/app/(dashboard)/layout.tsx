@@ -35,29 +35,35 @@ export default async function DashboardLayout({
       prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }).catch(() => null),
     ]);
   const isSuperAdmin = currentUser?.isSuperAdmin ?? false;
-  // No crítico: si falla, el dashboard sigue funcionando igual, solo sin el
-  // modal del resumen del día (no es un dato imprescindible para entrar).
-  // Fase Equipo: SIEMPRE el workspace personal, nunca el activo (ver
-  // getDailyBriefing en lib/dailyBriefing.ts) — "tu día" no cambia si
-  // tienes seleccionado un workspace de equipo.
-  const briefing = await getPersonalWorkspaceId(userId)
-    .then((personalWorkspaceId) => getDailyBriefing(personalWorkspaceId))
-    .catch((err) => {
-      console.error("No se pudo calcular el resumen del día (no crítico):", err);
-      return null;
-    });
 
-  // Solo hace falta en modo equipo — en personal nadie más puede estar "en
-  // curso" en nada. No crítico: si falla, `CurrentTaskBar` sigue mostrando
-  // tu propia tarea activa, solo sin nombrar a nadie más.
-  const memberEmailById = isPersonal
-    ? {}
-    : await getWorkspaceMembers(activeWorkspaceId)
-        .then((members) => Object.fromEntries(members.map((m) => [m.userId, m.email])))
-        .catch((err) => {
-          console.error("No se pudieron cargar los miembros del equipo para «en curso ahora» (no crítico):", err);
-          return {};
-        });
+  // Ninguna depende de la otra (ambas solo necesitan userId/activeWorkspaceId,
+  // ya resueltos arriba) — en paralelo en vez de en secuencia, mismo
+  // criterio que el resto de este archivo, para no sumar una ida y vuelta
+  // extra a la BD en cada navegación dentro de un workspace de equipo.
+  const [briefing, memberEmailById] = await Promise.all([
+    // No crítico: si falla, el dashboard sigue funcionando igual, solo sin
+    // el modal del resumen del día (no es un dato imprescindible para
+    // entrar). Fase Equipo: SIEMPRE el workspace personal, nunca el activo
+    // (ver getDailyBriefing en lib/dailyBriefing.ts) — "tu día" no cambia
+    // si tienes seleccionado un workspace de equipo.
+    getPersonalWorkspaceId(userId)
+      .then((personalWorkspaceId) => getDailyBriefing(personalWorkspaceId))
+      .catch((err) => {
+        console.error("No se pudo calcular el resumen del día (no crítico):", err);
+        return null;
+      }),
+    // Solo hace falta en modo equipo — en personal nadie más puede estar
+    // "en curso" en nada. No crítico: si falla, `CurrentTaskBar` sigue
+    // mostrando tu propia tarea activa, solo sin nombrar a nadie más.
+    isPersonal
+      ? Promise.resolve({})
+      : getWorkspaceMembers(activeWorkspaceId)
+          .then((members) => Object.fromEntries(members.map((m) => [m.userId, m.email])))
+          .catch((err) => {
+            console.error("No se pudieron cargar los miembros del equipo para «en curso ahora» (no crítico):", err);
+            return {};
+          }),
+  ]);
 
   return (
     <UndoToastProvider>

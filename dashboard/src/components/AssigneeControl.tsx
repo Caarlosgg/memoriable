@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Avatar } from "@/components/ui/avatar";
+import { shortEmailName } from "@/lib/format";
 import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
 
 /**
@@ -22,11 +23,6 @@ import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
  * Portal — React sigue burbujeando el evento por el árbol de React (no el
  * del DOM), así que sin esto elegir alguien también abriría el modal.
  */
-/** Recorta el email a la parte local (antes de la @) para un chip que no se desborde. */
-function shortLabel(email: string): string {
-  return email.split("@")[0] ?? email;
-}
-
 export function AssigneeControl({
   assigneeId,
   members,
@@ -66,7 +62,7 @@ export function AssigneeControl({
           ) : (
             <UserPlus aria-hidden size={variant === "chip" ? 13 : 11} />
           )}
-          {variant === "chip" && <span className="truncate">{assignee ? shortLabel(assignee.email) : "Asignar"}</span>}
+          {variant === "chip" && <span className="truncate">{assignee ? shortEmailName(assignee.email) : "Asignar"}</span>}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

@@ -49,11 +49,20 @@ function normalizeForMatch(text: string): string {
 export function resolverMiembro(nombre: string, members: AssistantWorkspaceMemberInfo[]): AssistantWorkspaceMemberInfo | null {
   const normalizado = normalizeForMatch(nombre);
   if (!normalizado) return null;
+  // Tres niveles de precisión, EN ORDEN: email completo, luego parte local
+  // exacta, y solo si ninguna de las dos encaja, una coincidencia parcial.
+  // Antes la parte local exacta y la parcial vivían en el mismo `.find()`
+  // — como `.find()` para en el primer elemento que cumple CUALQUIERA de
+  // las condiciones, un miembro con coincidencia solo parcial pero antes
+  // en la lista (p. ej. "ana.garcia@..." antes que "ana@...") podía ganar
+  // por delante de la coincidencia exacta "ana", asignando en silencio a
+  // la persona equivocada.
   return (
     members.find((m) => normalizeForMatch(m.email) === normalizado) ??
+    members.find((m) => normalizeForMatch(m.email.split("@")[0] ?? "") === normalizado) ??
     members.find((m) => {
       const local = normalizeForMatch(m.email.split("@")[0] ?? "");
-      return local === normalizado || local.includes(normalizado) || normalizado.includes(local);
+      return local.includes(normalizado) || normalizado.includes(local);
     }) ??
     null
   );
@@ -308,11 +317,16 @@ export function createAssistantTools(
         }
 
         const asignado = asignadoA ? resolverMiembro(asignadoA, members) : null;
+        // Si la asignación en sí falla, `asignado` se limpia a `null` antes
+        // de construir el resultado — sin esto, el Asistente podía decir
+        // "asignada a X" aunque la escritura hubiera fallado de verdad.
+        let asignacionGuardada = asignado;
         if (asignado) {
           try {
             await prisma.message.update({ where: { id: saved.id }, data: { assigneeId: asignado.userId } });
           } catch (err) {
             console.error("La tool crearNota no pudo asignarla (se guarda sin asignar):", err);
+            asignacionGuardada = null;
           }
         }
 
@@ -329,7 +343,7 @@ export function createAssistantTools(
 
         const result: AssistantSource & { asignadoA: string | null; asignacionNoEncontrada?: string } = {
           ...toAssistantSource(saved),
-          asignadoA: asignado?.email ?? null,
+          asignadoA: asignacionGuardada?.email ?? null,
           asignacionNoEncontrada: asignadoA && !asignado ? asignadoA : undefined,
         };
         return result;
@@ -711,6 +725,11 @@ export function createAssistantTools(
         }
 
         const asignado = asignadoA ? resolverMiembro(asignadoA, members) : null;
+        // `quitarAsignacion` siempre gana si por lo que sea llegan los dos a
+        // la vez — y el resultado que se informa abajo usa ESTE valor, no
+        // `asignado`, para no decir "asignada a X" cuando en realidad se
+        // ha guardado sin asignar.
+        const asignadoEfectivo = quitarAsignacion ? null : asignado;
 
         const data: { titulo?: string; fechaInicio?: Date; fechaFin?: Date; ubicacion?: string; assigneeId?: string | null } = {};
         if (tituloNuevo) data.titulo = tituloNuevo;
@@ -760,7 +779,7 @@ export function createAssistantTools(
           titulo: actualizado.titulo,
           fechaInicio: actualizado.fechaInicio.toISOString(),
           ubicacion: actualizado.ubicacion,
-          asignadoA: asignado?.email ?? null,
+          asignadoA: asignadoEfectivo?.email ?? null,
           asignacionNoEncontrada: asignadoA && !asignado ? asignadoA : undefined,
         };
         return result;

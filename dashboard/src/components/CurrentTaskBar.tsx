@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CircleCheck, Square, Loader2 } from "lucide-react";
 import { listEnProgresoAhora, stopWorkingOn, updateTaskStatus, type EnProgresoItem } from "@/app/(dashboard)/actions";
 import { presentCategory } from "@/lib/categories";
+import { shortEmailName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { EN_PROGRESO_CHANGED_EVENT, notifyTaskPatchedElsewhere } from "@/lib/enProgresoEvents";
 
@@ -22,10 +23,6 @@ function elapsedLabel(desde: string): string {
   if (mins < 1) return "justo ahora";
   if (mins < 60) return `hace ${mins} min`;
   return `hace ${Math.round(mins / 60)} h`;
-}
-
-function shortName(email: string): string {
-  return email.split("@")[0] ?? email;
 }
 
 /**
@@ -63,6 +60,21 @@ export function CurrentTaskBar({
     // de Postgres cada 20s si nadie la está mirando. Al volver a primer
     // plano, se refresca al instante y el sondeo se reanuda.
     let id: ReturnType<typeof setInterval> | undefined;
+    // `visibilitychange` (volver a esta pestaña) y `focus` (la ventana
+    // recupera el foco del SO) no son el mismo evento — con dos ventanas
+    // una junto a otra, solo `focus` avisa al cambiar entre ellas sin que
+    // la pestaña llegue a ocultarse. Pero al volver de una pestaña en
+    // segundo plano (el caso más común) los dos SUELEN dispararse casi a
+    // la vez, duplicando la consulta — este margen mínimo evita el doble
+    // `refresh()` sin perder ninguno de los dos casos reales.
+    let lastRefreshAt = 0;
+    const DEDUPE_MS = 1000;
+    function dedupedRefresh() {
+      const now = Date.now();
+      if (now - lastRefreshAt < DEDUPE_MS) return;
+      lastRefreshAt = now;
+      refresh();
+    }
     function startPolling() {
       if (id !== undefined) return;
       id = setInterval(refresh, POLL_MS);
@@ -74,7 +86,7 @@ export function CurrentTaskBar({
     }
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
-        refresh();
+        dedupedRefresh();
         startPolling();
       } else {
         stopPolling();
@@ -82,7 +94,7 @@ export function CurrentTaskBar({
     }
     if (document.visibilityState === "visible") startPolling();
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", refresh);
+    window.addEventListener("focus", dedupedRefresh);
     // Cambios hechos por TI en esta misma pestaña (botones de la tarjeta
     // del tablero) se notan al instante, sin esperar al sondeo — ver
     // lib/enProgresoEvents.ts.
@@ -90,7 +102,7 @@ export function CurrentTaskBar({
     return () => {
       stopPolling();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("focus", dedupedRefresh);
       window.removeEventListener(EN_PROGRESO_CHANGED_EVENT, refresh);
     };
   }, [refresh]);
@@ -186,7 +198,7 @@ export function CurrentTaskBar({
               return (
                 <li key={item.id} className="flex items-center gap-1.5 truncate text-[11px] text-muted">
                   <Icon aria-hidden size={11} className={color} />
-                  <span className="font-medium text-ink">{shortName(memberEmailById[item.enProgresoPorId] ?? "alguien")}</span>
+                  <span className="font-medium text-ink">{shortEmailName(memberEmailById[item.enProgresoPorId] ?? "alguien")}</span>
                   <span className="truncate">en curso: {item.resumen}</span>
                 </li>
               );

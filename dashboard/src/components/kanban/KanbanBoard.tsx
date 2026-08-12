@@ -22,6 +22,7 @@ import {
   nextPriority,
   PRIORIDADES,
   PRIORIDAD_PRESENTATION,
+  shouldClearEnProgreso,
 } from "@/lib/kanban";
 import { CATEGORIES, CATEGORY_PRESENTATION, presentCategory, type Category } from "@/lib/categories";
 import { notifyEnProgresoChanged, TASK_PATCHED_ELSEWHERE_EVENT, type TaskPatchedElsewhereDetail } from "@/lib/enProgresoEvents";
@@ -288,11 +289,12 @@ export function KanbanBoard({
     else if (below) newOrden = below.orden + ORDEN_STEP;
     else newOrden = Date.now();
 
-    // Igual que `clearEnProgresoIfDone` en el servidor: soltarla en HECHO
-    // también suelta "en curso ahora".
+    // Igual que en el servidor (ver `shouldClearEnProgreso`): soltarla en
+    // HECHO también suelta "en curso ahora".
+    const clearsEnProgreso = shouldClearEnProgreso(container);
     const finalList = reordered.map((m) =>
       m.id === activeIdStr
-        ? { ...m, orden: newOrden, ...(container === "HECHO" ? { enProgresoPorId: null, enProgresoDesde: null } : {}) }
+        ? { ...m, orden: newOrden, ...(clearsEnProgreso ? { enProgresoPorId: null, enProgresoDesde: null } : {}) }
         : m,
     );
     const original = findContainer(activeIdStr, snapshot);
@@ -306,7 +308,7 @@ export function KanbanBoard({
 
     moveTask(activeIdStr, container, newOrden)
       .then(() => {
-        if (container === "HECHO") notifyEnProgresoChanged();
+        if (clearsEnProgreso) notifyEnProgresoChanged();
       })
       .catch((err) => {
         console.error("No se pudo mover la tarjeta:", err);
@@ -323,10 +325,11 @@ export function KanbanBoard({
     const current = findMessage(messageId);
     if (!current) return;
     const target = nextEstado(current.estado);
-    // Igual que en el servidor (ver `clearEnProgresoIfDone`): marcarla
+    // Igual que en el servidor (ver `shouldClearEnProgreso`): marcarla
     // HECHA suelta también "en curso ahora" — no tendría sentido que
     // siguiera apareciendo como que alguien la está haciendo.
-    const clearEnProgreso = target === "HECHO" ? { enProgresoPorId: null, enProgresoDesde: null } : {};
+    const clearsEnProgreso = shouldClearEnProgreso(target);
+    const clearEnProgreso = clearsEnProgreso ? { enProgresoPorId: null, enProgresoDesde: null } : {};
 
     applyLocalUpdate(messageId, { estado: target, hecho: target === "HECHO", ...clearEnProgreso });
     setAnnouncement(`«${current.resumen}» ahora está ${ESTADO_PRESENTATION[target].label}.`);
@@ -335,7 +338,7 @@ export function KanbanBoard({
         // Se avisa DESPUÉS de que el servidor confirme, no antes: `CurrentTaskBar`
         // reacciona a este evento releyendo del servidor, y si avisara antes,
         // podría releer justo antes de que el propio cambio se hubiera guardado.
-        if (target === "HECHO") notifyEnProgresoChanged();
+        if (clearsEnProgreso) notifyEnProgresoChanged();
       })
       .catch((err) => {
         console.error("No se pudo cambiar el estado:", err);
@@ -356,8 +359,19 @@ export function KanbanBoard({
     });
   }, [findMessage]);
 
+  // Guardar desde el modal de edición es la TERCERA vía por la que una
+  // tarjeta puede llegar a HECHA (o a una categoría no accionable) —
+  // arrastre y el botón "Cambiar estado" ya limpiaban "en curso ahora"
+  // localmente, pero este camino se había quedado sin ello (verificado en
+  // revisión de código: la tarjeta seguía mostrando "Trabajando…" tras
+  // guardar HECHA desde el modal, hasta recargar la página).
   const handleSaved = useCallback((messageId: string, patch: EditableFields) => {
-    applyLocalUpdate(messageId, patch);
+    const clearsEnProgreso = shouldClearEnProgreso(patch.estado, patch.categoria);
+    applyLocalUpdate(messageId, {
+      ...patch,
+      ...(clearsEnProgreso ? { enProgresoPorId: null, enProgresoDesde: null } : {}),
+    });
+    if (clearsEnProgreso) notifyEnProgresoChanged();
   }, []);
 
   /**

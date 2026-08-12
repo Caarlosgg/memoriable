@@ -8,7 +8,7 @@ import type { Message } from "@prisma/client";
 import { Clock, Tag, Plus, ListChecks, Play, Square } from "lucide-react";
 import { presentCategory, esAccionable } from "@/lib/categories";
 import { PRIORIDAD_PRESENTATION, PRIORIDAD_ICON, ESTADO_PRESENTATION } from "@/lib/kanban";
-import { formatDate } from "@/lib/format";
+import { formatDate, shortEmailName } from "@/lib/format";
 import { checklistToArray, checklistProgress } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
 import { AssigneeControl } from "@/components/AssigneeControl";
@@ -98,7 +98,7 @@ function WorkingOnControl({
       title={email ? `${email} está trabajando en esto ahora` : "Alguien está trabajando en esto ahora"}
       className="flex items-center gap-1 rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-ink"
     >
-      <Play aria-hidden size={11} className="text-accent" /> {email ? email.split("@")[0] : "en curso"}
+      <Play aria-hidden size={11} className="text-accent" /> {email ? shortEmailName(email) : "en curso"}
     </span>
   );
 }
@@ -286,6 +286,7 @@ export function KanbanCardContent({
               assigneeId={message.assigneeId}
               members={members}
               onChange={(assigneeId) => onAssigneeChange(message.id, assigneeId)}
+              variant="compact"
             />
           )}
         </div>

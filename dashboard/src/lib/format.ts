@@ -65,3 +65,14 @@ export function formatEventTime(fecha: Date | string | number | null | undefined
   if (Number.isNaN(date.getTime())) return "";
   return EVENT_TIME_FORMATTER.format(date);
 }
+
+/**
+ * Parte local de un email (antes de la @), para mostrar un "nombre" corto
+ * sin tener que pedirle a cada usuario que rellene uno — reutilizado por
+ * cualquier sitio que muestre quién es alguien en un espacio compacto
+ * (tarjeta del tablero, barra "en curso ahora", tarjetas del Asistente).
+ * Único sitio: antes cada componente tenía su propia copia idéntica.
+ */
+export function shortEmailName(email: string): string {
+  return email.split("@")[0] ?? email;
+}

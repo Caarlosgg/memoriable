@@ -9,6 +9,7 @@ import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
 import { isCategory } from "@/lib/categories";
+import { shouldClearEnProgreso } from "@/lib/kanban";
 import { searchAcrossAll, type QuickSearchResult } from "@/lib/quickSearch";
 import { getActiveWorkspace, isActiveMember, canWrite, READONLY_ROLE_MESSAGE } from "@/lib/workspace";
 import { createNotification } from "@/lib/notifications";
@@ -16,13 +17,14 @@ import type { StoredMessage } from "@/lib/botPipeline/repository";
 import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } from "@/lib/campoTemplates";
 
 /**
- * Al marcar HECHA una tarjeta, "en curso ahora" deja de tener sentido —
- * se limpia sola, igual que desaparecería de una lista de seguimiento en
- * vivo cualquier tarea ya terminada. Un único sitio para no repetir este
- * `if` en cada Server Action que puede llevar una tarjeta a HECHO.
+ * Al marcar HECHA una tarjeta (o al cambiarla a una categoría que deja de
+ * ser accionable — ver `shouldClearEnProgreso`), "en curso ahora" deja de
+ * tener sentido — se limpia sola, igual que desaparecería de una lista de
+ * seguimiento en vivo cualquier tarea ya terminada. Un único sitio para no
+ * repetir este `if` en cada Server Action que puede llevar una tarjeta ahí.
  */
-function clearEnProgresoIfDone(estado: EstadoTarea): Prisma.MessageUncheckedUpdateManyInput {
-  return estado === "HECHO" ? { enProgresoPorId: null, enProgresoDesde: null } : {};
+function clearEnProgresoIfDone(estado?: EstadoTarea, categoria?: string): Prisma.MessageUncheckedUpdateManyInput {
+  return shouldClearEnProgreso(estado, categoria) ? { enProgresoPorId: null, enProgresoDesde: null } : {};
 }
 
 /**
@@ -258,15 +260,19 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
         ...(resumen !== undefined ? { resumen } : {}),
         ...(contenido !== undefined ? { contenido } : {}),
         ...(input.categoria !== undefined ? { categoria: input.categoria } : {}),
-        ...(input.estado !== undefined
-          ? { estado: input.estado, hecho: input.estado === "HECHO", ...clearEnProgresoIfDone(input.estado) }
-          : {}),
+        ...(input.estado !== undefined ? { estado: input.estado, hecho: input.estado === "HECHO" } : {}),
         ...(input.prioridad !== undefined ? { prioridad: input.prioridad } : {}),
         ...(input.etiquetas !== undefined ? { etiquetas: input.etiquetas } : {}),
         ...(input.camposExtra !== undefined ? { camposExtra: input.camposExtra } : {}),
         ...(input.checklist !== undefined ? { checklist: input.checklist } : {}),
         ...(input.imagenes !== undefined ? { imagenes: input.imagenes } : {}),
         ...(input.fechaLimite !== undefined ? { fechaLimite: input.fechaLimite } : {}),
+        // Aparte del `if` de arriba: se limpia también si SOLO cambia la
+        // categoría (sin tocar el estado) a una no accionable — antes esto
+        // se comprobaba solo dentro del bloque de `estado`, así que
+        // cambiar nada más que la categoría dejaba una tarjeta huérfana
+        // "en curso" para siempre, sin forma de soltarla desde el tablero.
+        ...clearEnProgresoIfDone(input.estado, input.categoria),
       },
     });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
