@@ -8,6 +8,7 @@ import type { Notification } from "@prisma/client";
 import { ChevronsLeft, ChevronsRight, LogOut, Search, ShieldCheck } from "lucide-react";
 import { logout } from "@/app/actions";
 import type { WorkspaceSummary } from "@/app/(dashboard)/equipo/actions";
+import { useAssistant } from "@/components/AssistantProvider";
 import { NAV_ITEMS } from "./navItems";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { NotificationBell } from "./NotificationBell";
@@ -63,6 +64,11 @@ export function Sidebar({
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const prefersReducedMotion = usePrefersReducedMotion();
+  // El Asistente sigue generando en segundo plano al navegar a otra
+  // pantalla (vive en el layout, ver AssistantProvider.tsx) — sin ESTE
+  // indicador, la única forma de saberlo era volver a /asistente y
+  // comprobar. No se muestra estando ya ahí: el propio chat ya lo enseña.
+  const { isBusy: assistantBusy } = useAssistant();
   // Ahorros es siempre personal (ver lib/workspace.ts) — no tiene sentido
   // en un workspace de equipo, así que desaparece del menú al cambiar a uno.
   const baseItems = isPersonal ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/ahorros");
@@ -132,7 +138,18 @@ export function Sidebar({
                   active ? "bg-accent text-accent-ink" : "text-ink hover:bg-accent-soft active:bg-accent-soft"
                 }`}
               >
-                <item.Icon aria-hidden size={18} className="shrink-0" />
+                <span className="relative shrink-0">
+                  <item.Icon aria-hidden size={18} />
+                  {item.href === "/asistente" && assistantBusy && !active && (
+                    <span
+                      aria-label="El Asistente está pensando"
+                      className="absolute -right-0.5 -top-0.5 flex h-2 w-2"
+                    >
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+                    </span>
+                  )}
+                </span>
                 {!collapsed && <span>{item.label}</span>}
               </Link>
             </div>

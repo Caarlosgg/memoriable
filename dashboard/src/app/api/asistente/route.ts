@@ -7,8 +7,8 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { resolveEmbedder } from "@/lib/pipeline";
 import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
-import { toAssistantSources, buildContextBlock, buildSystemPrompt, buildWorkspaceContextLine, buildAmbientBlock, type AssistantSource } from "@/lib/assistantContext";
-import { resolveAmbientStats, resolveWorkspaceNombre } from "@/lib/assistantAmbient";
+import { toAssistantSources, buildContextBlock, buildSystemPrompt, buildWorkspaceContextLine, buildAmbientBlock, type AssistantSource, type AssistantWorkspaceMemberInfo } from "@/lib/assistantContext";
+import { resolveAmbientStats, resolveWorkspaceNombre, resolveWorkspaceMembers } from "@/lib/assistantAmbient";
 import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
 import { getActiveWorkspace } from "@/lib/workspace";
@@ -138,17 +138,26 @@ export async function POST(req: Request) {
     }
   }
 
-  // Nunca bloquea la respuesta ni la degrada de forma visible: si falla,
-  // el Asistente simplemente no menciona en qué equipo está trabajando el
-  // usuario (sigue funcionando, solo con un prompt algo menos afinado).
-  async function resolveWorkspaceLine(): Promise<string> {
-    if (isPersonal) return "";
+  // Nombre + miembros del workspace activo, resueltos UNA sola vez y
+  // reutilizados tanto para la línea de contexto de abajo como para las
+  // tools (`asignadoA`, `asignarTarea`, ver createAssistantTools) — antes
+  // cada tool volvía a consultar `membership.findMany` por su cuenta, una
+  // ida y vuelta redundante a la BD en peticiones que, al encadenar varias
+  // llamadas a herramienta, ya son las más lentas (verificado en vivo:
+  // sumaba presión real al pool de conexiones). Nunca bloquea la
+  // respuesta ni la degrada de forma visible: si falla, el Asistente
+  // simplemente no menciona en qué equipo está trabajando el usuario.
+  async function resolveWorkspaceInfo(): Promise<{ nombre: string | undefined; members: AssistantWorkspaceMemberInfo[] }> {
+    if (isPersonal) return { nombre: undefined, members: [] };
     try {
-      const nombre = await resolveWorkspaceNombre(workspaceId);
-      return buildWorkspaceContextLine({ isPersonal, nombre, role });
+      const [nombre, members] = await Promise.all([
+        resolveWorkspaceNombre(workspaceId),
+        resolveWorkspaceMembers(workspaceId, userId),
+      ]);
+      return { nombre, members };
     } catch (err) {
-      console.error("No se pudo resolver el nombre del workspace activo (se continúa sin mencionarlo):", err);
-      return "";
+      console.error("No se pudo resolver el nombre/miembros del workspace activo (se continúa sin ellos):", err);
+      return { nombre: undefined, members: [] };
     }
   }
 
@@ -167,18 +176,20 @@ export async function POST(req: Request) {
   // paralelo en vez de en secuencia recorta el tiempo hasta el primer
   // token de la respuesta. Cada una atrapa sus propios errores, así que
   // Promise.all nunca rechaza por un fallo aislado de una de ellas.
-  const [conversationId, sources, workspaceLine, ambientBlock] = await Promise.all([
+  const [conversationId, sources, workspaceInfo, ambientBlock] = await Promise.all([
     resolveConversationId(),
     resolveSources(),
-    resolveWorkspaceLine(),
+    resolveWorkspaceInfo(),
     resolveAmbient(),
   ]);
+  const { members } = workspaceInfo;
+  const workspaceLine = buildWorkspaceContextLine({ isPersonal, nombre: workspaceInfo.nombre, role, members });
 
   const result = streamText({
     model: groq("openai/gpt-oss-120b"),
     system: buildSystemPrompt(buildContextBlock(sources), new Date(), { workspaceLine, ambientBlock }),
     messages: await convertToModelMessages(messages),
-    tools: createAssistantTools(userId, workspaceId, role),
+    tools: createAssistantTools(userId, workspaceId, role, members),
     // Permite encadenar la llamada a `crearNota` con la respuesta de texto
     // que la confirma, en el mismo turno (si no, el SDK se pararía justo
     // después de ejecutar la tool sin generar el mensaje final).

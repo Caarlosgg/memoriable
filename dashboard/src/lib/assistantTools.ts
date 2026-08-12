@@ -5,7 +5,7 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import type { Message, CuentaAhorro, Evento } from "@prisma/client";
 import { captureMessage, resolveEmbedder } from "./pipeline";
-import { toAssistantSource } from "./assistantContext";
+import { toAssistantSource, type AssistantSource, type AssistantWorkspaceMemberInfo } from "./assistantContext";
 import { ACTIONABLE_CATEGORIES } from "./categories";
 import { findSimilarMessages } from "./vectorSearch";
 import { getCuentasConSaldo } from "./ahorros";
@@ -29,15 +29,49 @@ function normalizeForMatch(text: string): string {
     .replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 }
 
+/**
+ * Resuelve un nombre o email libre ("benitoelrey", "Benito", su email
+ * completo) contra un miembro real del equipo — comparando contra la
+ * parte local del email (antes de la @), que es lo que la gente suele
+ * usar como "nombre" al hablar con el Asistente. Sin esto, "asígnaselo a
+ * X" solo podía guardarse como texto suelto (`participantes` en
+ * `Evento`), sin enlazar de verdad con la cuenta de esa persona — a quien
+ * nunca le aparecería la tarjeta como asignada. Null si ningún miembro
+ * encaja: nunca asigna "a lo que más se parezca" sin overlap real, mejor
+ * que el Asistente diga que no encuentra a esa persona en el equipo.
+ *
+ * `members` llega ya resuelto desde route.ts (ver `AssistantWorkspaceMemberInfo`)
+ * — antes cada tool volvía a consultar `membership.findMany` por su cuenta,
+ * una ida y vuelta redundante a la BD en peticiones que, al encadenar varias
+ * llamadas a herramienta, ya son las más lentas (verificado en vivo: sumaba
+ * presión real al pool de conexiones de Postgres).
+ */
+export function resolverMiembro(nombre: string, members: AssistantWorkspaceMemberInfo[]): AssistantWorkspaceMemberInfo | null {
+  const normalizado = normalizeForMatch(nombre);
+  if (!normalizado) return null;
+  return (
+    members.find((m) => normalizeForMatch(m.email) === normalizado) ??
+    members.find((m) => {
+      const local = normalizeForMatch(m.email.split("@")[0] ?? "");
+      return local === normalizado || local.includes(normalizado) || normalizado.includes(local);
+    }) ??
+    null
+  );
+}
+
 export interface CrearEventoResult {
   id: string;
   titulo: string;
   fechaInicio: string;
   ubicacion: string | null;
+  /** Email de a quién se ha asignado, si se pidió y se encontró en el equipo. */
+  asignadoA: string | null;
 }
 
 export interface CrearEventoToolResult {
   eventos: CrearEventoResult[];
+  /** El usuario pidió asignarlo a alguien, pero no hay nadie en el equipo con ese nombre/email. */
+  asignacionNoEncontrada?: string;
 }
 
 export interface CompletarTareaResult {
@@ -51,6 +85,13 @@ export interface AplazarTareaResult {
   resumen: string;
   categoria: string;
   fechaLimite: string | null;
+}
+
+export interface AsignarTareaResult {
+  id: string;
+  resumen: string;
+  categoria: string;
+  asignadoA: string | null;
 }
 
 export interface RegistrarAhorroResult {
@@ -71,6 +112,8 @@ export interface EditarEventoResult {
   titulo: string;
   fechaInicio: string;
   ubicacion: string | null;
+  asignadoA: string | null;
+  asignacionNoEncontrada?: string;
 }
 
 export interface BorrarEventoResult {
@@ -218,8 +261,18 @@ async function encontrarEvento(workspaceId: string, descripcion: string): Promis
  * tipo (`InferUITools`) desde el cliente sin arrastrar código de servidor
  * al bundle — un `import type` se borra en compilación, así que no rompe
  * el límite server-only pese a venir del mismo módulo.
+ *
+ * `members`: el roster del workspace activo, ya resuelto en route.ts (la
+ * misma consulta que alimenta la línea de contexto del sistema) — las
+ * tools que admiten `asignadoA` lo reciben tal cual en vez de volver a
+ * consultarlo cada una por su cuenta. Vacío en modo personal.
  */
-export function createAssistantTools(userId: string, workspaceId: string, role: WorkspaceRole) {
+export function createAssistantTools(
+  userId: string,
+  workspaceId: string,
+  role: WorkspaceRole,
+  members: AssistantWorkspaceMemberInfo[] = [],
+) {
   // Solo bloquea las 5 tools que escriben notas/eventos del workspace
   // activo — registrarAhorro/consultarAhorros ignoran el rol a propósito
   // (Ahorros es siempre personal, ver el comentario de arriba).
@@ -229,14 +282,18 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
   return {
     crearNota: tool({
       description:
-        "Crea y guarda una nota, tarea o recordatorio nuevo SIN fecha/hora concreta, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas. NO la uses si lo que pide tiene fecha/hora concreta (una cita, quedar con alguien) o se repite periódicamente ('todos los jueves', 'cada semana') — para eso usa crearEvento (con su parámetro repetir si se repite), aunque suene a 'tarea'.",
+        "Crea y guarda una nota, tarea o recordatorio nuevo SIN fecha/hora concreta, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas. NO la uses si lo que pide tiene fecha/hora concreta (una cita, quedar con alguien) o se repite periódicamente ('todos los jueves', 'cada semana') — para eso usa crearEvento (con su parámetro repetir si se repite), aunque suene a 'tarea'. Si pide ASIGNARLA a un compañero de equipo (\"apunta a María que revise esto\", \"que sea de Pedro\"), usa `asignadoA`.",
       inputSchema: z.object({
         contenido: z
           .string()
           .min(1)
           .describe("El texto de la nota/tarea/recordatorio tal como lo diría el usuario, listo para guardar y categorizar."),
+        asignadoA: z
+          .string()
+          .optional()
+          .describe("Nombre o email de la persona del EQUIPO a la que se asigna, solo en un workspace de equipo."),
       }),
-      execute: async ({ contenido }) => {
+      execute: async ({ contenido, asignadoA }) => {
         requireWrite();
         let saved;
         try {
@@ -249,6 +306,16 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
           // (ver CrearNotaResult en AssistantChat.tsx).
           throw new Error("No se ha podido guardar la nota. Inténtalo de nuevo en un momento.");
         }
+
+        const asignado = asignadoA ? resolverMiembro(asignadoA, members) : null;
+        if (asignado) {
+          try {
+            await prisma.message.update({ where: { id: saved.id }, data: { assigneeId: asignado.userId } });
+          } catch (err) {
+            console.error("La tool crearNota no pudo asignarla (se guarda sin asignar):", err);
+          }
+        }
+
         // Invalidar la caché no es crítico: si falla, la nota YA está guardada
         // — no convertir un guardado correcto en un error de cara al usuario.
         // (Sin esto, navegar a Tablero/Categorías tras crearla podría enseñar
@@ -259,12 +326,18 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
         } catch (err) {
           console.error("No se pudo invalidar la caché tras crear la nota (no crítico):", err);
         }
-        return toAssistantSource(saved);
+
+        const result: AssistantSource & { asignadoA: string | null; asignacionNoEncontrada?: string } = {
+          ...toAssistantSource(saved),
+          asignadoA: asignado?.email ?? null,
+          asignacionNoEncontrada: asignadoA && !asignado ? asignadoA : undefined,
+        };
+        return result;
       },
     }),
     crearEvento: tool({
       description:
-        "Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara (\"quedar el jueves a las 5\", \"cita con el médico el 12 a las 10\"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado. Si es algo que se repite en el tiempo (\"todos los jueves durante 5 semanas\", \"cada día esta semana\"), usa el parámetro `repetir` en ESTA MISMA llamada para crear toda la serie de una vez — no llames a la tool varias veces seguidas para eso.",
+        "Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara (\"quedar el jueves a las 5\", \"cita con el médico el 12 a las 10\"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado. Si es algo que se repite en el tiempo (\"todos los jueves durante 5 semanas\", \"cada día esta semana\"), usa el parámetro `repetir` en ESTA MISMA llamada para crear toda la serie de una vez — no llames a la tool varias veces seguidas para eso. Si pide ASIGNARLO a un compañero de equipo (\"asígnaselo a María\", \"que sea de Pedro\"), usa `asignadoA` — NO `participantes` (eso es solo para gente mencionada sin más, no una asignación real).",
       inputSchema: z.object({
         titulo: z.string().min(1).describe("Título corto del evento."),
         fechaInicio: z
@@ -276,12 +349,16 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
         participantes: z
           .array(z.string())
           .optional()
-          .describe("Nombres de las personas mencionadas, si las hay."),
+          .describe("Nombres de las personas mencionadas, si las hay, SIN que sea una asignación real (ver `asignadoA`)."),
+        asignadoA: z
+          .string()
+          .optional()
+          .describe("Nombre o email de la persona del EQUIPO a la que se asigna el evento, solo en un workspace de equipo (\"asígnaselo a X\", \"que sea de X\")."),
         repetir: RepetirSchema.optional().describe(
           "Solo si el evento se repite periódicamente. Crea `veces` eventos en total, uno por cada `frecuencia` a partir de fechaInicio/fechaFin.",
         ),
       }),
-      execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes, repetir }) => {
+      execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes, asignadoA, repetir }) => {
         requireWrite();
         const fecha = new Date(fechaInicio);
         if (Number.isNaN(fecha.getTime())) {
@@ -291,6 +368,10 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
         if (fin && Number.isNaN(fin.getTime())) {
           throw new Error("No he entendido bien la fecha de fin.");
         }
+
+        // Se resuelve UNA vez para toda la serie (no por repetición) —
+        // mismo miembro para todas las ocurrencias.
+        const asignado = asignadoA ? resolverMiembro(asignadoA, members) : null;
 
         const repeticiones = repetir?.veces ?? 1;
         const eventos: CrearEventoResult[] = [];
@@ -310,6 +391,7 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
                 descripcion: descripcion ?? null,
                 ubicacion: ubicacion ?? null,
                 participantes: participantes ?? [],
+                assigneeId: asignado?.userId ?? null,
               },
             });
             eventos.push({
@@ -317,6 +399,7 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
               titulo: evento.titulo,
               fechaInicio: evento.fechaInicio.toISOString(),
               ubicacion: evento.ubicacion,
+              asignadoA: asignado?.email ?? null,
             });
           }
         } catch (err) {
@@ -335,7 +418,10 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
           console.error("No se pudo invalidar la caché tras crear el evento (no crítico):", err);
         }
 
-        const result: CrearEventoToolResult = { eventos };
+        const result: CrearEventoToolResult = {
+          eventos,
+          asignacionNoEncontrada: asignadoA && !asignado ? asignadoA : undefined,
+        };
         return result;
       },
     }),
@@ -452,6 +538,70 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
         return result;
       },
     }),
+    asignarTarea: tool({
+      description:
+        "Asigna (o quita la asignación de) una tarea o recordatorio pendiente a un compañero de EQUIPO (\"asígnale a María lo de revisar la caldera\", \"que Pedro se encargue de la propuesta\", \"quítale la asignación a lo del informe\"). Busca entre los pendientes del workspace la que mejor coincide con la descripción, igual que `completarTarea`/`aplazarTarea`. Solo tiene sentido en un workspace de equipo — en el personal no hay a quién asignar. Para quitar la asignación sin poner a otra persona, usa `quitarAsignacion` en vez de `asignadoA`.",
+      inputSchema: z.object({
+        descripcion: z
+          .string()
+          .min(1)
+          .describe("Descripción de la tarea tal como la menciona el usuario, para buscarla entre los pendientes del equipo."),
+        asignadoA: z.string().optional().describe("Nombre o email de la persona del equipo a la que asignar."),
+        quitarAsignacion: z.boolean().optional().describe("true si pide quitar la asignación sin poner a otra persona."),
+      }),
+      execute: async ({ descripcion, asignadoA, quitarAsignacion }) => {
+        requireWrite();
+        if (!asignadoA && !quitarAsignacion) {
+          throw new Error("No me has dicho a quién asignarla.");
+        }
+
+        let asignado: AssistantWorkspaceMemberInfo | null = null;
+        if (asignadoA) {
+          asignado = resolverMiembro(asignadoA, members);
+          if (!asignado) {
+            throw new Error(`No he encontrado a nadie del equipo llamado «${asignadoA}».`);
+          }
+        }
+
+        let tarea: Message | null;
+        try {
+          tarea = await encontrarTareaPendiente(workspaceId, descripcion);
+        } catch (err) {
+          console.error("La tool asignarTarea no pudo buscar la tarea:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.");
+        }
+        if (!tarea) {
+          throw new Error("No he encontrado ninguna tarea pendiente que coincida con eso.");
+        }
+
+        try {
+          const { count } = await prisma.message.updateMany({
+            where: { id: tarea.id, workspaceId },
+            data: { assigneeId: asignado?.userId ?? null },
+          });
+          if (count === 0) throw new Error("La tarea encontrada ya no está en este workspace.");
+        } catch (err) {
+          console.error("La tool asignarTarea no pudo guardar la asignación:", err);
+          Sentry.captureException(err);
+          throw new Error("No se ha podido asignar. Inténtalo de nuevo en un momento.");
+        }
+
+        try {
+          revalidatePath("/pendientes");
+        } catch (err) {
+          console.error("No se pudo invalidar la caché tras asignar la tarea (no crítico):", err);
+        }
+
+        const result: AsignarTareaResult = {
+          id: tarea.id,
+          resumen: tarea.resumen,
+          categoria: tarea.categoria,
+          asignadoA: asignado?.email ?? null,
+        };
+        return result;
+      },
+    }),
     registrarAhorro: tool({
       description:
         "Apunta un ingreso o retirada en una cuenta de ahorro del usuario (\"he ahorrado 50€ en el fondo de emergencia\", \"he sacado 20€ del viaje\"). Si no existe ninguna cuenta con ese nombre, se crea sobre la marcha — no hace falta preguntar primero. Importe positivo para ingresos, negativo para retiradas. Si el usuario pide que se repita periódicamente (\"que se me añadan 400€ todos los jueves durante 5 semanas\"), usa el parámetro `repetir` en ESTA MISMA llamada para registrar toda la serie de una vez — no llames a la tool varias veces seguidas para eso.",
@@ -527,7 +677,7 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
     }),
     editarEvento: tool({
       description:
-        "Modifica un evento/cita ya existente del calendario del usuario (cambiar la hora, el título o la ubicación — \"cambia la cita del médico al jueves a las 5\", \"la reunión es en la sala 2, no en mi despacho\"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad — no la llames de nuevo adivinando otro.",
+        "Modifica un evento/cita ya existente del calendario del usuario (cambiar la hora, el título, la ubicación o A QUIÉN está asignado — \"cambia la cita del médico al jueves a las 5\", \"la reunión es en la sala 2, no en mi despacho\", \"asígnasela a María\", \"añade a Pedro como responsable\", \"quítale la asignación\"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad — no la llames de nuevo adivinando otro.",
       inputSchema: z.object({
         descripcion: z
           .string()
@@ -540,8 +690,13 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
           .describe("Nueva fecha/hora de inicio en ISO 8601 (con el desfase de España), solo si cambia."),
         fechaFinNueva: z.string().optional().describe("Nueva fecha/hora de fin en ISO 8601, solo si cambia."),
         ubicacionNueva: z.string().optional().describe("Nueva ubicación, solo si cambia."),
+        asignadoA: z
+          .string()
+          .optional()
+          .describe("Nombre o email de la persona del EQUIPO a la que asignar el evento, solo si pide asignarlo o cambiar a quién está asignado."),
+        quitarAsignacion: z.boolean().optional().describe("true si pide quitar la asignación sin poner a otra persona."),
       }),
-      execute: async ({ descripcion, tituloNuevo, fechaInicioNueva, fechaFinNueva, ubicacionNueva }) => {
+      execute: async ({ descripcion, tituloNuevo, fechaInicioNueva, fechaFinNueva, ubicacionNueva, asignadoA, quitarAsignacion }) => {
         requireWrite();
         let evento: Evento | null;
         try {
@@ -555,7 +710,9 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
           throw new Error("No he encontrado ningún evento próximo que coincida con eso.");
         }
 
-        const data: { titulo?: string; fechaInicio?: Date; fechaFin?: Date; ubicacion?: string } = {};
+        const asignado = asignadoA ? resolverMiembro(asignadoA, members) : null;
+
+        const data: { titulo?: string; fechaInicio?: Date; fechaFin?: Date; ubicacion?: string; assigneeId?: string | null } = {};
         if (tituloNuevo) data.titulo = tituloNuevo;
         if (ubicacionNueva) data.ubicacion = ubicacionNueva;
         if (fechaInicioNueva) {
@@ -568,8 +725,14 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
           if (Number.isNaN(fin.getTime())) throw new Error("No he entendido bien la nueva fecha de fin.");
           data.fechaFin = fin;
         }
+        if (quitarAsignacion) data.assigneeId = null;
+        else if (asignado) data.assigneeId = asignado.userId;
         if (Object.keys(data).length === 0) {
-          throw new Error("No me has dicho qué cambiar del evento.");
+          throw new Error(
+            asignadoA
+              ? `No he encontrado a nadie del equipo llamado «${asignadoA}».`
+              : "No me has dicho qué cambiar del evento.",
+          );
         }
 
         let actualizado: Evento;
@@ -597,6 +760,8 @@ export function createAssistantTools(userId: string, workspaceId: string, role: 
           titulo: actualizado.titulo,
           fechaInicio: actualizado.fechaInicio.toISOString(),
           ubicacion: actualizado.ubicacion,
+          asignadoA: asignado?.email ?? null,
+          asignacionNoEncontrada: asignadoA && !asignado ? asignadoA : undefined,
         };
         return result;
       },

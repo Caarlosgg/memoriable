@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { ACTIONABLE_CATEGORIES } from "./categories";
 import { upcomingRange } from "./calendar";
 import { formatEventTime } from "./format";
-import type { AmbientStats } from "./assistantContext";
+import type { AmbientStats, AssistantWorkspaceMemberInfo } from "./assistantContext";
 
 const EVENTOS_PROXIMOS_LIMIT = 3;
 
@@ -39,4 +39,13 @@ export async function resolveAmbientStats(workspaceId: string): Promise<AmbientS
 export async function resolveWorkspaceNombre(workspaceId: string): Promise<string | undefined> {
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { nombre: true } });
   return workspace?.nombre;
+}
+
+/** Miembros ACTIVOS de un workspace de equipo, para que el modelo sepa a quién puede asignar algo (ver buildWorkspaceContextLine). */
+export async function resolveWorkspaceMembers(workspaceId: string, userId: string): Promise<AssistantWorkspaceMemberInfo[]> {
+  const memberships = await prisma.membership.findMany({
+    where: { workspaceId, status: "ACTIVE" },
+    include: { user: { select: { id: true, email: true } } },
+  });
+  return memberships.map((m) => ({ userId: m.user.id, email: m.user.email, isSelf: m.user.id === userId }));
 }

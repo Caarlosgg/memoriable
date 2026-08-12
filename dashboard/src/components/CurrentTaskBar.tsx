@@ -57,14 +57,39 @@ export function CurrentTaskBar({
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, POLL_MS);
+    // Solo sondea mientras la pestaña está visible — una pestaña de fondo
+    // (o varias abiertas a la vez, cada una con su propio temporizador) no
+    // tiene por qué seguir generando tráfico contra el pool de conexiones
+    // de Postgres cada 20s si nadie la está mirando. Al volver a primer
+    // plano, se refresca al instante y el sondeo se reanuda.
+    let id: ReturnType<typeof setInterval> | undefined;
+    function startPolling() {
+      if (id !== undefined) return;
+      id = setInterval(refresh, POLL_MS);
+    }
+    function stopPolling() {
+      if (id === undefined) return;
+      clearInterval(id);
+      id = undefined;
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refresh();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    }
+    if (document.visibilityState === "visible") startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", refresh);
     // Cambios hechos por TI en esta misma pestaña (botones de la tarjeta
     // del tablero) se notan al instante, sin esperar al sondeo — ver
     // lib/enProgresoEvents.ts.
     window.addEventListener(EN_PROGRESO_CHANGED_EVENT, refresh);
     return () => {
-      clearInterval(id);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", refresh);
       window.removeEventListener(EN_PROGRESO_CHANGED_EVENT, refresh);
     };

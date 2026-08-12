@@ -103,7 +103,18 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   // mensajes" sin ningún error visible, solo un reinicio de página lo
   // arreglaba. Pasado este margen se corta la petición sola y se libera el
   // chat, con un error visible en vez de un bloqueo silencioso.
-  const STUCK_TIMEOUT_MS = 45_000;
+  //
+  // DEBE ser mayor que `maxDuration` (60s, api/asistente/route.ts) — antes
+  // eran 45s, POR DEBAJO del presupuesto que el propio servidor se da a sí
+  // mismo. Verificado en vivo: una petición con una tool que resuelve una
+  // asignación (dos idas y vueltas a Groq, una para decidir la llamada y
+  // otra para confirmar en texto) tardó entre 29s y 45s de punta a punta en
+  // casos reales — con el límite antiguo, el cliente podía cortar una
+  // respuesta que el servidor habría entregado igualmente unos segundos
+  // después, tirando a la basura el trabajo ya hecho y enseñando el chat
+  // "colgado" sin motivo real. Este es probablemente el origen de la queja
+  // "se queda pillado muchas veces".
+  const STUCK_TIMEOUT_MS = 65_000;
   useEffect(() => {
     if (!isBusy) return;
     const timer = setTimeout(() => stop(), STUCK_TIMEOUT_MS);

@@ -111,7 +111,10 @@ Herramientas:
   recordatorio pero no dicen de qué). \`crearNota\` NO admite repetición:
   si lo que piden tiene fecha/hora concreta Y se repite ("la tarea de
   hacer X todos los jueves a las 9"), aunque suene a "tarea", NO es una
-  nota — usa \`crearEvento\` con \`repetir\` en su lugar (ver abajo).
+  nota — usa \`crearEvento\` con \`repetir\` en su lugar (ver abajo). Si
+  además pide asignarla a alguien del equipo, usa su parámetro \`asignadoA\`
+  (ver el aviso de equipo/miembros más abajo para saber a quién puede
+  referirse).
 - Tienes la herramienta \`crearEvento\` para citas y eventos con fecha y
   hora CONCRETA ("quedar el jueves a las 5", "cita con el médico el 12 a
   las 10"). Calcula la fecha/hora exacta en ISO 8601 a partir de la fecha
@@ -126,6 +129,10 @@ Herramientas:
   (frecuencia + número de veces) para crear TODA la serie en una sola
   llamada — nunca llames a \`crearEvento\` varias veces seguidas para
   simular una repetición, es más lento y menos fiable que usar \`repetir\`.
+  Si pide ASIGNARLO a alguien del equipo ("asígnaselo a María", "que sea
+  de Pedro"), usa \`asignadoA\` — NUNCA \`participantes\` para eso, es solo
+  para gente mencionada sin más (no una asignación real, nadie recibe la
+  tarjeta como suya con \`participantes\`).
 - Tienes la herramienta \`completarTarea\` para cuando el usuario diga que
   ya ha hecho algo ("ya he llamado al fontanero", "acabé lo del informe").
   Búscala entre sus pendientes por descripción — no hace falta que la cite
@@ -139,6 +146,16 @@ Herramientas:
   una fecha ISO concreta antes de llamarla — no le devuelvas al usuario la
   carga de dar una fecha exacta. Para QUITAR la fecha límite sin poner
   otra, llama a la herramienta sin el parámetro \`fecha\`.
+- Tienes la herramienta \`asignarTarea\` para ASIGNAR (o quitar la
+  asignación de) una tarea/recordatorio pendiente YA CREADO a alguien del
+  equipo ("asígnale a María lo de revisar la caldera", "que Pedro se
+  encargue de la propuesta", "quítale la asignación a lo del informe").
+  Búscala por descripción entre los pendientes, igual que
+  \`completarTarea\`/\`aplazarTarea\`. Solo tiene sentido en un workspace de
+  equipo. Es la herramienta correcta cuando el usuario CORRIGE o AÑADE una
+  asignación después de crear algo (\`crearNota\`/\`crearEvento\` ya
+  admiten \`asignadoA\` en el momento de crear — usa \`asignarTarea\` solo
+  para lo que ya existe).
 - Tienes la herramienta \`registrarAhorro\` para cuando mencione dinero
   ahorrado o gastado de una cuenta de ahorro ("he ahorrado 50€ en el fondo
   de emergencia", "he sacado 20€ del viaje"). Importe positivo para
@@ -147,11 +164,13 @@ Herramientas:
   \`crearEvento\`, si el movimiento se repite periódicamente usa su
   parámetro \`repetir\` en una sola llamada en vez de llamarla varias veces.
 - Tienes la herramienta \`editarEvento\` para cuando pida cambiar algo de
-  una cita/evento ya existente ("cambia la cita del médico al jueves a
-  las 5", "la reunión es en la sala 2, no en mi despacho"). Búscalo por
-  descripción entre sus eventos futuros — no hace falta que cite el
+  una cita/evento ya existente, INCLUIDO a quién está asignada ("cambia
+  la cita del médico al jueves a las 5", "la reunión es en la sala 2, no
+  en mi despacho", "asígnasela a María", "quítale la asignación"). Búscalo
+  por descripción entre sus eventos futuros — no hace falta que cite el
   título exacto. Mismo criterio de zona horaria que \`crearEvento\` para
-  cualquier fecha nueva.
+  cualquier fecha nueva. Usa \`asignadoA\`/\`quitarAsignacion\` para la
+  asignación, igual criterio que \`crearEvento\`.
 - Tienes la herramienta \`borrarEvento\` para cuando pida cancelar o
   quitar una cita/evento ("cancela la cita del médico", "quita la
   reunión del jueves"). Igual que \`editarEvento\`, búscalo por
@@ -161,6 +180,18 @@ Herramientas:
   "¿cuánto tengo en el fondo de emergencia?"). Llámala siempre que
   necesites ese dato para responder — nunca inventes ni calcules tú un
   importe de ahorro, esta herramienta te da el real.
+
+Sobre asignar a alguien del equipo (\`asignadoA\` en \`crearNota\`/
+\`crearEvento\`/\`editarEvento\`, y la propia \`asignarTarea\`): si el
+workspace activo es de equipo, más abajo tienes la lista de sus miembros.
+Usa exactamente ese nombre/email al llamar a la herramienta — la propia
+herramienta resuelve el resto. Si el usuario menciona a alguien que NO
+está en esa lista, no llames a la herramienta de todos modos esperando que
+funcione: dile con naturalidad que no encuentras a esa persona en el
+equipo (puede que aún no se haya unido, o que te hayas confundido de
+nombre) y pregunta. Si el workspace activo es personal (sin equipo), no
+existe nadie a quien asignar — si piden asignar algo a alguien, dilo con
+naturalidad en vez de intentarlo.
 
 Ejemplo de una petición con fecha/hora concreta que se repite Y un ahorro
 que se repite, para que veas cómo se resuelve con dos llamadas (no diez):
@@ -172,7 +203,7 @@ turno: \`crearEvento({ titulo: "Hacer la transacción", fechaInicio: "<ISO
 del próximo jueves a las 9:00>", repetir: { frecuencia: "SEMANAL", veces: 5
 } })\` y \`registrarAhorro({ cuenta: "Trade", importe: 400, repetir: {
 frecuencia: "SEMANAL", veces: 5 } })\`.
-- Después de llamar a cualquiera de las ocho, confirma en un par de
+- Después de llamar a cualquiera de las diez, confirma en un par de
   frases lo que hiciste (o lo que has consultado), con naturalidad.
 - Si una petición implica varias acciones distintas (no una repetición,
   sino cosas diferentes: "crea el evento Y registra el ahorro", "apunta
@@ -222,12 +253,31 @@ const ROLE_LABELS: Record<AssistantWorkspaceRole, string> = {
 };
 
 /**
+ * Un miembro del workspace activo, para que el modelo sepa a quién puede
+ * asignar algo (ver buildWorkspaceContextLine). Se resuelve UNA sola vez en
+ * route.ts y se reutiliza tanto para esta línea de contexto como para que
+ * las tools (`asignadoA`, `asignarTarea` en assistantTools.ts) resuelvan
+ * nombres sin volver a consultar la base de datos — antes cada tool hacía
+ * su propia consulta redundante, sumando presión al pool de conexiones
+ * justo en las peticiones que ya son las más lentas (varias llamadas a
+ * herramienta encadenadas).
+ */
+export interface AssistantWorkspaceMemberInfo {
+  userId: string;
+  email: string;
+  isSelf: boolean;
+}
+
+/**
  * Línea de contexto sobre el espacio activo — solo se genera algo si NO es
  * el personal: en modo personal el Asistente se comporta exactamente igual
  * que siempre, así que no hace falta aclarar nada (ver mismo criterio en
  * ActiveWorkspaceBadge.tsx). En modo equipo, decirle al modelo en qué
  * espacio y con qué rol actúa evita respuestas que suenan "genéricas"
- * cuando en realidad el usuario está gestionando un equipo concreto. Con
+ * cuando en realidad el usuario está gestionando un equipo concreto —
+ * también incluye la lista de miembros, para poder resolver "asígnaselo a
+ * X" (ver `asignadoA` en assistantTools.ts) y para responder con
+ * naturalidad a "¿quién hay en este equipo?" sin tener que adivinar. Con
  * rol VIEWER, además avisa explícitamente de que las tools de escritura
  * (crearNota, crearEvento...) van a fallar — sin esto, el modelo las
  * llamaría igual, vería el error, y podría sonar confuso o insistir.
@@ -236,12 +286,19 @@ export function buildWorkspaceContextLine(workspace: {
   isPersonal: boolean;
   nombre?: string;
   role?: AssistantWorkspaceRole;
+  members?: AssistantWorkspaceMemberInfo[];
 }): string {
   if (workspace.isPersonal || !workspace.nombre) return "";
   const roleLabel = workspace.role ? ROLE_LABELS[workspace.role] : "miembro";
-  const base = `El usuario está trabajando ahora en el espacio de equipo "${workspace.nombre}" — todo lo que hagas (crear notas, eventos, marcar tareas) se guarda ahí, visible para el resto del equipo, no en su espacio personal. Su rol en este equipo es ${roleLabel}.`;
+  let base = `El usuario está trabajando ahora en el espacio de equipo "${workspace.nombre}" — todo lo que hagas (crear notas, eventos, marcar tareas) se guarda ahí, visible para el resto del equipo, no en su espacio personal. Su rol en este equipo es ${roleLabel}.`;
+  if (workspace.members && workspace.members.length > 0) {
+    const roster = workspace.members
+      .map((m) => (m.isSelf ? `${m.email} (el propio usuario)` : m.email))
+      .join(", ");
+    base += ` Miembros de este equipo: ${roster}.`;
+  }
   if (workspace.role !== "VIEWER") return base;
-  return `${base} Su acceso es de SOLO LECTURA: no llames a crearNota, crearEvento, completarTarea, aplazarTarea, editarEvento ni borrarEvento en este espacio — fallarán. Puedes seguir respondiendo preguntas sobre lo que hay guardado con total normalidad.`;
+  return `${base} Su acceso es de SOLO LECTURA: no llames a crearNota, crearEvento, completarTarea, aplazarTarea, asignarTarea, editarEvento ni borrarEvento en este espacio — fallarán. Puedes seguir respondiendo preguntas sobre lo que hay guardado con total normalidad.`;
 }
 
 /** Resumen de un evento próximo, ya formateado, para el bloque ambiental. */

@@ -194,8 +194,29 @@ describe("buildWorkspaceContextLine", () => {
     expect(line).toContain("crearNota");
     expect(line).toContain("crearEvento");
     expect(line).toContain("completarTarea");
+    expect(line).toContain("asignarTarea");
     expect(line).toContain("editarEvento");
     expect(line).toContain("borrarEvento");
+  });
+
+  it("sin miembros, no añade ninguna lista de equipo", () => {
+    const line = buildWorkspaceContextLine({ isPersonal: false, nombre: "Marketing", role: "MEMBER", members: [] });
+    expect(line).not.toContain("Miembros de este equipo");
+  });
+
+  it("con miembros, los lista por email para poder resolver «asígnaselo a X»", () => {
+    const line = buildWorkspaceContextLine({
+      isPersonal: false,
+      nombre: "Marketing",
+      role: "MEMBER",
+      members: [
+        { userId: "u-benito", email: "benitoelrey@example.com", isSelf: false },
+        { userId: "u-ana", email: "ana@example.com", isSelf: true },
+      ],
+    });
+    expect(line).toContain("Miembros de este equipo");
+    expect(line).toContain("benitoelrey@example.com");
+    expect(line).toContain("ana@example.com (el propio usuario)");
   });
 });
 

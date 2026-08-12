@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAssistant } from "@/components/AssistantProvider";
 import { NAV_ITEMS } from "./navItems";
 
 /**
@@ -14,6 +15,8 @@ export function BottomTabs({ isPersonal }: { isPersonal: boolean }) {
   // Ahorros es siempre personal (ver lib/workspace.ts) — no tiene sentido
   // en un workspace de equipo, así que desaparece del menú al cambiar a uno.
   const items = isPersonal ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/ahorros");
+  // Mismo indicador que en Sidebar.tsx (desktop) — ver ese comentario.
+  const { isBusy: assistantBusy } = useAssistant();
 
   return (
     <nav
@@ -31,7 +34,15 @@ export function BottomTabs({ isPersonal }: { isPersonal: boolean }) {
               active ? "text-accent" : "text-muted hover:text-ink active:text-accent"
             }`}
           >
-            <item.Icon aria-hidden size={20} />
+            <span className="relative">
+              <item.Icon aria-hidden size={20} />
+              {item.href === "/asistente" && assistantBusy && !active && (
+                <span aria-label="El Asistente está pensando" className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+                </span>
+              )}
+            </span>
             {item.label}
           </Link>
         );

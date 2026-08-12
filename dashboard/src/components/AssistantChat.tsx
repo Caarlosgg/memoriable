@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Send, CircleCheck, CalendarDays, CalendarClock, PiggyBank, Pencil, Trash2 } from "lucide-react";
+import { Send, CircleCheck, CalendarDays, CalendarClock, PiggyBank, Pencil, Trash2, UserRound, UserRoundX } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
 import { formatEventDate } from "@/lib/format";
 import { dayLabel, dateKey } from "@/lib/calendar";
@@ -25,6 +25,29 @@ function textOf(message: AssistantMessage): string {
     .filter((p): p is { type: "text"; text: string; state?: "streaming" | "done" } => p.type === "text")
     .map((p) => p.text)
     .join("");
+}
+
+function shortName(email: string): string {
+  return email.split("@")[0] ?? email;
+}
+
+/** Línea "asignado a X" (o aviso de que no se encontró a esa persona) — reutilizada por las tarjetas de crear/editar/asignar. */
+function AsignadoLine({ asignadoA, asignacionNoEncontrada }: { asignadoA: string | null; asignacionNoEncontrada?: string }) {
+  if (asignadoA) {
+    return (
+      <p className="mt-0.5 flex items-center gap-1 text-muted">
+        <UserRound aria-hidden size={11} /> Asignado a {shortName(asignadoA)}
+      </p>
+    );
+  }
+  if (asignacionNoEncontrada) {
+    return (
+      <p className="mt-0.5 flex items-center gap-1 text-danger">
+        <UserRoundX aria-hidden size={11} /> No encontré a «{asignacionNoEncontrada}» en el equipo
+      </p>
+    );
+  }
+  return null;
 }
 
 type CrearNotaPart = Extract<AssistantMessage["parts"][number], { type: "tool-crearNota" }>;
@@ -56,6 +79,7 @@ function CrearNotaResult({ part }: { part: CrearNotaPart }) {
         <Icon aria-hidden size={13} className={color} /> {s.label} guardada
       </p>
       <p className="mt-0.5 line-clamp-2 text-muted">{s.resumen}</p>
+      <AsignadoLine asignadoA={s.asignadoA} asignacionNoEncontrada={s.asignacionNoEncontrada} />
     </div>
   );
 }
@@ -80,7 +104,7 @@ function CrearEventoResult({ part }: { part: CrearEventoPart }) {
     return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Guardando…</div>;
   }
 
-  const { eventos } = part.output;
+  const { eventos, asignacionNoEncontrada } = part.output;
   return (
     <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
       <p className="flex items-center gap-1.5 font-medium text-ink">
@@ -94,6 +118,7 @@ function CrearEventoResult({ part }: { part: CrearEventoPart }) {
           {e.ubicacion ? ` · ${e.ubicacion}` : ""}
         </p>
       ))}
+      <AsignadoLine asignadoA={eventos[0]?.asignadoA ?? null} asignacionNoEncontrada={asignacionNoEncontrada} />
     </div>
   );
 }
@@ -160,6 +185,40 @@ function AplazarTareaResult({ part }: { part: AplazarTareaPart }) {
         <Icon aria-hidden size={13} className={color} />
         <CalendarClock aria-hidden size={13} className="text-accent-strong" />
         {t.fechaLimite ? `Aplazada a ${dayLabel(dateKey(new Date(t.fechaLimite))).toLowerCase()}` : "Fecha límite quitada"}
+      </p>
+      <p className="mt-0.5 line-clamp-2 text-muted">{t.resumen}</p>
+    </div>
+  );
+}
+
+type AsignarTareaPart = Extract<AssistantMessage["parts"][number], { type: "tool-asignarTarea" }>;
+
+function isAsignarTareaPart(part: AssistantMessage["parts"][number]): part is AsignarTareaPart {
+  return part.type === "tool-asignarTarea";
+}
+
+/** Tarjeta de confirmación cuando el Asistente asigna (o quita la asignación de) una tarea/recordatorio. */
+function AsignarTareaResult({ part }: { part: AsignarTareaPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        {part.errorText || "No he encontrado esa tarea o esa persona."}
+      </div>
+    );
+  }
+
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Buscando…</div>;
+  }
+
+  const t = part.output;
+  const { Icon, color } = presentCategory(t.categoria);
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent-soft p-2.5 text-xs">
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <CircleCheck aria-hidden size={14} className="text-accent" />
+        <Icon aria-hidden size={13} className={color} />
+        {t.asignadoA ? `Asignada a ${shortName(t.asignadoA)}` : "Asignación quitada"}
       </p>
       <p className="mt-0.5 line-clamp-2 text-muted">{t.resumen}</p>
     </div>
@@ -244,6 +303,7 @@ function EditarEventoResult({ part }: { part: EditarEventoPart }) {
         {e.titulo} · {formatEventDate(e.fechaInicio)}
         {e.ubicacion ? ` · ${e.ubicacion}` : ""}
       </p>
+      <AsignadoLine asignadoA={e.asignadoA} asignacionNoEncontrada={e.asignacionNoEncontrada} />
     </div>
   );
 }
@@ -340,7 +400,9 @@ export function AssistantChat() {
           <>
             Pregúntale por tus notas, tareas y eventos guardados — responde citando lo que encuentra, en vez de
             inventarlo. También puede actuar por ti: crear notas y citas, marcar tareas como hechas o aplazarlas,
-            editar o borrar eventos, y apuntar/consultar tus ahorros, todo con lenguaje natural.
+            asignarlas a compañeros de equipo, editar o borrar eventos, y apuntar/consultar tus ahorros, todo con
+            lenguaje natural. Sigue trabajando aunque navegues a otra pantalla — verás un puntito en el menú
+            mientras piensa.
           </>
         }
       />
@@ -382,6 +444,7 @@ export function AssistantChat() {
             const crearEventoParts = message.parts.filter(isCrearEventoPart);
             const completarTareaParts = message.parts.filter(isCompletarTareaPart);
             const aplazarTareaParts = message.parts.filter(isAplazarTareaPart);
+            const asignarTareaParts = message.parts.filter(isAsignarTareaPart);
             const registrarAhorroParts = message.parts.filter(isRegistrarAhorroPart);
             const editarEventoParts = message.parts.filter(isEditarEventoPart);
             const borrarEventoParts = message.parts.filter(isBorrarEventoPart);
@@ -391,6 +454,7 @@ export function AssistantChat() {
               crearEventoParts.length > 0 ||
               completarTareaParts.length > 0 ||
               aplazarTareaParts.length > 0 ||
+              asignarTareaParts.length > 0 ||
               registrarAhorroParts.length > 0 ||
               editarEventoParts.length > 0 ||
               borrarEventoParts.length > 0 ||
@@ -415,6 +479,9 @@ export function AssistantChat() {
                     ))}
                     {aplazarTareaParts.map((part) => (
                       <AplazarTareaResult key={part.toolCallId} part={part} />
+                    ))}
+                    {asignarTareaParts.map((part) => (
+                      <AsignarTareaResult key={part.toolCallId} part={part} />
                     ))}
                     {registrarAhorroParts.map((part) => (
                       <RegistrarAhorroResultCard key={part.toolCallId} part={part} />

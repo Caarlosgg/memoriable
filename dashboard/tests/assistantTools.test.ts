@@ -44,6 +44,14 @@ vi.mock("../src/lib/vectorSearch", () => ({
 const revalidatePath = vi.fn();
 vi.mock("next/cache", () => ({ revalidatePath: (path: string) => revalidatePath(path) }));
 
+// Roster de equipo para las tools que resuelven `asignadoA` — ver el
+// comentario de `createAssistantTools` en assistantTools.ts: ya no vuelve a
+// consultar la BD por su cuenta, se le pasa como 4º argumento.
+const TEAM_MEMBERS = [
+  { userId: "u-benito", email: "benitoelrey@example.com", isSelf: false },
+  { userId: "u-ana", email: "ana@example.com", isSelf: false },
+];
+
 const fakeEvento = {
   id: "e1",
   titulo: "Cita con el médico",
@@ -62,6 +70,7 @@ const eventoUpdateMany = vi.fn();
 const eventoDeleteMany = vi.fn();
 const messageFindFirst = vi.fn();
 const messageUpdateMany = vi.fn();
+const messageUpdate = vi.fn();
 const cuentaAhorroFindMany = vi.fn();
 const cuentaAhorroCreate = vi.fn();
 const movimientoAhorroCreate = vi.fn();
@@ -76,6 +85,7 @@ vi.mock("../src/lib/prisma", () => ({
     message: {
       findFirst: (...args: unknown[]) => messageFindFirst(...args),
       updateMany: (...args: unknown[]) => messageUpdateMany(...args),
+      update: (...args: unknown[]) => messageUpdate(...args),
     },
     cuentaAhorro: {
       findMany: (...args: unknown[]) => cuentaAhorroFindMany(...args),
@@ -108,6 +118,44 @@ function fakePendiente(overrides: Partial<import("@prisma/client").Message> = {}
   };
 }
 
+describe("resolverMiembro", () => {
+  const members = [
+    { userId: "u-benito", email: "benitoelrey@example.com", isSelf: false },
+    { userId: "u-ana", email: "ana.garcia@example.com", isSelf: false },
+  ];
+
+  it("resuelve por email completo (sin importar mayúsculas)", async () => {
+    const { resolverMiembro } = await import("../src/lib/assistantTools");
+    expect(resolverMiembro("BenitoElRey@example.com", members)).toMatchObject({ userId: "u-benito" });
+  });
+
+  it("resuelve por la parte local del email (lo que la gente usa como 'nombre')", async () => {
+    const { resolverMiembro } = await import("../src/lib/assistantTools");
+    expect(resolverMiembro("benitoelrey", members)).toMatchObject({ userId: "u-benito" });
+  });
+
+  it("resuelve por coincidencia parcial en cualquier sentido (apodo corto)", async () => {
+    const { resolverMiembro } = await import("../src/lib/assistantTools");
+    expect(resolverMiembro("ana", members)).toMatchObject({ userId: "u-ana" });
+  });
+
+  it("ignora tildes/mayúsculas al comparar", async () => {
+    const { resolverMiembro } = await import("../src/lib/assistantTools");
+    const withAccent = [{ userId: "u-x", email: "maría@example.com", isSelf: false }];
+    expect(resolverMiembro("Maria", withAccent)).toMatchObject({ userId: "u-x" });
+  });
+
+  it("devuelve null si nadie encaja — nunca asigna 'a lo que más se parezca' sin overlap real", async () => {
+    const { resolverMiembro } = await import("../src/lib/assistantTools");
+    expect(resolverMiembro("pedro", members)).toBeNull();
+  });
+
+  it("devuelve null con una cadena vacía", async () => {
+    const { resolverMiembro } = await import("../src/lib/assistantTools");
+    expect(resolverMiembro("   ", members)).toBeNull();
+  });
+});
+
 describe("createAssistantTools", () => {
   beforeEach(() => {
     captureMessage.mockReset();
@@ -123,6 +171,8 @@ describe("createAssistantTools", () => {
     messageFindFirst.mockResolvedValue(null);
     messageUpdateMany.mockReset();
     messageUpdateMany.mockResolvedValue({ count: 1 });
+    messageUpdate.mockReset();
+    messageUpdate.mockResolvedValue({});
     cuentaAhorroFindMany.mockReset();
     cuentaAhorroFindMany.mockResolvedValue([]);
     cuentaAhorroCreate.mockReset();
@@ -156,6 +206,32 @@ describe("createAssistantTools", () => {
     });
     expect(revalidatePath).toHaveBeenCalledWith("/pendientes");
     expect(revalidatePath).toHaveBeenCalledWith("/categorias");
+  });
+
+  it("crearNota con asignadoA resuelve el miembro real y actualiza la nota ya guardada con su assigneeId", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.crearNota.execute!(
+      { contenido: "Revisar la propuesta", asignadoA: "ana" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdate).toHaveBeenCalledWith({ where: { id: "m1" }, data: { assigneeId: "u-ana" } });
+    expect(result).toMatchObject({ asignadoA: "ana@example.com" });
+  });
+
+  it("crearNota con asignadoA que no coincide con nadie del equipo: guarda la nota sin asignar y lo avisa", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.crearNota.execute!(
+      { contenido: "Revisar la propuesta", asignadoA: "nadie-conocido" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdate).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ asignadoA: null, asignacionNoEncontrada: "nadie-conocido" });
   });
 
   it("ante un fallo al guardar, lanza un mensaje en español sin filtrar detalles internos", async () => {
@@ -227,6 +303,34 @@ describe("createAssistantTools", () => {
       "2026-08-27T07:00:00.000Z",
       "2026-09-03T07:00:00.000Z",
     ]);
+  });
+
+  it("crearEvento con asignadoA resuelve el miembro real y guarda assigneeId", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.crearEvento.execute!(
+      { titulo: "Revisar la caldera", fechaInicio: "2026-08-14T20:00:00+02:00", asignadoA: "benitoelrey" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ assigneeId: "u-benito" }) }),
+    );
+    expect(result).toMatchObject({ eventos: [{ asignadoA: "benitoelrey@example.com" }] });
+  });
+
+  it("crearEvento con asignadoA que no coincide con nadie del equipo: crea el evento sin asignar y lo avisa", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.crearEvento.execute!(
+      { titulo: "Revisar la caldera", fechaInicio: "2026-08-14T20:00:00+02:00", asignadoA: "alguien-que-no-existe" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ assigneeId: null }) }));
+    expect(result).toMatchObject({ asignacionNoEncontrada: "alguien-que-no-existe" });
   });
 
   it("crearEvento rechaza una fecha de inicio que no se puede interpretar", async () => {
@@ -410,6 +514,74 @@ describe("createAssistantTools", () => {
     await expect(
       tools.aplazarTarea.execute!(
         { descripcion: "algo que no existe", fecha: "2026-08-15T00:00:00.000Z" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he encontrado ninguna tarea pendiente/);
+    expect(messageUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("asignarTarea encuentra la pendiente y la asigna a un miembro real del equipo (corrección tras crearla, como pide el usuario)", async () => {
+    findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1", resumen: "Revisar la caldera" })]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.asignarTarea.execute!(
+      { descripcion: "revisar la caldera", asignadoA: "benitoelrey" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: { id: "p1", workspaceId: "w1" },
+      data: { assigneeId: "u-benito" },
+    });
+    expect(result).toMatchObject({ id: "p1", asignadoA: "benitoelrey@example.com" });
+  });
+
+  it("asignarTarea con quitarAsignacion quita la asignación sin buscar a nadie", async () => {
+    findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1" })]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    const result = await tools.asignarTarea.execute!(
+      { descripcion: "revisar la caldera", quitarAsignacion: true },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdateMany).toHaveBeenCalledWith({ where: { id: "p1", workspaceId: "w1" }, data: { assigneeId: null } });
+    expect(result).toMatchObject({ asignadoA: null });
+  });
+
+  it("asignarTarea lanza en español si no dice a quién asignarla ni pide quitar la asignación", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    await expect(
+      tools.asignarTarea.execute!({ descripcion: "algo" }, { toolCallId: "c", messages: [], context: undefined }),
+    ).rejects.toThrow(/No me has dicho a quién asignarla/);
+    expect(findSimilarMessages).not.toHaveBeenCalled();
+  });
+
+  it("asignarTarea lanza en español si el nombre no coincide con nadie del equipo, sin buscar la tarea", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    await expect(
+      tools.asignarTarea.execute!(
+        { descripcion: "revisar la caldera", asignadoA: "nadie-conocido" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he encontrado a nadie del equipo/);
+    expect(findSimilarMessages).not.toHaveBeenCalled();
+    expect(messageUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("asignarTarea lanza (en español) si no encuentra ninguna tarea pendiente que coincida", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    await expect(
+      tools.asignarTarea.execute!(
+        { descripcion: "algo que no existe", asignadoA: "benitoelrey" },
         { toolCallId: "c", messages: [], context: undefined },
       ),
     ).rejects.toThrow(/No he encontrado ninguna tarea pendiente/);
@@ -606,6 +778,54 @@ describe("createAssistantTools", () => {
     expect(eventoUpdateMany).not.toHaveBeenCalled();
   });
 
+  it("editarEvento con asignadoA asigna un evento ya creado a un miembro real del equipo (corrección tras crearlo)", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.editarEvento.execute!(
+      { descripcion: "cita con el médico", asignadoA: "benitoelrey" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoUpdateMany).toHaveBeenCalledWith({
+      where: { id: "e1", workspaceId: "w1" },
+      data: { assigneeId: "u-benito" },
+    });
+    expect(result).toMatchObject({ asignadoA: "benitoelrey@example.com" });
+  });
+
+  it("editarEvento con quitarAsignacion quita la asignación sin poner a otra persona", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    const result = await tools.editarEvento.execute!(
+      { descripcion: "cita con el médico", quitarAsignacion: true },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(eventoUpdateMany).toHaveBeenCalledWith({
+      where: { id: "e1", workspaceId: "w1" },
+      data: { assigneeId: null },
+    });
+    expect(result).toMatchObject({ asignadoA: null });
+  });
+
+  it("editarEvento con asignadoA que no coincide con nadie del equipo lanza en español, sin tocar el evento", async () => {
+    eventoFindMany.mockResolvedValue([fakeEvento]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    await expect(
+      tools.editarEvento.execute!(
+        { descripcion: "cita con el médico", asignadoA: "alguien-que-no-existe" },
+        { toolCallId: "c", messages: [], context: undefined },
+      ),
+    ).rejects.toThrow(/No he encontrado a nadie del equipo/);
+    expect(eventoUpdateMany).not.toHaveBeenCalled();
+  });
+
   it("editarEvento rechaza una fecha nueva que no se puede interpretar", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
     const { createAssistantTools } = await import("../src/lib/assistantTools");
@@ -751,6 +971,18 @@ describe("createAssistantTools", () => {
       await expect(
         tools.aplazarTarea.execute!(
           { descripcion: "algo", fecha: "2026-08-15T00:00:00.000Z" },
+          { toolCallId: "c", messages: [], context: undefined },
+        ),
+      ).rejects.toThrow(/solo lectura/);
+      expect(messageUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("asignarTarea rechaza con rol VIEWER", async () => {
+      const { createAssistantTools } = await import("../src/lib/assistantTools");
+      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      await expect(
+        tools.asignarTarea.execute!(
+          { descripcion: "algo", asignadoA: "benitoelrey" },
           { toolCallId: "c", messages: [], context: undefined },
         ),
       ).rejects.toThrow(/solo lectura/);
