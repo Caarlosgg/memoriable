@@ -904,6 +904,68 @@ export function createAssistantTools(
         }
       },
     }),
+    analizarEquipo: tool({
+      description:
+        "Analiza cómo está repartido el trabajo del equipo AHORA MISMO: pendientes, en progreso, vencidas y completadas en la última semana, por persona, más el total del equipo — para dar un diagnóstico o consejo de gestión CONCRETO, con nombres y números reales (\"¿cómo va el equipo?\", \"¿quién está más cargado?\", \"tengo un problema de organización, ayúdame\", \"¿cómo repartimos mejor las tareas?\"). De solo lectura — nunca modifica nada. Solo tiene sentido en un workspace de equipo.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        if (members.length === 0) {
+          throw new Error("Estás en tu espacio personal — no hay equipo que analizar aquí.");
+        }
+        try {
+          const now = new Date();
+          const sieteDiasAtras = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          const [abiertas, completadasRecientes] = await Promise.all([
+            prisma.message.findMany({
+              where: { workspaceId, estado: { in: ["POR_HACER", "EN_PROGRESO"] } },
+              select: { assigneeId: true, estado: true, fechaLimite: true, categoria: true, enProgresoPorId: true },
+            }),
+            prisma.message.findMany({
+              where: { workspaceId, estado: "HECHO", fecha: { gte: sieteDiasAtras } },
+              select: { assigneeId: true },
+            }),
+          ]);
+
+          const porMiembro = new Map(
+            members.map((m) => [
+              m.userId,
+              { email: m.email, pendientes: 0, enProgreso: 0, vencidas: 0, completadasUltimaSemana: 0, trabajandoAhora: false },
+            ]),
+          );
+          const categoriaCounts = new Map<string, number>();
+          let totalVencidas = 0;
+
+          for (const t of abiertas) {
+            categoriaCounts.set(t.categoria, (categoriaCounts.get(t.categoria) ?? 0) + 1);
+            const vencida = t.fechaLimite != null && t.fechaLimite < now;
+            if (vencida) totalVencidas++;
+            const entry = t.assigneeId ? porMiembro.get(t.assigneeId) : undefined;
+            if (!entry) continue;
+            if (t.estado === "POR_HACER") entry.pendientes++;
+            if (t.estado === "EN_PROGRESO") entry.enProgreso++;
+            if (vencida) entry.vencidas++;
+            if (t.enProgresoPorId) entry.trabajandoAhora = true;
+          }
+          for (const t of completadasRecientes) {
+            const entry = t.assigneeId ? porMiembro.get(t.assigneeId) : undefined;
+            if (entry) entry.completadasUltimaSemana++;
+          }
+
+          const categoriaMasFrecuente = [...categoriaCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+          return {
+            porMiembro: [...porMiembro.values()],
+            totalPendientesYEnProgreso: abiertas.length,
+            totalVencidas,
+            categoriaMasFrecuente,
+          };
+        } catch (err) {
+          console.error("La tool analizarEquipo no pudo calcular las métricas:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido analizar el equipo. Inténtalo de nuevo en un momento.");
+        }
+      },
+    }),
     enviarMensajeChat: tool({
       description:
         "Envía un mensaje al chat de equipo en nombre del usuario (\"dile al equipo que llego tarde\", \"escribe en el chat que ya está listo\"). Llámala directamente cuando pida avisar, decir o escribir algo al equipo — no preguntes primero si quiere que lo hagas. Solo en un workspace de equipo.",

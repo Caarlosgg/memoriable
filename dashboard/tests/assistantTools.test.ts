@@ -69,6 +69,7 @@ const eventoFindMany = vi.fn();
 const eventoUpdateMany = vi.fn();
 const eventoDeleteMany = vi.fn();
 const messageFindFirst = vi.fn();
+const messageFindMany = vi.fn();
 const messageUpdateMany = vi.fn();
 const messageUpdate = vi.fn();
 const cuentaAhorroFindMany = vi.fn();
@@ -84,6 +85,7 @@ vi.mock("../src/lib/prisma", () => ({
     },
     message: {
       findFirst: (...args: unknown[]) => messageFindFirst(...args),
+      findMany: (...args: unknown[]) => messageFindMany(...args),
       updateMany: (...args: unknown[]) => messageUpdateMany(...args),
       update: (...args: unknown[]) => messageUpdate(...args),
     },
@@ -183,6 +185,8 @@ describe("createAssistantTools", () => {
     findSimilarMessages.mockResolvedValue([]);
     messageFindFirst.mockReset();
     messageFindFirst.mockResolvedValue(null);
+    messageFindMany.mockReset();
+    messageFindMany.mockResolvedValue([]);
     messageUpdateMany.mockReset();
     messageUpdateMany.mockResolvedValue({ count: 1 });
     messageUpdate.mockReset();
@@ -985,6 +989,58 @@ describe("createAssistantTools", () => {
     await expect(
       tools.consultarAhorros.execute!({}, { toolCallId: "c", messages: [], context: undefined }),
     ).rejects.toThrow(/No he podido consultar tus ahorros/);
+  });
+
+  it("analizarEquipo agrega pendientes/en progreso/vencidas/completadas por persona y el total del equipo", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T12:00:00.000Z"));
+    messageFindMany
+      .mockResolvedValueOnce([
+        // Abiertas (POR_HACER/EN_PROGRESO)
+        { assigneeId: "u-benito", estado: "POR_HACER", fechaLimite: new Date("2026-08-10T00:00:00.000Z"), categoria: "tarea", enProgresoPorId: null }, // vencida
+        { assigneeId: "u-benito", estado: "EN_PROGRESO", fechaLimite: null, categoria: "tarea", enProgresoPorId: "u-benito" },
+        { assigneeId: "u-ana", estado: "POR_HACER", fechaLimite: new Date("2026-08-20T00:00:00.000Z"), categoria: "idea", enProgresoPorId: null },
+        { assigneeId: null, estado: "POR_HACER", fechaLimite: null, categoria: "tarea", enProgresoPorId: null },
+      ])
+      .mockResolvedValueOnce([
+        // Completadas última semana
+        { assigneeId: "u-ana" },
+        { assigneeId: "u-ana" },
+      ]);
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.analizarEquipo.execute!({}, { toolCallId: "c", messages: [], context: undefined });
+    vi.useRealTimers();
+
+    expect(result).toEqual({
+      porMiembro: [
+        { email: "benitoelrey@example.com", pendientes: 1, enProgreso: 1, vencidas: 1, completadasUltimaSemana: 0, trabajandoAhora: true },
+        { email: "ana@example.com", pendientes: 1, enProgreso: 0, vencidas: 0, completadasUltimaSemana: 2, trabajandoAhora: false },
+      ],
+      totalPendientesYEnProgreso: 4,
+      totalVencidas: 1,
+      categoriaMasFrecuente: "tarea",
+    });
+  });
+
+  it("analizarEquipo lanza en español en el workspace personal (sin equipo que analizar)", async () => {
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    await expect(
+      tools.analizarEquipo.execute!({}, { toolCallId: "c", messages: [], context: undefined }),
+    ).rejects.toThrow(/no hay equipo que analizar/);
+  });
+
+  it("analizarEquipo: ante un fallo al leer, lanza un mensaje en español sin detalles internos", async () => {
+    messageFindMany.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
+    const { createAssistantTools } = await import("../src/lib/assistantTools");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    await expect(
+      tools.analizarEquipo.execute!({}, { toolCallId: "c", messages: [], context: undefined }),
+    ).rejects.toThrow(/No he podido analizar el equipo/);
   });
 
   describe("rol VIEWER (solo lectura)", () => {

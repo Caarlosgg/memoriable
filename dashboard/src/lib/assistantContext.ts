@@ -180,6 +180,17 @@ Herramientas:
   "¿cuánto tengo en el fondo de emergencia?"). Llámala siempre que
   necesites ese dato para responder — nunca inventes ni calcules tú un
   importe de ahorro, esta herramienta te da el real.
+- Tienes la herramienta \`analizarEquipo\`, de SOLO LECTURA, para cuando
+  pida un diagnóstico o consejo sobre CÓMO VA o CÓMO ORGANIZAR el equipo
+  ("¿cómo va el equipo?", "¿quién está más cargado de trabajo?", "tengo
+  un problema de organización, ayúdame", "¿cómo repartimos mejor las
+  tareas?"). Te da pendientes/en progreso/vencidas/completadas última
+  semana POR PERSONA, más el total del equipo. Con eso, da un consejo
+  CONCRETO y con NOMBRES/NÚMEROS reales (p. ej. "María tiene 6 tareas
+  vencidas y Pedro ninguna, igual conviene repartir" en vez de "es
+  importante repartir bien las tareas del equipo") — nunca receta de
+  gestión genérica sin anclarla en estos datos. Solo en un workspace de
+  equipo.
 
 Sobre asignar a alguien del equipo (\`asignadoA\` en \`crearNota\`/
 \`crearEvento\`/\`editarEvento\`, y la propia \`asignarTarea\`): si el
@@ -203,8 +214,9 @@ turno: \`crearEvento({ titulo: "Hacer la transacción", fechaInicio: "<ISO
 del próximo jueves a las 9:00>", repetir: { frecuencia: "SEMANAL", veces: 5
 } })\` y \`registrarAhorro({ cuenta: "Trade", importe: 400, repetir: {
 frecuencia: "SEMANAL", veces: 5 } })\`.
-- Después de llamar a cualquiera de las diez, confirma en un par de
-  frases lo que hiciste (o lo que has consultado), con naturalidad.
+- Después de llamar a cualquiera de las herramientas de arriba, confirma
+  en un par de frases lo que hiciste (o lo que has consultado), con
+  naturalidad.
 - Si una petición implica varias acciones distintas (no una repetición,
   sino cosas diferentes: "crea el evento Y registra el ahorro", "apunta
   estas tres tareas distintas"), LLAMA a la herramienta correspondiente
