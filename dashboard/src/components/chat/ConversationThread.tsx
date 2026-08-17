@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
-import { ArrowLeft, Send, ImagePlus, X, Bell, BellOff, Users } from "lucide-react";
+import { ArrowLeft, Send, ImagePlus, X, Bell, BellOff, Users, Trash2 } from "lucide-react";
 import {
   listChatMessages,
   sendChatMessage,
   markConversationRead,
   uploadChatImage,
   setConversationMuted,
+  deleteChatMessage,
   type ChatMessageView,
   type ConversationView,
 } from "@/app/(dashboard)/chat/actions";
@@ -20,6 +21,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PresenceSelect, PRESENCE_LABEL } from "./PresenceSelect";
+import { ConversationInfoDialog } from "./ConversationInfoDialog";
 
 // Sondeo de RESPALDO, no la vía principal cuando Realtime está configurado
 // (ver useChatRealtime.ts) — cubre huecos de reconexión del WebSocket y,
@@ -52,6 +54,8 @@ export function ConversationThread({
   initialMessages,
   members,
   onBack,
+  onConversationChanged,
+  onLeft,
 }: {
   conversation: ConversationView;
   currentUserId: string;
@@ -60,6 +64,10 @@ export function ConversationThread({
   members: WorkspaceMemberInfo[];
   /** Solo en móvil: volver a la lista de conversaciones sin perder el sitio. */
   onBack?: () => void;
+  /** Han cambiado los participantes — la lista de conversaciones debe releerse. */
+  onConversationChanged: () => void;
+  /** Ha salido del grupo: ya no pertenece a esta conversación. */
+  onLeft: () => void;
 }) {
   const conversationId = conversation.id;
   const [messages, setMessages] = useState<PendingMessage[]>(initialMessages);
@@ -145,6 +153,22 @@ export function ConversationThread({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length]);
 
+  /**
+   * Borrado optimista: desaparece al instante y, si el servidor lo
+   * rechaza, vuelve a su sitio. Lo mismo que hace el resto de la app con
+   * las tarjetas del tablero — esperar a la confirmación para quitarlo de
+   * pantalla se nota lento en algo tan inmediato como un chat.
+   */
+  async function handleDeleteMessage(messageId: string) {
+    const snapshot = messages;
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    const result = await deleteChatMessage(messageId);
+    if (result.error) {
+      setError(result.error);
+      setMessages(snapshot);
+    }
+  }
+
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -223,9 +247,10 @@ export function ConversationThread({
   }
 
   const headerTitle = conversation.type === "GROUP" ? conversation.nombre : shortEmailName(conversation.nombre);
+  const participantCount = conversation.participantIds.length;
   const headerSubtitle =
     conversation.type === "GROUP"
-      ? `${conversation.participantCount} ${conversation.participantCount === 1 ? "persona" : "personas"}`
+      ? `${participantCount} ${participantCount === 1 ? "persona" : "personas"}`
       : other
         ? `${isOnline(other.lastSeenAt) ? "en línea" : "desconectado"} · ${PRESENCE_LABEL[other.presenceStatus ?? "DISPONIBLE"]}`
         : undefined;
@@ -244,17 +269,34 @@ export function ConversationThread({
               <ArrowLeft aria-hidden size={18} />
             </button>
           )}
-          {conversation.type === "GROUP" ? (
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-strong">
-              <Users aria-hidden size={14} />
-            </span>
-          ) : (
-            <Avatar email={other?.email ?? headerTitle} size="sm" />
-          )}
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-ink">{headerTitle}</p>
-            {headerSubtitle && <p className="truncate text-xs text-muted">{headerSubtitle}</p>}
-          </div>
+          {/* La cabecera entera abre la ficha (quién está dentro, añadir
+              gente, salir del grupo) — mismo gesto que en cualquier app de
+              mensajería, sin un botón extra compitiendo por el sitio. */}
+          <ConversationInfoDialog
+            conversation={conversation}
+            participantIds={conversation.participantIds}
+            members={members}
+            currentUserId={currentUserId}
+            onChanged={onConversationChanged}
+            onLeft={onLeft}
+          >
+            <button
+              type="button"
+              className="flex min-w-0 items-center gap-2 rounded-lg p-1 text-left transition-colors hover:bg-paper-line/40 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+            >
+              {conversation.type === "GROUP" ? (
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-strong">
+                  <Users aria-hidden size={14} />
+                </span>
+              ) : (
+                <Avatar email={other?.email ?? headerTitle} size="sm" />
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-ink">{headerTitle}</p>
+                {headerSubtitle && <p className="truncate text-xs text-muted">{headerSubtitle}</p>}
+              </div>
+            </button>
+          </ConversationInfoDialog>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -280,7 +322,21 @@ export function ConversationThread({
         {messages.map((message) => {
           const isSelf = message.userId === currentUserId;
           return (
-            <li key={message.id} className={isSelf ? "flex justify-end" : "flex items-end gap-2"}>
+            // `group`: el botón de borrar solo aparece al pasar por encima
+            // (o al enfocarlo con teclado), para no llenar el hilo de
+            // iconos — pero SIEMPRE es alcanzable tabulando.
+            <li key={message.id} className={isSelf ? "group flex items-center justify-end gap-1" : "group flex items-end gap-2"}>
+              {isSelf && !message.pending && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteMessage(message.id)}
+                  aria-label="Borrar este mensaje"
+                  title="Borrar este mensaje"
+                  className="shrink-0 rounded-full p-1.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none hover:text-danger"
+                >
+                  <Trash2 aria-hidden size={13} />
+                </button>
+              )}
               {!isSelf && <Avatar email={message.email} size="sm" />}
               <div className="flex max-w-[75%] flex-col gap-0.5">
                 {!isSelf && conversation.type === "GROUP" && (

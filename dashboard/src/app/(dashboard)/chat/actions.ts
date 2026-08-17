@@ -34,7 +34,8 @@ export interface ConversationView {
   lastMessage: { texto: string; imagenUrl: string | null; createdAt: string; userId: string } | null;
   unread: boolean;
   muted: boolean;
-  participantCount: number;
+  /** Quiénes están dentro — lo usa la ficha de la conversación (ver ConversationInfoDialog.tsx) para saber a quién queda por añadir. */
+  participantIds: string[];
 }
 
 const CHAT_MESSAGES_LIMIT = 50;
@@ -164,7 +165,7 @@ export async function listConversations(): Promise<ConversationView[]> {
         : null,
       unread: !muted && lastMessage != null && (!lastReadAt || lastMessage.createdAt > lastReadAt),
       muted,
-      participantCount: conversation.participants.length,
+      participantIds: conversation.participants.map((p) => p.userId),
     };
   });
 
@@ -387,6 +388,30 @@ export async function uploadChatImage(formData: FormData, conversationId: string
   const result = await uploadImageToBlob(`chat/${conversationId}`, file);
   if (result.error) Sentry.captureMessage(`Fallo al subir imagen de chat: ${result.error}`);
   return result;
+}
+
+/**
+ * Borra un mensaje PROPIO. Solo el autor puede borrar lo suyo — ni
+ * siquiera el OWNER del workspace borra mensajes ajenos: el chat es
+ * comunicación entre personas, no contenido compartido del workspace
+ * (mismo criterio por el que escribir no pasa por `canWrite`).
+ *
+ * `deleteMany` con userId en el where (no `delete` por id): si el mensaje
+ * no es suyo, esto no borra nada en vez de tocar el de otro — la
+ * comprobación va en la propia consulta.
+ */
+export async function deleteChatMessage(messageId: string): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  try {
+    const { count } = await prisma.chatMessage.deleteMany({ where: { id: messageId, userId } });
+    if (count === 0) return { error: "Solo puedes borrar tus propios mensajes." };
+    revalidatePath("/chat");
+    return {};
+  } catch (err) {
+    console.error("No se pudo borrar el mensaje de chat:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido borrar. Inténtalo de nuevo." };
+  }
 }
 
 /** Marca una conversación como leída hasta ahora — apaga su indicador de no leído. */

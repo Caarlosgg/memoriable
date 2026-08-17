@@ -51,14 +51,28 @@ export function ChatShell({
     markConversationRead(id).catch(() => {});
   }
 
-  async function handleCreated(id: string) {
+  async function refreshConversations(): Promise<ConversationView[]> {
     try {
       const fresh = await listConversations();
       setConversations(fresh);
+      return fresh;
     } catch (err) {
       console.error("No se pudo actualizar la lista de conversaciones:", err);
+      return conversations;
     }
+  }
+
+  async function handleCreated(id: string) {
+    await refreshConversations();
     await selectConversation(id);
+  }
+
+  /** Tras salir de un grupo ya no se pertenece a él: se deselecciona y se vuelve a la lista. */
+  async function handleLeft() {
+    setSelectedId(null);
+    setMessages([]);
+    setMobileView("list");
+    await refreshConversations();
   }
 
   const selectedConversation = conversations.find((c) => c.id === selectedId) ?? null;
@@ -91,6 +105,8 @@ export function ChatShell({
             initialMessages={messages}
             members={members}
             onBack={() => setMobileView("list")}
+            onConversationChanged={refreshConversations}
+            onLeft={handleLeft}
           />
         )}
       </div>

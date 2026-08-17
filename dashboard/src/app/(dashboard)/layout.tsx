@@ -103,6 +103,16 @@ export default async function DashboardLayout({
           segundo plano aunque se navegue a otra pantalla (ver el comentario
           en AssistantProvider.tsx). */}
       <AssistantProvider>
+        {/* Saltar al contenido: quien navega con teclado (o con lector de
+            pantalla) tenía que pasar por TODO el menú lateral en cada
+            página antes de llegar a lo que venía a leer. Invisible hasta
+            que recibe el foco, que es justo cuando hace falta. */}
+        <a
+          href="#contenido"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-accent focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-accent-ink"
+        >
+          Saltar al contenido
+        </a>
         <div className="flex min-h-screen flex-1">
           <Sidebar
             workspaces={workspaces}
@@ -121,7 +131,14 @@ export default async function DashboardLayout({
               unreadCount={unreadCount}
             />
             {/* pb-20 en móvil: deja hueco para la barra de pestañas fija (BottomTabs). */}
-            <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 pb-24 sm:px-6 sm:pb-6">
+            {/* tabIndex={-1}: sin esto, saltar aquí mueve la vista pero NO
+                el foco del teclado, así que la siguiente tabulación
+                volvería al menú — el salto no serviría de nada. */}
+            <main
+              id="contenido"
+              tabIndex={-1}
+              className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 pb-24 focus-visible:outline-none sm:px-6 sm:pb-6"
+            >
               {children}
             </main>
           </div>
