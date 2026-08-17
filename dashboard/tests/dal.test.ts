@@ -70,16 +70,16 @@ describe("requireSuperAdmin", () => {
     await expect(requireSuperAdmin()).resolves.toBe("u1");
   });
 
-  it("redirige a /asistente si está autenticado pero no es superadmin", async () => {
+  it("redirige a /inicio si está autenticado pero no es superadmin", async () => {
     userFindUnique.mockResolvedValue({ isSuperAdmin: false });
     const { requireSuperAdmin } = await import("../src/lib/dal");
-    await expect(requireSuperAdmin()).rejects.toThrow("REDIRECT:/asistente");
+    await expect(requireSuperAdmin()).rejects.toThrow("REDIRECT:/inicio");
   });
 
-  it("redirige a /asistente si el usuario ya no existe", async () => {
+  it("redirige a /inicio si el usuario ya no existe", async () => {
     userFindUnique.mockResolvedValue(null);
     const { requireSuperAdmin } = await import("../src/lib/dal");
-    await expect(requireSuperAdmin()).rejects.toThrow("REDIRECT:/asistente");
+    await expect(requireSuperAdmin()).rejects.toThrow("REDIRECT:/inicio");
   });
 
   it("redirige a /login si no hay sesión válida (nunca llega a comprobar isSuperAdmin)", async () => {

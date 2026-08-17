@@ -64,9 +64,10 @@ export default async function CalendarioPage({
         title="Calendario"
         help={
           <>
-            Tus citas y eventos con fecha y hora. Créalos aquí con el botón de nuevo evento, o pídeselo al
-            Asistente en lenguaje natural (&quot;quedar el jueves a las 5&quot;). Haz clic en un día o en un
-            evento para ver el detalle.
+            Tus citas y las tareas que vencen, juntas. Crea eventos con el botón de arriba o pídeselo al
+            Asistente en lenguaje natural (&quot;quedar el jueves a las 5&quot;); las tareas con fecha límite
+            aparecen solas desde el tablero, con contorno punteado y en rojo si ya han vencido. Toca un día
+            para ver todo lo suyo.
           </>
         }
       />

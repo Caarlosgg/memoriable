@@ -32,6 +32,6 @@ export const verifySession = cache(async (): Promise<string> => {
 export const requireSuperAdmin = cache(async (): Promise<string> => {
   const userId = await verifySession();
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } });
-  if (!user?.isSuperAdmin) redirect("/asistente");
+  if (!user?.isSuperAdmin) redirect("/inicio");
   return userId;
 });

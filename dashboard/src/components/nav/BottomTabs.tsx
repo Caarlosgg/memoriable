@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Ellipsis } from "lucide-react";
 import { useAssistant } from "@/components/AssistantProvider";
 import { NAV_ITEMS } from "./navItems";
 
@@ -15,6 +16,7 @@ export function BottomTabs({ isPersonal, hasUnreadChat = false }: { isPersonal: 
   // Ahorros es siempre personal y Chat siempre de equipo (ver
   // lib/workspace.ts) — cada uno desaparece del menú en el modo contrario.
   const items = NAV_ITEMS.filter((item) => {
+    if (!item.enMovil) return false;
     if (item.href === "/ahorros") return isPersonal;
     if (item.href === "/chat") return !isPersonal;
     return true;
@@ -55,6 +57,18 @@ export function BottomTabs({ isPersonal, hasUnreadChat = false }: { isPersonal: 
           </Link>
         );
       })}
+      {/* "Más": Notas, Equipo y Cuenta no caben como pestaña sin dejar
+          ilegibles a las demás. Abre la paleta de comandos, que ya lista
+          TODOS los destinos (y además busca) — así nada queda inalcanzable
+          desde el móvil. */}
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+        className="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none active:text-accent"
+      >
+        <Ellipsis aria-hidden size={20} />
+        Más
+      </button>
     </nav>
   );
 }

@@ -13,6 +13,7 @@ import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { EventDetailDialog } from "../EventDetailDialog";
 import { MessageDetailDialog } from "../MessageDetailDialog";
+import { DayDetailDialog } from "./DayDetailDialog";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric", timeZone: "UTC" });
 const WEEK_RANGE_FORMATTER = new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short", timeZone: "UTC" });
@@ -279,8 +280,48 @@ export function CalendarView({
                     day.isToday && "border-accent bg-accent-soft/50 ring-1 ring-accent",
                   )}
                 >
+                  {/* MÓVIL: la casilla entera se toca y abre la ficha del
+                      día. A ~50px de ancho, un chip de texto queda recortado
+                      a dos letras — mejor puntos, que sí se leen de un
+                      vistazo, y el detalle completo al tocar. */}
+                  <DayDetailDialog
+                    date={day.date}
+                    eventos={dayEventos}
+                    tareas={dayTareas}
+                    members={members}
+                    ahora={now}
+                    onChanged={() => router.refresh()}
+                    onDeleted={handleDeleted}
+                    onUndoDelete={handleUndoDelete}
+                  >
+                    <button
+                      type="button"
+                      aria-label={`Ver el día ${day.date.getUTCDate()}${hasEventos ? ` (${dayEventos.length + dayTareas.length})` : ""}`}
+                      className="flex flex-1 flex-col items-start gap-1 rounded text-left focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none sm:hidden"
+                    >
+                      <span
+                        className={`font-medium ${day.isToday ? "text-accent-strong" : inMonth ? "text-ink" : "text-muted"}`}
+                      >
+                        {day.date.getUTCDate()}
+                      </span>
+                      <span aria-hidden className="flex flex-wrap gap-0.5">
+                        {dayEventos.slice(0, 4).map((e) => (
+                          <span key={e.id} className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        ))}
+                        {dayTareas.slice(0, 4).map((t) => (
+                          <span
+                            key={t.id}
+                            className={`h-1.5 w-1.5 rounded-full border ${
+                              t.fechaLimite != null && t.fechaLimite < now ? "border-danger bg-danger" : "border-accent bg-paper"
+                            }`}
+                          />
+                        ))}
+                      </span>
+                    </button>
+                  </DayDetailDialog>
+
                   <span
-                    className={`flex items-center gap-1 font-medium ${
+                    className={`hidden items-center gap-1 font-medium sm:flex ${
                       day.isToday ? "text-accent-strong" : inMonth ? "text-ink" : "text-muted"
                     }`}
                   >
@@ -289,7 +330,7 @@ export function CalendarView({
                       <span aria-hidden className="h-1 w-1 rounded-full bg-accent" />
                     )}
                   </span>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="hidden flex-col gap-0.5 sm:flex">
                     {dayEventos.slice(0, MAX_CHIPS_PER_DAY_MONTH).map((evento) => {
                       const assignee = memberOf(evento.assigneeId);
                       return (
@@ -334,7 +375,27 @@ export function CalendarView({
                         </MessageDetailDialog>
                       );
                     })}
-                    {ocultas > 0 && <span className="text-[11px] text-muted">+{ocultas} más</span>}
+                    {/* "+N más" era texto muerto: decía que había más pero no
+                        daba forma de verlo. Ahora abre la ficha del día. */}
+                    {ocultas > 0 && (
+                      <DayDetailDialog
+                        date={day.date}
+                        eventos={dayEventos}
+                        tareas={dayTareas}
+                        members={members}
+                        ahora={now}
+                        onChanged={() => router.refresh()}
+                        onDeleted={handleDeleted}
+                        onUndoDelete={handleUndoDelete}
+                      >
+                        <button
+                          type="button"
+                          className="w-full rounded px-1 text-left text-[11px] text-muted underline-offset-2 transition-colors hover:text-accent-strong hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+                        >
+                          +{ocultas} más
+                        </button>
+                      </DayDetailDialog>
+                    )}
                   </div>
                 </div>
               );
