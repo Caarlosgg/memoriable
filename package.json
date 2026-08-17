@@ -29,16 +29,15 @@
     "@prisma/client": "6.19.3",
     "dotenv": "^16.4.7",
     "groq-sdk": "^1.4.0",
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.6.0",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
-    "@types/node-cron": "^3.0.11",
-    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/coverage-v8": "^4.1.10",
     "prisma": "6.19.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.10"
   }
 }
