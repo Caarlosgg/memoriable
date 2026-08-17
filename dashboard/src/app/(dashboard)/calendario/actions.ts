@@ -182,9 +182,9 @@ export async function assignEvento(id: string, assigneeId: string | null): Promi
 
 /**
  * Notifica a quien se le ha asignado un evento — busca el título real
- * para que la notificación diga algo útil. Enlaza a /calendario a secas:
- * no hay (todavía) forma de enlazar directo a un evento concreto dentro
- * de la cuadrícula mensual.
+ * para que la notificación diga algo útil. `?evento=ID` en el enlace:
+ * `calendario/page.tsx` lo lee para abrir automáticamente el detalle de
+ * ese evento en vez de dejar solo la cuadrícula mensual general.
  */
 async function notifyEventoAssignment(assigneeId: string, eventoId: string): Promise<void> {
   const evento = await prisma.evento.findUnique({ where: { id: eventoId }, select: { titulo: true } });
@@ -194,6 +194,6 @@ async function notifyEventoAssignment(assigneeId: string, eventoId: string): Pro
     type: "ASSIGNED_EVENTO",
     title: "Te han asignado un evento",
     body: evento.titulo,
-    link: "/calendario",
+    link: `/calendario?evento=${eventoId}`,
   });
 }

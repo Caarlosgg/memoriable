@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Plus, CalendarCheck2 } from "lucide-react";
 import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, type WeekDay } from "@/lib/calendar";
 import { formatEventTime } from "@/lib/format";
 import { avatarColorClass } from "@/lib/avatar";
-import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { EventDetailDialog } from "../EventDetailDialog";
@@ -48,14 +48,24 @@ function weekRangeLabel(days: WeekDay[]): string {
 export function CalendarView({
   eventos,
   members = [],
+  highlightEventoId,
 }: {
   eventos: Evento[];
   /** Miembros del workspace activo, para mostrar quién tiene asignado cada evento — vacío en modo personal. */
   members?: WorkspaceMemberInfo[];
+  /** Evento al que ha navegado la notificación de asignación (?evento=ID) — abre su detalle solo, sin tocar el resto. */
+  highlightEventoId?: string;
 }) {
   const router = useRouter();
   const [view, setView] = useState<CalendarViewMode>("mes");
   const [cursor, setCursor] = useState(() => {
+    // Si venimos de la notificación de un evento, arrancar en el mes en el
+    // que cae ese evento — si no, nunca se vería su chip para poder abrirlo.
+    const highlighted = highlightEventoId ? eventos.find((e) => e.id === highlightEventoId) : undefined;
+    if (highlighted) {
+      const d = highlighted.fechaInicio;
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    }
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   });
@@ -244,6 +254,7 @@ export function CalendarView({
                           onChanged={() => router.refresh()}
                           onDeleted={handleDeleted}
                           onUndoDelete={handleUndoDelete}
+                          defaultOpen={evento.id === highlightEventoId}
                         >
                           <button
                             type="button"
@@ -311,6 +322,7 @@ export function CalendarView({
                             onChanged={() => router.refresh()}
                             onDeleted={handleDeleted}
                             onUndoDelete={handleUndoDelete}
+                            defaultOpen={evento.id === highlightEventoId}
                           >
                             <button
                               type="button"
@@ -377,6 +389,7 @@ export function CalendarView({
                             onChanged={() => router.refresh()}
                             onDeleted={handleDeleted}
                             onUndoDelete={handleUndoDelete}
+                            defaultOpen={evento.id === highlightEventoId}
                           >
                             <button
                               type="button"

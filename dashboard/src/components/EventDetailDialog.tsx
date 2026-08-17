@@ -13,7 +13,7 @@ import {
   assignEvento,
   type EventoInput,
 } from "@/app/(dashboard)/calendario/actions";
-import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { AssigneeControl } from "./AssigneeControl";
 import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
@@ -97,6 +97,7 @@ export function EventDetailDialog({
   onChanged,
   onDeleted,
   onUndoDelete,
+  defaultOpen = false,
 }: {
   /** `null`/ausente = modal de creación (arranca en modo edición vacío). */
   evento?: Evento | null;
@@ -109,9 +110,11 @@ export function EventDetailDialog({
   onDeleted?: (id: string) => void;
   /** Se llama si el usuario pulsa "Deshacer" en el toast. */
   onUndoDelete?: (id: string) => void;
+  /** Arranca ya abierto — usado por CalendarView para el evento de `?evento=ID` (notificación de asignación). */
+  defaultOpen?: boolean;
 }) {
   const isNew = !evento;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(isNew);
   const [fields, setFields] = useState<EditableEvento>(() => fieldsFrom(evento ?? null));
   const [error, setError] = useState<string | null>(null);

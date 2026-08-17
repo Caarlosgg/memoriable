@@ -5,6 +5,7 @@ import { presentCategory } from "@/lib/categories";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Highlight } from "./Highlight";
+import { useScrollIntoViewOnMount } from "@/lib/useScrollIntoViewOnMount";
 
 interface MessageCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   message: Pick<Message, "id" | "contenido" | "categoria" | "resumen" | "fecha">;
@@ -28,6 +29,8 @@ export const MessageCard = React.forwardRef<HTMLLIElement, MessageCardProps>(fun
 ) {
   const { Icon, label, color, borderAccent } = presentCategory(message.categoria);
   const resumen = message.resumen || "(sin resumen)";
+
+  useScrollIntoViewOnMount(`mensaje-${message.id}`, highlighted);
 
   return (
     <li

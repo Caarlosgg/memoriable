@@ -176,7 +176,7 @@ describe("assignEvento", () => {
       type: "ASSIGNED_EVENTO",
       title: "Te han asignado un evento",
       body: "Cita con el médico",
-      link: "/calendario",
+      link: "/calendario?evento=e1",
     });
   });
 
