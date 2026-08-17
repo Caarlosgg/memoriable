@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/nextjs";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { getActiveWorkspace } from "@/lib/workspace";
+import { uploadImageToBlob } from "@/lib/blobUpload";
 import {
   chatChannelTopic,
   CHAT_NEW_MESSAGE_EVENT,
@@ -16,6 +17,7 @@ import {
 export interface ChatMessageView {
   id: string;
   texto: string;
+  imagenUrl: string | null;
   createdAt: string;
   userId: string;
   email: string;
@@ -84,6 +86,7 @@ export async function listChatMessages(after?: string): Promise<ChatMessageView[
   return ordered.map((m) => ({
     id: m.id,
     texto: m.texto,
+    imagenUrl: m.imagenUrl,
     createdAt: m.createdAt.toISOString(),
     userId: m.userId,
     email: m.user.email,
@@ -96,26 +99,27 @@ export interface SendChatMessageResult {
 }
 
 /**
- * Cualquier miembro ACTIVO puede escribir, INCLUIDO el rol VIEWER — el
- * chat es comunicación con el equipo, no una mutación de contenido del
- * workspace (tareas/notas/eventos), así que no pasa por `canWrite`/
- * `READONLY_ROLE_MESSAGE` (a propósito, distinto del resto de acciones de
- * escritura de esta app).
+ * Inserta el mensaje + avisa por Realtime — compartido entre `sendChatMessage`
+ * (el formulario del chat, con sesión) y la tool `enviarMensajeChat` del
+ * Asistente (assistantTools.ts), que ya trae `workspaceId`/`userId`
+ * resueltos por la propia petición y no pasa por aquí con una sesión de
+ * navegador. Un único sitio para no duplicar el guardado + aviso.
  */
-export async function sendChatMessage(texto: string): Promise<SendChatMessageResult> {
-  const userId = await verifySession();
-  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
-  if (isPersonal) return { error: "El chat de equipo no está disponible en tu espacio personal." };
-
+export async function postChatMessage(
+  workspaceId: string,
+  userId: string,
+  texto: string,
+  imagenUrl?: string | null,
+): Promise<SendChatMessageResult> {
   const trimmed = texto.trim();
-  if (!trimmed) return { error: "Escribe algo antes de enviar." };
+  if (!trimmed && !imagenUrl) return { error: "Escribe algo o adjunta una imagen antes de enviar." };
   if (trimmed.length > CHAT_TEXTO_MAX_LENGTH) {
     return { error: `El mensaje no puede tener más de ${CHAT_TEXTO_MAX_LENGTH} caracteres.` };
   }
 
   try {
     const created = await prisma.chatMessage.create({
-      data: { texto: trimmed, userId, workspaceId },
+      data: { texto: trimmed, imagenUrl: imagenUrl || null, userId, workspaceId },
       include: { user: { select: { email: true } } },
     });
     await broadcastNewChatMessage(workspaceId);
@@ -124,6 +128,7 @@ export async function sendChatMessage(texto: string): Promise<SendChatMessageRes
       message: {
         id: created.id,
         texto: created.texto,
+        imagenUrl: created.imagenUrl,
         createdAt: created.createdAt.toISOString(),
         userId: created.userId,
         email: created.user.email,
@@ -134,6 +139,34 @@ export async function sendChatMessage(texto: string): Promise<SendChatMessageRes
     Sentry.captureException(err);
     return { error: "No se ha podido enviar. Inténtalo de nuevo." };
   }
+}
+
+/**
+ * Cualquier miembro ACTIVO puede escribir, INCLUIDO el rol VIEWER — el
+ * chat es comunicación con el equipo, no una mutación de contenido del
+ * workspace (tareas/notas/eventos), así que no pasa por `canWrite`/
+ * `READONLY_ROLE_MESSAGE` (a propósito, distinto del resto de acciones de
+ * escritura de esta app).
+ */
+export async function sendChatMessage(texto: string, imagenUrl?: string | null): Promise<SendChatMessageResult> {
+  const userId = await verifySession();
+  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  if (isPersonal) return { error: "El chat de equipo no está disponible en tu espacio personal." };
+  return postChatMessage(workspaceId, userId, texto, imagenUrl);
+}
+
+/** Sube la imagen adjunta de un mensaje de chat a Vercel Blob — sin `canWrite`, mismo criterio que `sendChatMessage`. */
+export async function uploadChatImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+  const userId = await verifySession();
+  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  if (isPersonal) return { error: "No disponible en tu espacio personal." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "No se ha recibido ningún fichero." };
+
+  const result = await uploadImageToBlob(`chat/${workspaceId}`, file);
+  if (result.error) Sentry.captureMessage(`Fallo al subir imagen de chat: ${result.error}`);
+  return result;
 }
 
 /** Marca el chat como leído hasta ahora — apaga el indicador de no leído del menú. */

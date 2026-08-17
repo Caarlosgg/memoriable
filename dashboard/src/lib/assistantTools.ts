@@ -10,7 +10,8 @@ import { ACTIONABLE_CATEGORIES } from "./categories";
 import { findSimilarMessages } from "./vectorSearch";
 import { getCuentasConSaldo } from "./ahorros";
 import { FRECUENCIAS, fechaRepeticion } from "./calendar";
-import { canWrite, READONLY_ROLE_MESSAGE } from "./workspace";
+import { canWrite, READONLY_ROLE_MESSAGE, listWorkspaceMembers, isOnline } from "./workspace";
+import { postChatMessage } from "@/app/(dashboard)/chat/actions";
 import { prisma } from "./prisma";
 import type { WorkspaceRole } from "@prisma/client";
 
@@ -880,6 +881,57 @@ export function createAssistantTools(
           totalCentimos: cuentas.reduce((sum, c) => sum + c.saldoCentimos, 0),
         };
         return result;
+      },
+    }),
+    consultarEquipo: tool({
+      description:
+        "Consulta quién forma parte del equipo, si está en línea, su estado (disponible/ocupado/fuera, elegido por cada uno) y en qué tarea está trabajando ahora mismo si hay alguna. Úsala para preguntas como '¿quién está en línea?', '¿qué está haciendo María?', '¿cómo está el equipo ahora?'. Solo tiene sentido en un workspace de equipo — en el personal no hay a quién consultar.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        if (members.length === 0) {
+          throw new Error("Estás en tu espacio personal — no hay equipo que consultar aquí.");
+        }
+        try {
+          const [info, enCurso] = await Promise.all([
+            listWorkspaceMembers(workspaceId, userId),
+            prisma.message.findMany({
+              where: { workspaceId, enProgresoPorId: { not: null } },
+              select: { resumen: true, enProgresoPorId: true },
+            }),
+          ]);
+          const tareaPorUsuario = new Map(enCurso.map((m) => [m.enProgresoPorId!, m.resumen]));
+          return {
+            miembros: info
+              .filter((m) => m.status === "ACTIVE")
+              .map((m) => ({
+                email: m.email,
+                enLinea: isOnline(m.lastSeenAt),
+                estado: m.presenceStatus ?? "DISPONIBLE",
+                tareaEnCurso: tareaPorUsuario.get(m.userId) ?? null,
+              })),
+          };
+        } catch (err) {
+          console.error("La tool consultarEquipo no pudo leer el equipo:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido consultar el equipo. Inténtalo de nuevo en un momento.");
+        }
+      },
+    }),
+    enviarMensajeChat: tool({
+      description:
+        "Envía un mensaje al chat de equipo en nombre del usuario (\"dile al equipo que llego tarde\", \"escribe en el chat que ya está listo\"). Llámala directamente cuando pida avisar, decir o escribir algo al equipo — no preguntes primero si quiere que lo hagas. Solo en un workspace de equipo.",
+      inputSchema: z.object({
+        texto: z.string().min(1).describe("El mensaje tal como debe aparecer en el chat."),
+      }),
+      execute: async ({ texto }) => {
+        if (members.length === 0) {
+          throw new Error("No hay chat de equipo en tu espacio personal.");
+        }
+        const result = await postChatMessage(workspaceId, userId, texto);
+        if (result.error || !result.message) {
+          throw new Error(result.error || "No se ha podido enviar el mensaje al chat.");
+        }
+        return { texto: result.message.texto };
       },
     }),
   } satisfies ToolSet;

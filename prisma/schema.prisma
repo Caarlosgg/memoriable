@@ -192,6 +192,18 @@ enum MembershipStatus {
   ACTIVE
 }
 
+/// Estado manual que cada miembro elige para sí mismo (Fase Equipo: chat de
+/// equipo) — visible para el resto y consultable por el Asistente. Distinto
+/// de "en línea" (derivado de `lastSeenAt`, automático) y de "en curso ahora"
+/// (qué tarea concreta lleva, ver Message.enProgresoPorId): esto es solo la
+/// disponibilidad que la propia persona comunica ("estoy ocupado, no me
+/// interrumpáis").
+enum MemberPresence {
+  DISPONIBLE
+  OCUPADO
+  FUERA
+}
+
 model Membership {
   userId      String
   workspaceId String
@@ -204,6 +216,17 @@ model Membership {
   /// "hay mensajes nuevos desde tu última visita" (indicador de no leído
   /// en el menú); no es un registro de auditoría ni de presencia.
   lastChatReadAt DateTime?
+
+  /// Estado manual (ver MemberPresence) — null = disponible por defecto,
+  /// sin obligar a elegir nada la primera vez.
+  presenceStatus MemberPresence?
+
+  /// Último "latido" de actividad en un workspace de equipo (ver
+  /// CurrentTaskBar.tsx, que ya sondea cada 20s en modo equipo) — de ahí se
+  /// deriva "en línea" (reciente) sin tabla de sesiones aparte. No es
+  /// exacto al segundo, es una señal de presencia aproximada, suficiente
+  /// para un equipo pequeño.
+  lastSeenAt DateTime?
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -290,8 +313,16 @@ model Notification {
 /// (un aviso por mensaje sería ruido constante).
 model ChatMessage {
   id        String   @id @default(cuid())
+  /// Puede quedar vacío si el mensaje es solo una imagen (ver `imagenUrl`)
+  /// — la Server Action exige al menos uno de los dos, no los dos a la vez.
   texto     String
   createdAt DateTime @default(now())
+
+  /// Imagen adjunta (opcional), URL de Vercel Blob — mismo proveedor que
+  /// las imágenes de notas (ver lib/blobUpload.ts). Un único campo, no un
+  /// array como Message.imagenes: un mensaje de chat es una unidad corta,
+  /// no una nota que acumula varias capturas.
+  imagenUrl String?
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

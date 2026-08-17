@@ -2,10 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
-import type { WorkspaceRole, MembershipStatus } from "@prisma/client";
+import type { WorkspaceRole, MembershipStatus, MemberPresence } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { setActiveWorkspaceCookie, createPersonalWorkspace, listWorkspaceMembers, type WorkspaceMemberInfo } from "@/lib/workspace";
+import {
+  setActiveWorkspaceCookie,
+  createPersonalWorkspace,
+  listWorkspaceMembers,
+  getActiveWorkspace,
+  type WorkspaceMemberInfo,
+} from "@/lib/workspace";
 import { createNotification } from "@/lib/notifications";
 import { createPasswordResetToken } from "@/lib/passwordReset";
 import { sendAccountSetupEmail, resolveBaseUrl } from "@/lib/email";
@@ -410,4 +416,44 @@ export async function setActiveWorkspace(workspaceId: string): Promise<Membershi
   if (!ok) return { error: "No perteneces a ese workspace." };
   revalidatePath("/", "layout");
   return {};
+}
+
+/** Estado manual que cada miembro elige para sí mismo — `null` vuelve a "disponible" (el valor por defecto). Sin sentido en el espacio personal. */
+export async function setPresenceStatus(status: MemberPresence | null): Promise<MembershipActionResult> {
+  const userId = await verifySession();
+  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  if (isPersonal) return { error: "No aplica en tu espacio personal." };
+  try {
+    await prisma.membership.update({
+      where: { userId_workspaceId: { userId, workspaceId } },
+      data: { presenceStatus: status, lastSeenAt: new Date() },
+    });
+    revalidatePath("/", "layout");
+    return {};
+  } catch (err) {
+    console.error("No se pudo guardar el estado:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido guardar tu estado." };
+  }
+}
+
+/**
+ * Latido de presencia — solo actualiza `lastSeenAt`, de donde se deriva
+ * "en línea" (ver `isOnline` en lib/workspace.ts). Se llama desde el
+ * sondeo ya existente de `CurrentTaskBar` (modo equipo, cada ~20s) — no es
+ * un sondeo nuevo, aprovecha uno que ya corría. Best-effort: nunca debe
+ * romper nada si falla.
+ */
+export async function touchPresence(): Promise<void> {
+  const userId = await verifySession();
+  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  if (isPersonal) return;
+  try {
+    await prisma.membership.update({
+      where: { userId_workspaceId: { userId, workspaceId } },
+      data: { lastSeenAt: new Date() },
+    });
+  } catch (err) {
+    console.error("No se pudo actualizar la presencia (no crítico):", err);
+  }
 }

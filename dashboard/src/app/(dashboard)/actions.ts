@@ -1,9 +1,7 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
-import { put } from "@vercel/blob";
 import type { EstadoTarea, Prioridad, Prisma } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
@@ -15,6 +13,7 @@ import { getActiveWorkspace, isActiveMember, canWrite, READONLY_ROLE_MESSAGE } f
 import { createNotification } from "@/lib/notifications";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } from "@/lib/campoTemplates";
+import { uploadImageToBlob } from "@/lib/blobUpload";
 
 /**
  * Al marcar HECHA una tarjeta (o al cambiarla a una categoría que deja de
@@ -291,9 +290,6 @@ export interface UploadImageResult {
   error?: string;
 }
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-
 /**
  * Sube una imagen adjunta a una nota (Fase D) a Vercel Blob y devuelve su
  * URL pública — el propio dueño la añade a `imagenes` con `updateMessage`
@@ -309,22 +305,10 @@ export async function uploadImage(formData: FormData): Promise<UploadImageResult
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "No se ha recibido ningún fichero." };
-  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-    return { error: "Solo se admiten imágenes (PNG, JPEG, WEBP o GIF)." };
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    return { error: "La imagen pesa demasiado (máx. 8 MB)." };
-  }
 
-  try {
-    const extension = file.type.split("/")[1];
-    const blob = await put(`notas/${userId}/${randomUUID()}.${extension}`, file, { access: "public" });
-    return { url: blob.url };
-  } catch (err) {
-    console.error("Error al subir la imagen a Vercel Blob:", err);
-    Sentry.captureException(err);
-    return { error: "No se ha podido subir la imagen. Inténtalo de nuevo en un momento." };
-  }
+  const result = await uploadImageToBlob(`notas/${userId}`, file);
+  if (result.error) Sentry.captureMessage(`Fallo al subir imagen de nota: ${result.error}`);
+  return result;
 }
 
 export interface DeleteMessageResult {

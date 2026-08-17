@@ -129,6 +129,13 @@ enum MembershipStatus {
 }
 
 /// Ver ../../prisma/schema.prisma: pertenencia usuario↔workspace (Fase Equipo).
+/// Ver ../../prisma/schema.prisma: estado manual de presencia (Fase Equipo).
+enum MemberPresence {
+  DISPONIBLE
+  OCUPADO
+  FUERA
+}
+
 model Membership {
   userId      String
   workspaceId String
@@ -138,6 +145,12 @@ model Membership {
 
   /// Ver ../../prisma/schema.prisma: última visita a /chat (Fase Equipo), para el indicador de no leído.
   lastChatReadAt DateTime?
+
+  /// Ver ../../prisma/schema.prisma: estado manual (null = disponible).
+  presenceStatus MemberPresence?
+
+  /// Ver ../../prisma/schema.prisma: último latido de actividad, para "en línea".
+  lastSeenAt DateTime?
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -207,6 +220,9 @@ model ChatMessage {
   id        String   @id @default(cuid())
   texto     String
   createdAt DateTime @default(now())
+
+  /// Ver ../../prisma/schema.prisma: imagen adjunta opcional (Vercel Blob).
+  imagenUrl String?
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

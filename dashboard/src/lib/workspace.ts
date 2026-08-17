@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
-import type { Prisma, WorkspaceRole, MembershipStatus } from "@prisma/client";
+import type { Prisma, WorkspaceRole, MembershipStatus, MemberPresence } from "@prisma/client";
 import { prisma } from "./prisma";
 
 export const ACTIVE_WORKSPACE_COOKIE = "active_workspace";
@@ -129,7 +129,16 @@ export interface WorkspaceMemberInfo {
   isSelf: boolean;
   /** Cuenta corporativa (ver addMemberByEmail) que aún no ha elegido contraseña. */
   accountPending: boolean;
+  /** Estado manual (ver MemberPresence en el schema) — null = disponible por defecto. */
+  presenceStatus: MemberPresence | null;
+  /** Último latido de actividad — usar `isOnline()` para leerlo, no comparar a mano. */
+  lastSeenAt: string | null;
 }
+
+// Reexportadas para el resto de código de servidor (assistantTools.ts) que
+// ya importaba de aquí — la definición vive en lib/presence.ts, que SÍ
+// puede importarse también desde Client Components (ver ese comentario).
+export { isOnline, ONLINE_THRESHOLD_MS } from "./presence";
 
 /**
  * La consulta de miembros en sí, cacheada por petición — SIN comprobar
@@ -155,6 +164,8 @@ export const listWorkspaceMembers = cache(
       status: m.status,
       isSelf: m.userId === currentUserId,
       accountPending: m.user.accountPending,
+      presenceStatus: m.presenceStatus,
+      lastSeenAt: m.lastSeenAt?.toISOString() ?? null,
     }));
   },
 );

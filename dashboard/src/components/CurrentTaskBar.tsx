@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CircleCheck, Square, Loader2 } from "lucide-react";
 import { listEnProgresoAhora, stopWorkingOn, updateTaskStatus, type EnProgresoItem } from "@/app/(dashboard)/actions";
+import { touchPresence } from "@/app/(dashboard)/equipo/actions";
 import { presentCategory } from "@/lib/categories";
 import { shortEmailName } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,10 @@ export function CurrentTaskBar({
     listEnProgresoAhora()
       .then(setItems)
       .catch((err) => console.error("No se pudo consultar «en curso ahora» (no crítico):", err));
+    // Aprovecha este mismo sondeo como latido de presencia ("en línea") —
+    // no-op en modo personal (ver touchPresence). Sin await: no debe
+    // retrasar ni depender de la consulta de arriba.
+    touchPresence().catch(() => {});
   }, []);
 
   useVisibilityAwarePolling(refresh, POLL_MS);
