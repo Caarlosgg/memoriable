@@ -322,6 +322,8 @@ export interface AmbientEvento {
 /** Cifras del estado actual del workspace activo, para el bloque de contexto "ambiental" (ver resolveAmbientStats en assistantAmbient.ts). */
 export interface AmbientStats {
   pendientesCount: number;
+  /** Pendientes cuya fecha límite YA pasó — el dato más accionable de todos, y el que el Asistente no tenía. */
+  vencidasCount: number;
   eventosProximos: AmbientEvento[];
   eventosProximosCount: number;
 }
@@ -339,6 +341,15 @@ export function buildAmbientBlock(stats: AmbientStats): string {
     const plural = stats.pendientesCount !== 1;
     partes.push(
       `Tiene ${stats.pendientesCount} tarea${plural ? "s" : ""}/recordatorio${plural ? "s" : ""} pendiente${plural ? "s" : ""} en el tablero.`,
+    );
+  }
+  // Va justo después del total de pendientes y antes del calendario: si
+  // algo se ha pasado de fecha, es lo primero que el Asistente debe poder
+  // mencionar cuando le preguntan cómo va la semana.
+  if (stats.vencidasCount > 0) {
+    const plural = stats.vencidasCount !== 1;
+    partes.push(
+      `De esas, ${stats.vencidasCount} ${plural ? "ya han pasado" : "ya ha pasado"} su fecha límite (${plural ? "vencidas" : "vencida"}).`,
     );
   }
   if (stats.eventosProximosCount > 0) {

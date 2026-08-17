@@ -10,6 +10,9 @@ import {
   CalendarDays,
   PiggyBank,
   User,
+  Users,
+  MessagesSquare,
+  Bell,
   PenLine,
   type LucideIcon,
 } from "lucide-react";
@@ -33,6 +36,11 @@ const NAV_ENTRIES: PaletteItem[] = [
   { key: "nav-notas", label: "Notas", Icon: StickyNote, onSelect: (r) => r.push("/categorias") },
   { key: "nav-tablero", label: "Tablero", Icon: ListTodo, onSelect: (r) => r.push("/pendientes") },
   { key: "nav-calendario", label: "Calendario", Icon: CalendarDays, onSelect: (r) => r.push("/calendario") },
+  // Chat y Equipo faltaban: estaban en el menú lateral pero no se podía
+  // llegar a ellos desde la paleta, que es justo la vía rápida de teclado.
+  { key: "nav-chat", label: "Chat", sublabel: "conversaciones del equipo", Icon: MessagesSquare, onSelect: (r) => r.push("/chat") },
+  { key: "nav-equipo", label: "Equipo", sublabel: "miembros e invitaciones", Icon: Users, onSelect: (r) => r.push("/equipo") },
+  { key: "nav-notificaciones", label: "Notificaciones", Icon: Bell, onSelect: (r) => r.push("/notificaciones") },
   { key: "nav-ahorros", label: "Ahorros", Icon: PiggyBank, onSelect: (r) => r.push("/ahorros") },
   { key: "nav-cuenta", label: "Cuenta", Icon: User, onSelect: (r) => r.push("/cuenta") },
 ];

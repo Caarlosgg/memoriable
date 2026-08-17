@@ -222,23 +222,24 @@ describe("buildWorkspaceContextLine", () => {
 
 describe("buildAmbientBlock", () => {
   it("dice honestamente que no hay nada pendiente ni próximo", () => {
-    const block = buildAmbientBlock({ pendientesCount: 0, eventosProximos: [], eventosProximosCount: 0 });
+    const block = buildAmbientBlock({ pendientesCount: 0, vencidasCount: 0, eventosProximos: [], eventosProximosCount: 0 });
     expect(block).toMatch(/no tiene tareas pendientes ni eventos/i);
   });
 
   it("cuenta las tareas pendientes en singular", () => {
-    const block = buildAmbientBlock({ pendientesCount: 1, eventosProximos: [], eventosProximosCount: 0 });
+    const block = buildAmbientBlock({ pendientesCount: 1, vencidasCount: 0, eventosProximos: [], eventosProximosCount: 0 });
     expect(block).toContain("1 tarea/recordatorio pendiente en el tablero");
   });
 
   it("cuenta las tareas pendientes en plural", () => {
-    const block = buildAmbientBlock({ pendientesCount: 4, eventosProximos: [], eventosProximosCount: 0 });
+    const block = buildAmbientBlock({ pendientesCount: 4, vencidasCount: 0, eventosProximos: [], eventosProximosCount: 0 });
     expect(block).toContain("4 tareas/recordatorios pendientes");
   });
 
   it("lista los eventos próximos con su fecha", () => {
     const block = buildAmbientBlock({
       pendientesCount: 0,
+      vencidasCount: 0,
       eventosProximos: [{ titulo: "Reunión de equipo", fecha: "jue 13 ago, 10:00" }],
       eventosProximosCount: 1,
     });
@@ -246,9 +247,41 @@ describe("buildAmbientBlock", () => {
     expect(block).toContain("1 evento en los próximos 7 días");
   });
 
+  it("avisa de las tareas vencidas — el dato más accionable para «¿cómo llevo la semana?»", () => {
+    const block = buildAmbientBlock({
+      pendientesCount: 5,
+      vencidasCount: 2,
+      eventosProximos: [],
+      eventosProximosCount: 0,
+    });
+    expect(block).toContain("5 tareas/recordatorios pendientes");
+    expect(block).toContain("2 ya han pasado su fecha límite");
+  });
+
+  it("una sola vencida se dice en singular", () => {
+    const block = buildAmbientBlock({
+      pendientesCount: 3,
+      vencidasCount: 1,
+      eventosProximos: [],
+      eventosProximosCount: 0,
+    });
+    expect(block).toContain("1 ya ha pasado su fecha límite");
+  });
+
+  it("sin vencidas no menciona el tema (no inventa una urgencia que no existe)", () => {
+    const block = buildAmbientBlock({
+      pendientesCount: 3,
+      vencidasCount: 0,
+      eventosProximos: [],
+      eventosProximosCount: 0,
+    });
+    expect(block).not.toMatch(/vencid|fecha límite/i);
+  });
+
   it("indica cuántos eventos más hay cuando exceden los listados", () => {
     const block = buildAmbientBlock({
       pendientesCount: 0,
+      vencidasCount: 0,
       eventosProximos: [{ titulo: "A", fecha: "lun" }, { titulo: "B", fecha: "mar" }, { titulo: "C", fecha: "mié" }],
       eventosProximosCount: 5,
     });

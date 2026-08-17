@@ -16,9 +16,18 @@ const EVENTOS_PROXIMOS_LIMIT = 3;
  */
 export async function resolveAmbientStats(workspaceId: string): Promise<AmbientStats> {
   const { desde, hasta } = upcomingRange(7);
-  const [pendientesCount, eventosProximos, eventosProximosCount] = await Promise.all([
+  const [pendientesCount, vencidasCount, eventosProximos, eventosProximosCount] = await Promise.all([
     prisma.message.count({
       where: { workspaceId, categoria: { in: [...ACTIONABLE_CATEGORIES] }, estado: { not: "HECHO" } },
+    }),
+    // Subconjunto de las anteriores: las que ya se han pasado de fecha.
+    prisma.message.count({
+      where: {
+        workspaceId,
+        categoria: { in: [...ACTIONABLE_CATEGORIES] },
+        estado: { not: "HECHO" },
+        fechaLimite: { lt: new Date() },
+      },
     }),
     prisma.evento.findMany({
       where: { workspaceId, fechaInicio: { gte: desde, lt: hasta } },
@@ -30,6 +39,7 @@ export async function resolveAmbientStats(workspaceId: string): Promise<AmbientS
   ]);
   return {
     pendientesCount,
+    vencidasCount,
     eventosProximos: eventosProximos.map((e) => ({ titulo: e.titulo, fecha: formatEventTime(e.fechaInicio) })),
     eventosProximosCount,
   };
