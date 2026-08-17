@@ -11,6 +11,24 @@ const createPersonalWorkspace = vi.fn();
 vi.mock("@/lib/workspace", () => ({
   setActiveWorkspaceCookie: (...args: unknown[]) => setActiveWorkspaceCookie(...args),
   createPersonalWorkspace: (...args: unknown[]) => createPersonalWorkspace(...args),
+  // Import dinámico (no en el ámbito del módulo): así resuelve al `@/lib/prisma`
+  // ya mockeado más abajo, sin depender del orden de estos dos `vi.mock`.
+  listWorkspaceMembers: async (workspaceId: string, currentUserId: string) => {
+    const { prisma } = await import("@/lib/prisma");
+    const memberships = await prisma.membership.findMany({
+      where: { workspaceId },
+      include: { user: { select: { email: true, accountPending: true } } },
+      orderBy: { joinedAt: "asc" },
+    });
+    return memberships.map((m: { userId: string; role: string; status: string; user: { email: string; accountPending: boolean } }) => ({
+      userId: m.userId,
+      email: m.user.email,
+      role: m.role,
+      status: m.status,
+      isSelf: m.userId === currentUserId,
+      accountPending: m.user.accountPending,
+    }));
+  },
 }));
 
 const createNotification = vi.fn();

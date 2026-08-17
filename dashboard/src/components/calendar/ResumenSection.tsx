@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Message, Evento } from "@prisma/client";
 import { Square, Clock, ListChecks } from "lucide-react";
 import { updateTaskStatus } from "@/app/(dashboard)/actions";
-import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { groupByDay, dayLabel } from "@/lib/calendar";
 import { formatEventDate } from "@/lib/format";
 import { Avatar } from "../ui/avatar";

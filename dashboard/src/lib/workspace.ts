@@ -1,6 +1,7 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
-import type { Prisma, WorkspaceRole } from "@prisma/client";
+import type { Prisma, WorkspaceRole, MembershipStatus } from "@prisma/client";
 import { prisma } from "./prisma";
 
 export const ACTIVE_WORKSPACE_COOKIE = "active_workspace";
@@ -59,8 +60,16 @@ export const READONLY_ROLE_MESSAGE = "Tu rol en este equipo es de solo lectura �
  * solo. Toda Server Action que hoy filtra `where: { id, userId }` pasa a
  * resolver el workspace aquí primero y filtrar por `workspaceId` — ver
  * el resto de `lib/` para los sitios ya migrados.
+ *
+ * `cache()` de React: varios Server Components de la MISMA petición
+ * (layout, BoardSection, la página de calendario...) la llaman cada uno
+ * por su cuenta con el mismo `userId` — sin memoización, cada uno repetía
+ * la consulta a `membership`. `cache()` hace que solo la primera llamada
+ * de la petición toque la base de datos; las siguientes con los mismos
+ * argumentos reciben el resultado ya resuelto. Se limpia sola entre
+ * peticiones (no es un caché global ni persistente).
  */
-export async function getActiveWorkspace(userId: string): Promise<ActiveWorkspace> {
+export const getActiveWorkspace = cache(async (userId: string): Promise<ActiveWorkspace> => {
   const cookieStore = await cookies();
   const requested = cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value;
 
@@ -75,7 +84,7 @@ export async function getActiveWorkspace(userId: string): Promise<ActiveWorkspac
   }
 
   return getPersonalWorkspace(userId);
-}
+});
 
 /**
  * Resuelve el workspace personal del usuario — lectura O(1) vía
@@ -111,6 +120,44 @@ export async function getPersonalWorkspaceId(userId: string): Promise<string> {
     return createPersonalWorkspace(tx, userId);
   });
 }
+
+export interface WorkspaceMemberInfo {
+  userId: string;
+  email: string;
+  role: WorkspaceRole;
+  status: MembershipStatus;
+  isSelf: boolean;
+  /** Cuenta corporativa (ver addMemberByEmail) que aún no ha elegido contraseña. */
+  accountPending: boolean;
+}
+
+/**
+ * La consulta de miembros en sí, cacheada por petición — SIN comprobar
+ * que quien pregunta pertenece al workspace (eso lo sigue haciendo
+ * `getWorkspaceMembers` en equipo/actions.ts, la Server Action expuesta
+ * al cliente). Pensada para Server Components de esta misma petición que
+ * YA tienen un `workspaceId` validado por `getActiveWorkspace` (el
+ * layout, `BoardSection`, la página de calendario) — antes cada uno
+ * llamaba a `getWorkspaceMembers` por su cuenta, repitiendo tanto la
+ * comprobación de membership del que pregunta como esta consulta.
+ */
+export const listWorkspaceMembers = cache(
+  async (workspaceId: string, currentUserId: string): Promise<WorkspaceMemberInfo[]> => {
+    const memberships = await prisma.membership.findMany({
+      where: { workspaceId },
+      include: { user: { select: { email: true, accountPending: true } } },
+      orderBy: { joinedAt: "asc" },
+    });
+    return memberships.map((m) => ({
+      userId: m.userId,
+      email: m.user.email,
+      role: m.role,
+      status: m.status,
+      isSelf: m.userId === currentUserId,
+      accountPending: m.user.accountPending,
+    }));
+  },
+);
 
 /**
  * Comprueba si un usuario es miembro ACTIVE (no PENDING) de un workspace —

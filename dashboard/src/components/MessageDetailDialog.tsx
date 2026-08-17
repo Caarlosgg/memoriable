@@ -12,7 +12,7 @@ import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtr
 import { checklistToArray, checklistToJson, type ChecklistItem } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
 import { AssigneeControl } from "./AssigneeControl";
-import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";

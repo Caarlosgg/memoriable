@@ -1,7 +1,6 @@
 import { getBoardGroups } from "@/lib/data";
 import { verifySession } from "@/lib/dal";
-import { getActiveWorkspace } from "@/lib/workspace";
-import { getWorkspaceMembers } from "@/app/(dashboard)/equipo/actions";
+import { getActiveWorkspace, listWorkspaceMembers } from "@/lib/workspace";
 import { KanbanBoard } from "./KanbanBoard";
 
 export async function BoardSection() {
@@ -10,7 +9,7 @@ export async function BoardSection() {
   const [columns, members] = await Promise.all([
     getBoardGroups(workspaceId),
     // Solo hace falta en modo equipo — en personal no hay a quién asignar.
-    isPersonal ? Promise.resolve([]) : getWorkspaceMembers(workspaceId).catch(() => []),
+    isPersonal ? Promise.resolve([]) : listWorkspaceMembers(workspaceId, userId).catch(() => []),
   ]);
   return <KanbanBoard initialColumns={columns} members={members} currentUserId={userId} />;
 }

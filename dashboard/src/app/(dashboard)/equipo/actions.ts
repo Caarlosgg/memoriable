@@ -5,7 +5,7 @@ import * as Sentry from "@sentry/nextjs";
 import type { WorkspaceRole, MembershipStatus } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { setActiveWorkspaceCookie, createPersonalWorkspace } from "@/lib/workspace";
+import { setActiveWorkspaceCookie, createPersonalWorkspace, listWorkspaceMembers, type WorkspaceMemberInfo } from "@/lib/workspace";
 import { createNotification } from "@/lib/notifications";
 import { createPasswordResetToken } from "@/lib/passwordReset";
 import { sendAccountSetupEmail, resolveBaseUrl } from "@/lib/email";
@@ -40,16 +40,6 @@ export async function listMyWorkspaces(): Promise<WorkspaceSummary[]> {
   }));
 }
 
-export interface WorkspaceMemberInfo {
-  userId: string;
-  email: string;
-  role: WorkspaceRole;
-  status: MembershipStatus;
-  isSelf: boolean;
-  /** Cuenta corporativa (ver addMemberByEmail) que aún no ha elegido contraseña. */
-  accountPending: boolean;
-}
-
 /** Lista de miembros de un workspace, para la página /equipo. Lanza si el usuario que pregunta no pertenece a él. */
 export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMemberInfo[]> {
   const userId = await verifySession();
@@ -58,19 +48,7 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
   });
   if (!requester) throw new Error("No perteneces a este workspace.");
 
-  const memberships = await prisma.membership.findMany({
-    where: { workspaceId },
-    include: { user: { select: { email: true, accountPending: true } } },
-    orderBy: { joinedAt: "asc" },
-  });
-  return memberships.map((m) => ({
-    userId: m.userId,
-    email: m.user.email,
-    role: m.role,
-    status: m.status,
-    isSelf: m.userId === userId,
-    accountPending: m.user.accountPending,
-  }));
+  return listWorkspaceMembers(workspaceId, userId);
 }
 
 export interface CreateWorkspaceResult {

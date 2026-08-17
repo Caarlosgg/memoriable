@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Check, X } from "lucide-react";
-import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { renameWorkspace } from "@/app/(dashboard)/equipo/actions";
 import { AddMemberForm } from "./AddMemberForm";
 import { MemberRow } from "./MemberRow";

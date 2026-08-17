@@ -167,14 +167,27 @@ export interface BoardColumn {
  * `workspaceId` (el activo) — dentro de un workspace de equipo, el
  * tablero es compartido entre todos sus miembros.
  */
+const BOARD_HECHO_LIMIT = 50;
+
 export async function getBoardGroups(workspaceId: string): Promise<BoardColumn[]> {
-  const messages = await prisma.message.findMany({
-    where: { workspaceId, categoria: { in: [...ACTIONABLE_CATEGORIES] } },
-    orderBy: { orden: "desc" },
-  });
+  // HECHO se acumula sin fin con el uso normal (tareas completadas de
+  // siempre) — se trae aparte y limitada a las más recientes, mismo
+  // criterio que `getCategoryGroups`. POR_HACER/EN_PROGRESO sin límite: se
+  // autolimitan solas con el uso normal (trabajo activo, no historial).
+  const [pendientes, hechas] = await Promise.all([
+    prisma.message.findMany({
+      where: { workspaceId, categoria: { in: [...ACTIONABLE_CATEGORIES] }, estado: { not: "HECHO" } },
+      orderBy: { orden: "desc" },
+    }),
+    prisma.message.findMany({
+      where: { workspaceId, categoria: { in: [...ACTIONABLE_CATEGORIES] }, estado: "HECHO" },
+      orderBy: { fecha: "desc" },
+      take: BOARD_HECHO_LIMIT,
+    }),
+  ]);
 
   return ESTADOS_TABLERO.map((estado) => ({
     estado,
-    messages: messages.filter((m) => m.estado === estado),
+    messages: estado === "HECHO" ? hechas : pendientes.filter((m) => m.estado === estado),
   }));
 }

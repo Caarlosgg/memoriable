@@ -36,7 +36,7 @@ import {
   startWorkingOn,
   stopWorkingOn,
 } from "@/app/(dashboard)/actions";
-import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import type { EditableFields } from "@/components/MessageDetailDialog";
 import { cn } from "@/lib/utils";
 import { KanbanColumn } from "./KanbanColumn";

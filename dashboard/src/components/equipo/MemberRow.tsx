@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, LogOut } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
-import { changeRole, removeMember, leaveWorkspace, type WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import { changeRole, removeMember, leaveWorkspace } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER: "Propietario",

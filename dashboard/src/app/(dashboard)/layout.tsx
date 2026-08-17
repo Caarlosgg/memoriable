@@ -8,8 +8,9 @@ import { AssistantProvider } from "@/components/AssistantProvider";
 import { DailyBriefingModal } from "@/components/DailyBriefingModal";
 import { CurrentTaskBar } from "@/components/CurrentTaskBar";
 import { getDailyBriefing } from "@/lib/dailyBriefing";
-import { getActiveWorkspace, getPersonalWorkspaceId } from "@/lib/workspace";
-import { listMyWorkspaces, getWorkspaceMembers } from "@/app/(dashboard)/equipo/actions";
+import { getActiveWorkspace, getPersonalWorkspaceId, listWorkspaceMembers } from "@/lib/workspace";
+import { listMyWorkspaces } from "@/app/(dashboard)/equipo/actions";
+import { hasUnreadChat as checkHasUnreadChat } from "@/app/(dashboard)/chat/actions";
 import { listNotifications, getUnreadCount } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 
@@ -40,7 +41,7 @@ export default async function DashboardLayout({
   // ya resueltos arriba) — en paralelo en vez de en secuencia, mismo
   // criterio que el resto de este archivo, para no sumar una ida y vuelta
   // extra a la BD en cada navegación dentro de un workspace de equipo.
-  const [briefing, memberEmailById] = await Promise.all([
+  const [briefing, memberEmailById, hasUnreadChat] = await Promise.all([
     // No crítico: si falla, el dashboard sigue funcionando igual, solo sin
     // el modal del resumen del día (no es un dato imprescindible para
     // entrar). Fase Equipo: SIEMPRE el workspace personal, nunca el activo
@@ -57,12 +58,15 @@ export default async function DashboardLayout({
     // mostrando tu propia tarea activa, solo sin nombrar a nadie más.
     isPersonal
       ? Promise.resolve({})
-      : getWorkspaceMembers(activeWorkspaceId)
+      : listWorkspaceMembers(activeWorkspaceId, userId)
           .then((members) => Object.fromEntries(members.map((m) => [m.userId, m.email])))
           .catch((err) => {
             console.error("No se pudieron cargar los miembros del equipo para «en curso ahora» (no crítico):", err);
             return {};
           }),
+    // Best-effort: solo enciende el punto de "no leído" del menú, no es un
+    // dato imprescindible para poder entrar.
+    checkHasUnreadChat().catch(() => false),
   ]);
 
   return (
@@ -78,6 +82,7 @@ export default async function DashboardLayout({
             isPersonal={isPersonal}
             notifications={notifications}
             unreadCount={unreadCount}
+            hasUnreadChat={hasUnreadChat}
             isSuperAdmin={isSuperAdmin}
           />
           <div className="flex min-w-0 flex-1 flex-col">
@@ -92,7 +97,7 @@ export default async function DashboardLayout({
               {children}
             </main>
           </div>
-          <BottomTabs isPersonal={isPersonal} />
+          <BottomTabs isPersonal={isPersonal} hasUnreadChat={hasUnreadChat} />
           <CommandPalette />
           {briefing && <DailyBriefingModal userId={userId} data={briefing} />}
           <CurrentTaskBar currentUserId={userId} memberEmailById={memberEmailById} />
