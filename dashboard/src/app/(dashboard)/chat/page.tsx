@@ -8,7 +8,15 @@ import { ActiveWorkspaceBadge } from "@/components/ActiveWorkspaceBadge";
 
 export const metadata: Metadata = { title: "Chat · MemorIAble" };
 
-export default async function ChatPage() {
+export default async function ChatPage({
+  searchParams,
+}: {
+  // `?c=<id>`: abrir una conversación concreta al llegar — lo usa el botón
+  // de "escribir" del equipo, que crea/reutiliza el hilo y trae aquí
+  // directamente en vez de dejar al usuario buscándolo en la lista.
+  searchParams: Promise<{ c?: string }>;
+}) {
+  const { c: conversacionPedida } = await searchParams;
   const userId = await verifySession();
   const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
 
@@ -33,18 +41,32 @@ export default async function ChatPage() {
           </p>
         </div>
       ) : (
-        <ChatSection workspaceId={workspaceId} currentUserId={userId} />
+        <ChatSection workspaceId={workspaceId} currentUserId={userId} conversacionPedida={conversacionPedida} />
       )}
     </>
   );
 }
 
-async function ChatSection({ workspaceId, currentUserId }: { workspaceId: string; currentUserId: string }) {
+async function ChatSection({
+  workspaceId,
+  currentUserId,
+  conversacionPedida,
+}: {
+  workspaceId: string;
+  currentUserId: string;
+  conversacionPedida?: string;
+}) {
   const [conversations, members] = await Promise.all([
     listConversations(),
     listWorkspaceMembers(workspaceId, currentUserId),
   ]);
-  const initialSelectedId = conversations[0]?.id ?? null;
+  // Solo se respeta `?c=` si de verdad es una conversación suya — así un id
+  // inventado en la URL no deja la pantalla en blanco, simplemente abre la
+  // primera como siempre.
+  const initialSelectedId =
+    (conversacionPedida && conversations.some((c) => c.id === conversacionPedida) ? conversacionPedida : null) ??
+    conversations[0]?.id ??
+    null;
   const initialMessages = initialSelectedId ? await listChatMessages(initialSelectedId) : [];
   return (
     <ChatShell

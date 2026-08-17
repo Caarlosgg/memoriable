@@ -33,11 +33,12 @@ export function ChatShell({
   const [messages, setMessages] = useState(initialMessages);
   const [loading, setLoading] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "thread">(initialSelectedId ? "thread" : "list");
+  const [filtro, setFiltro] = useState("");
 
   async function selectConversation(id: string) {
     setSelectedId(id);
     setMobileView("thread");
-    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unread: false } : c)));
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
     if (id === selectedId) return;
     setLoading(true);
     try {
@@ -76,17 +77,25 @@ export function ChatShell({
   }
 
   const selectedConversation = conversations.find((c) => c.id === selectedId) ?? null;
+  // El filtro solo afecta a la LISTA, nunca al hilo abierto: escribir en el
+  // buscador no debe cerrarte la conversación que estás leyendo.
+  const filtroNormalizado = filtro.trim().toLowerCase();
+  const conversationsVisibles = filtroNormalizado
+    ? conversations.filter((c) => c.nombre.toLowerCase().includes(filtroNormalizado))
+    : conversations;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 md:h-[calc(100vh-14rem)] md:flex-row">
       <div className={`min-h-0 flex-col rounded-2xl border border-paper-line bg-paper-raised/60 p-3 md:flex md:w-72 md:shrink-0 ${mobileView === "list" ? "flex" : "hidden"}`}>
         <ConversationList
-          conversations={conversations}
+          conversations={conversationsVisibles}
           activeId={selectedId}
           members={members}
           currentUserId={currentUserId}
           onSelect={selectConversation}
           onCreated={handleCreated}
+          filtro={filtro}
+          onFiltroChange={setFiltro}
         />
       </div>
       <div className={`min-h-0 min-w-0 flex-1 md:flex ${mobileView === "thread" ? "flex" : "hidden"}`}>

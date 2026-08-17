@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { verifySession } from "@/lib/dal";
 import { getActiveWorkspace, listWorkspaceMembers } from "@/lib/workspace";
-import { getAllEventos, getImportantPending } from "@/lib/eventos";
+import { getAllEventos, getImportantPending, getTasksWithDeadline } from "@/lib/eventos";
 import { upcomingRange } from "@/lib/calendar";
 import { ResumenSection } from "@/components/calendar/ResumenSection";
 import { CalendarView } from "@/components/calendar/CalendarView";
@@ -22,9 +22,10 @@ export const metadata: Metadata = { title: "Calendario · MemorIAble" };
 async function CalendarSection({ highlightEventoId }: { highlightEventoId?: string }) {
   const userId = await verifySession();
   const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
-  const [importantPending, allEventos, members] = await Promise.all([
+  const [importantPending, allEventos, tareas, members] = await Promise.all([
     getImportantPending(workspaceId),
     getAllEventos(workspaceId),
+    getTasksWithDeadline(workspaceId),
     // Solo hace falta en modo equipo — en personal no hay a quién asignar.
     isPersonal ? Promise.resolve([]) : listWorkspaceMembers(workspaceId, userId).catch(() => []),
   ]);
@@ -34,16 +35,16 @@ async function CalendarSection({ highlightEventoId }: { highlightEventoId?: stri
 
   return (
     <>
-      {allEventos.length === 0 && (
+      {allEventos.length === 0 && tareas.length === 0 && (
         <div className="rounded-xl border border-dashed border-paper-line bg-paper-raised/60 p-8 text-center">
           <p className="text-muted">
-            Todavía no tienes ningún evento. Créalo con el botón de nuevo evento, o pídeselo al Asistente
-            (&quot;quedar el jueves a las 5&quot;) y aparecerá aquí.
+            Todavía no tienes nada con fecha. Crea un evento con el botón de arriba, ponle fecha límite a una
+            tarea del tablero, o pídeselo al Asistente (&quot;quedar el jueves a las 5&quot;).
           </p>
         </div>
       )}
       <ResumenSection importantPending={importantPending} upcomingEventos={upcomingEventos} members={members} />
-      <CalendarView eventos={allEventos} members={members} highlightEventoId={highlightEventoId} />
+      <CalendarView eventos={allEventos} tareas={tareas} members={members} highlightEventoId={highlightEventoId} />
     </>
   );
 }

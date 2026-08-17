@@ -33,7 +33,8 @@ export interface ConversationView {
   /** Solo DIRECT — para pintar avatar/presencia del otro participante. */
   otherUserId: string | null;
   lastMessage: { texto: string; imagenUrl: string | null; createdAt: string; userId: string } | null;
-  unread: boolean;
+  /** Cuántos mensajes sin leer (0 = ninguno) — un número, no un punto: saber si son 2 o 40 cambia si abres ahora o luego. */
+  unreadCount: number;
   muted: boolean;
   /** Quiénes están dentro — lo usa la ficha de la conversación (ver ConversationInfoDialog.tsx) para saber a quién queda por añadir. */
   participantIds: string[];
@@ -150,7 +151,35 @@ export async function listConversations(): Promise<ConversationView[]> {
     },
   });
 
-  const views = participations.map(({ conversation, lastReadAt, muted }): ConversationView => {
+  // Contar sin leer solo donde ya se sabe que hay algo nuevo (el último
+  // mensaje es posterior a la última lectura, y no es tuyo): así el conteo
+  // cuesta UNA consulta agrupada, y solo cuando de verdad hay algo — no una
+  // por conversación ni un recuento completo cada vez que se abre /chat.
+  const conPendientes = participations.filter(({ conversation, lastReadAt, muted }) => {
+    const last = conversation.messages[0];
+    return !muted && last != null && last.userId !== userId && (!lastReadAt || last.createdAt > lastReadAt);
+  });
+
+  const unreadPorConversacion = new Map<string, number>();
+  if (conPendientes.length > 0) {
+    const grupos = await prisma.chatMessage.groupBy({
+      by: ["conversationId"],
+      where: {
+        // Los propios nunca cuentan como "sin leer": los acabas de escribir tú.
+        userId: { not: userId },
+        OR: conPendientes.map(({ conversation, lastReadAt }) => ({
+          conversationId: conversation.id,
+          ...(lastReadAt ? { createdAt: { gt: lastReadAt } } : {}),
+        })),
+      },
+      _count: { _all: true },
+    });
+    for (const g of grupos) unreadPorConversacion.set(g.conversationId, g._count._all);
+  }
+
+  // `lastReadAt` ya no hace falta aquí: el conteo de sin leer se resolvió
+  // arriba de una vez para todas las conversaciones.
+  const views = participations.map(({ conversation, muted }): ConversationView => {
     const lastMessage = conversation.messages[0] ?? null;
     const otherParticipant =
       conversation.type === "DIRECT" ? conversation.participants.find((p) => p.userId !== userId) : undefined;
@@ -164,7 +193,7 @@ export async function listConversations(): Promise<ConversationView[]> {
       lastMessage: lastMessage
         ? { texto: lastMessage.texto, imagenUrl: lastMessage.imagenUrl, createdAt: lastMessage.createdAt.toISOString(), userId: lastMessage.userId }
         : null,
-      unread: !muted && lastMessage != null && (!lastReadAt || lastMessage.createdAt > lastReadAt),
+      unreadCount: muted ? 0 : (unreadPorConversacion.get(conversation.id) ?? 0),
       muted,
       participantIds: conversation.participants.map((p) => p.userId),
     };

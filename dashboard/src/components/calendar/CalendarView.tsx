@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Evento } from "@prisma/client";
-import { ChevronLeft, ChevronRight, Plus, CalendarCheck2 } from "lucide-react";
+import type { Evento, Message } from "@prisma/client";
+import { ChevronLeft, ChevronRight, Plus, CalendarCheck2, ListTodo } from "lucide-react";
 import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, type WeekDay } from "@/lib/calendar";
 import { formatEventTime } from "@/lib/format";
 import { avatarColorClass } from "@/lib/avatar";
@@ -12,6 +12,7 @@ import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { EventDetailDialog } from "../EventDetailDialog";
+import { MessageDetailDialog } from "../MessageDetailDialog";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric", timeZone: "UTC" });
 const WEEK_RANGE_FORMATTER = new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short", timeZone: "UTC" });
@@ -48,10 +49,13 @@ function weekRangeLabel(days: WeekDay[]): string {
  */
 export function CalendarView({
   eventos,
+  tareas = [],
   members = [],
   highlightEventoId,
 }: {
   eventos: Evento[];
+  /** Tareas/recordatorios con fecha límite (ver getTasksWithDeadline) — se pintan junto a los eventos, con otro aspecto. */
+  tareas?: Message[];
   /** Miembros del workspace activo, para mostrar quién tiene asignado cada evento — vacío en modo personal. */
   members?: WorkspaceMemberInfo[];
   /** Evento al que ha navegado la notificación de asignación (?evento=ID) — abre su detalle solo, sin tocar el resto. */
@@ -119,6 +123,18 @@ export function CalendarView({
     (e) => ({ from: e.fechaInicio, to: e.fechaFin ?? e.fechaInicio }),
   );
 
+  // Tareas con fecha límite, agrupadas por su día de vencimiento. A
+  // diferencia de los eventos NO ocupan un rango: una entrega es un punto
+  // en el tiempo, así que va solo en su día (por eso no usa groupByDayRange).
+  const tareasByDay = new Map<string, Message[]>();
+  for (const tarea of tareas) {
+    if (!tarea.fechaLimite || hiddenIds.has(tarea.id)) continue;
+    const key = dateKey(tarea.fechaLimite);
+    const list = tareasByDay.get(key);
+    if (list) list.push(tarea);
+    else tareasByDay.set(key, [tarea]);
+  }
+
   function goToPrevious() {
     setCursor((prev) =>
       view === "mes"
@@ -154,6 +170,19 @@ export function CalendarView({
   function chipColorClass(assignee: WorkspaceMemberInfo | undefined): string {
     if (!assignee) return "bg-accent-soft text-accent-strong";
     return avatarColorClass(assignee.email);
+  }
+
+  /**
+   * Las tareas se distinguen de los eventos a simple vista: contorno
+   * punteado en vez de fondo sólido. Un evento es una cita a una hora; una
+   * tarea es algo que vence ese día — mezclarlas con el mismo aspecto haría
+   * el calendario más confuso, no más útil. Una tarea ya vencida se pinta
+   * en rojo: es justo lo que hay que ver primero al abrir el mes.
+   */
+  function tareaChipClass(vencida: boolean): string {
+    return vencida
+      ? "border border-dashed border-danger/60 bg-danger-soft text-danger"
+      : "border border-dashed border-accent/50 bg-paper text-ink";
   }
 
   return (
@@ -229,9 +258,17 @@ export function CalendarView({
             {monthGrid.map((day, i) => {
               const key = dateKey(day.date);
               const dayEventos = byDay.get(key) ?? [];
+              const dayTareas = tareasByDay.get(key) ?? [];
               const inMonth = day.inMonth;
               const isWeekend = i % 7 >= 5;
-              const hasEventos = dayEventos.length > 0;
+              const hasEventos = dayEventos.length > 0 || dayTareas.length > 0;
+              // El reparto de sitio da preferencia a los eventos (tienen
+              // hora concreta); las tareas ocupan lo que sobra, y el resto
+              // se resume en "+N más" al final, como ya se hacía.
+              const huecoParaTareas = Math.max(0, MAX_CHIPS_PER_DAY_MONTH - dayEventos.length);
+              const tareasVisibles = dayTareas.slice(0, huecoParaTareas);
+              const ocultas =
+                Math.max(0, dayEventos.length - MAX_CHIPS_PER_DAY_MONTH) + (dayTareas.length - tareasVisibles.length);
               return (
                 <div
                   key={key}
@@ -280,9 +317,24 @@ export function CalendarView({
                         </EventDetailDialog>
                       );
                     })}
-                    {dayEventos.length > MAX_CHIPS_PER_DAY_MONTH && (
-                      <span className="text-[11px] text-muted">+{dayEventos.length - MAX_CHIPS_PER_DAY_MONTH} más</span>
-                    )}
+                    {tareasVisibles.map((tarea) => {
+                      const assignee = memberOf(tarea.assigneeId);
+                      const vencida = tarea.fechaLimite != null && tarea.fechaLimite < now;
+                      return (
+                        <MessageDetailDialog key={tarea.id} message={tarea} members={members} onDeleted={handleDeleted} onUndoDelete={handleUndoDelete}>
+                          <button
+                            type="button"
+                            title={`Tarea${vencida ? " vencida" : ""}: ${tarea.resumen}`}
+                            className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] font-medium transition-[filter] hover:brightness-95 ${tareaChipClass(vencida)}`}
+                          >
+                            <ListTodo aria-hidden size={10} className="shrink-0" />
+                            {assignee && <Avatar email={assignee.email} size="xs" className="shrink-0" />}
+                            <span className="truncate">{tarea.resumen}</span>
+                          </button>
+                        </MessageDetailDialog>
+                      );
+                    })}
+                    {ocultas > 0 && <span className="text-[11px] text-muted">+{ocultas} más</span>}
                   </div>
                 </div>
               );
@@ -310,7 +362,15 @@ export function CalendarView({
               ))}
             </div>
 
-            {weekGrid.some((day) => (byDay.get(dateKey(day.date)) ?? []).some(isAllDay)) && (
+            {/* Franja superior: eventos de todo el día Y tareas que vencen
+                ese día. Una fecha límite no tiene hora real, así que
+                colocarla en la rejilla horaria sería inventarse un dato —
+                aquí arriba es donde de verdad corresponde. */}
+            {weekGrid.some(
+              (day) =>
+                (byDay.get(dateKey(day.date)) ?? []).some(isAllDay) ||
+                (tareasByDay.get(dateKey(day.date)) ?? []).length > 0,
+            ) && (
               <div
                 className="grid gap-px border-b border-paper-line pb-1"
                 style={{ gridTemplateColumns: WEEK_GRID_COLUMNS }}
@@ -319,8 +379,32 @@ export function CalendarView({
                 {weekGrid.map((day) => {
                   const key = dateKey(day.date);
                   const allDayEventos = (byDay.get(key) ?? []).filter(isAllDay);
+                  const dayTareas = tareasByDay.get(key) ?? [];
                   return (
                     <div key={key} className="flex flex-col gap-0.5 px-0.5">
+                      {dayTareas.map((tarea) => {
+                        const assignee = memberOf(tarea.assigneeId);
+                        const vencida = tarea.fechaLimite != null && tarea.fechaLimite < now;
+                        return (
+                          <MessageDetailDialog
+                            key={tarea.id}
+                            message={tarea}
+                            members={members}
+                            onDeleted={handleDeleted}
+                            onUndoDelete={handleUndoDelete}
+                          >
+                            <button
+                              type="button"
+                              title={`Tarea${vencida ? " vencida" : ""}: ${tarea.resumen}`}
+                              className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] font-medium transition-[filter] hover:brightness-95 ${tareaChipClass(vencida)}`}
+                            >
+                              <ListTodo aria-hidden size={9} className="shrink-0" />
+                              {assignee && <Avatar email={assignee.email} size="xs" className="shrink-0" />}
+                              <span className="truncate">{tarea.resumen}</span>
+                            </button>
+                          </MessageDetailDialog>
+                        );
+                      })}
                       {allDayEventos.map((evento) => {
                         const assignee = memberOf(evento.assigneeId);
                         return (

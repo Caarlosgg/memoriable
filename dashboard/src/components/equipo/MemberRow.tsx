@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, LogOut, Crown } from "lucide-react";
+import { Trash2, LogOut, Crown, MessageCircle } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { changeRole, removeMember, leaveWorkspace, transferOwnership } from "@/app/(dashboard)/equipo/actions";
+import { createDirectConversation } from "@/app/(dashboard)/chat/actions";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -89,6 +90,18 @@ export function MemberRow({
     });
   }
 
+  function handleWrite() {
+    setError(null);
+    startTransition(async () => {
+      const result = await createDirectConversation(member.userId);
+      if (result.error || !result.conversationId) {
+        setError(result.error ?? "No se ha podido abrir la conversación.");
+        return;
+      }
+      router.push(`/chat?c=${result.conversationId}`);
+    });
+  }
+
   return (
     <li className="flex flex-col gap-1">
       <div className="flex items-center gap-2 rounded-lg px-1 py-1.5">
@@ -107,6 +120,23 @@ export function MemberRow({
           <span className="shrink-0 rounded-full bg-highlight-soft px-2 py-0.5 text-[10px] font-semibold text-highlight-strong">
             Cuenta por activar
           </span>
+        )}
+
+        {/* Escribirle en un clic: crea (o reutiliza) el hilo individual y
+            lleva directo a él. Antes había que ir a /chat, abrir "nueva
+            conversación", buscar a la persona y elegirla — cuatro pasos
+            para algo tan inmediato como decirle algo a un compañero. */}
+        {!member.isSelf && member.status === "ACTIVE" && (
+          <button
+            type="button"
+            onClick={handleWrite}
+            disabled={pending}
+            title={`Escribir a ${member.email}`}
+            aria-label={`Escribir a ${member.email}`}
+            className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-50"
+          >
+            <MessageCircle aria-hidden size={15} />
+          </button>
         )}
 
         {canEditThis ? (
