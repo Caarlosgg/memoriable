@@ -9,6 +9,7 @@ import type { Categorizer, Embedder } from "./botPipeline/types";
 import type { MessageRepository, NewMessage, StoredMessage } from "./botPipeline/repository";
 import { prisma } from "./prisma";
 import { isCategory, type Category } from "./categories";
+import { logActivity } from "./activityLog";
 
 /**
  * Adaptador que ejecuta el MISMO pipeline que el bot (categorizar + resumir
@@ -162,7 +163,7 @@ export async function captureMessage(
   contenido: string,
   workspaceId: string,
 ): Promise<StoredMessage> {
-  return processMessage(
+  const saved = await processMessage(
     { tipo: "text", contenido },
     userId,
     {
@@ -171,4 +172,13 @@ export async function captureMessage(
       repository: new DashboardMessageRepository(workspaceId),
     },
   );
+  logActivity({
+    workspaceId,
+    userId,
+    tipo: "nota_creada",
+    entidad: "mensaje",
+    entidadId: saved.id,
+    detalle: { categoria: saved.categoria, resumen: saved.resumen },
+  }).catch(() => {});
+  return saved;
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { verifySession } from "@/lib/dal";
 import { getActiveWorkspace, listWorkspaceMembers } from "@/lib/workspace";
-import { listChatMessages } from "./actions";
+import { listChatMessages, getChatMuted } from "./actions";
 import { TeamChatView } from "@/components/chat/TeamChatView";
 import { PageHeader } from "@/components/PageHeader";
 import { ActiveWorkspaceBadge } from "@/components/ActiveWorkspaceBadge";
@@ -40,9 +40,10 @@ export default async function ChatPage() {
 }
 
 async function ChatSection({ workspaceId, currentUserId }: { workspaceId: string; currentUserId: string }) {
-  const [initialMessages, members] = await Promise.all([
+  const [initialMessages, members, initialMuted] = await Promise.all([
     listChatMessages(),
     listWorkspaceMembers(workspaceId, currentUserId),
+    getChatMuted(),
   ]);
   return (
     <TeamChatView
@@ -50,6 +51,7 @@ async function ChatSection({ workspaceId, currentUserId }: { workspaceId: string
       currentUserId={currentUserId}
       initialMessages={initialMessages}
       members={members}
+      initialMuted={initialMuted}
     />
   );
 }

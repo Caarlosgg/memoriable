@@ -28,12 +28,21 @@ export interface CategoryGroup {
  *
  * Fase Equipo: alcance por `workspaceId` (el activo), no por `userId` — ver
  * `lib/workspace.ts`.
+ *
+ * `hiddenCategories`: preferencia PERSONAL (Membership.hiddenCategories,
+ * ver getHiddenCategories en lib/workspace.ts) — se quitan del resultado
+ * antes de consultar, no solo de la vista, así que ni cuentan ni pesan.
  */
-export async function getCategoryGroups(workspaceId: string, highlightId?: string): Promise<CategoryGroup[]> {
+export async function getCategoryGroups(
+  workspaceId: string,
+  highlightId?: string,
+  hiddenCategories: readonly string[] = [],
+): Promise<CategoryGroup[]> {
+  const visibleCategories = CATEGORIES.filter((c) => !hiddenCategories.includes(c));
   const [counts, highlighted, ...messagesByCategory] = await Promise.all([
     prisma.message.groupBy({ by: ["categoria"], where: { workspaceId }, _count: { _all: true } }),
     highlightId ? prisma.message.findUnique({ where: { id: highlightId, workspaceId } }) : Promise.resolve(null),
-    ...CATEGORIES.map((categoria) =>
+    ...visibleCategories.map((categoria) =>
       prisma.message.findMany({
         where: { categoria, workspaceId },
         orderBy: { fecha: "desc" },
@@ -46,7 +55,7 @@ export async function getCategoryGroups(workspaceId: string, highlightId?: strin
     counts.map((c) => [c.categoria, c._count._all]),
   );
 
-  return CATEGORIES.map((categoria, i) => {
+  return visibleCategories.map((categoria, i) => {
     const messages = messagesByCategory[i]!;
     const needsHighlight = highlighted?.categoria === categoria && !messages.some((m) => m.id === highlighted.id);
     return {
@@ -169,18 +178,20 @@ export interface BoardColumn {
  */
 const BOARD_HECHO_LIMIT = 50;
 
-export async function getBoardGroups(workspaceId: string): Promise<BoardColumn[]> {
+/** `hiddenCategories`: ver el mismo parámetro en `getCategoryGroups` — mismo criterio, preferencia personal. */
+export async function getBoardGroups(workspaceId: string, hiddenCategories: readonly string[] = []): Promise<BoardColumn[]> {
+  const visibleActionable = ACTIONABLE_CATEGORIES.filter((c) => !hiddenCategories.includes(c));
   // HECHO se acumula sin fin con el uso normal (tareas completadas de
   // siempre) — se trae aparte y limitada a las más recientes, mismo
   // criterio que `getCategoryGroups`. POR_HACER/EN_PROGRESO sin límite: se
   // autolimitan solas con el uso normal (trabajo activo, no historial).
   const [pendientes, hechas] = await Promise.all([
     prisma.message.findMany({
-      where: { workspaceId, categoria: { in: [...ACTIONABLE_CATEGORIES] }, estado: { not: "HECHO" } },
+      where: { workspaceId, categoria: { in: visibleActionable }, estado: { not: "HECHO" } },
       orderBy: { orden: "desc" },
     }),
     prisma.message.findMany({
-      where: { workspaceId, categoria: { in: [...ACTIONABLE_CATEGORIES] }, estado: "HECHO" },
+      where: { workspaceId, categoria: { in: visibleActionable }, estado: "HECHO" },
       orderBy: { fecha: "desc" },
       take: BOARD_HECHO_LIMIT,
     }),

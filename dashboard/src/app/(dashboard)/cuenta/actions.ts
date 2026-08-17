@@ -6,6 +6,7 @@ import { verifySession } from "@/lib/dal";
 import { generateLinkCode, hashPassword, verifyPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { buildExportData, toExportJson, toExportMarkdown, isExportScope, type ExportScope } from "@/lib/exportData";
+import type { NotificationType } from "@prisma/client";
 
 export interface GenerateLinkCodeState {
   code?: string;
@@ -109,5 +110,32 @@ export async function exportData(scope: ExportScope, format: "markdown" | "json"
     console.error("Error al exportar los datos:", err);
     Sentry.captureException(err);
     return { error: "No se ha podido generar la exportación. Inténtalo de nuevo." };
+  }
+}
+
+export type NotificationPrefs = Partial<Record<NotificationType, boolean>>;
+
+/** Preferencias de notificación del usuario — ausente = ese tipo está activado (comportamiento de siempre). */
+export async function getNotificationPrefs(): Promise<NotificationPrefs> {
+  const userId = await verifySession();
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { notificationPrefs: true } });
+  return (user?.notificationPrefs ?? {}) as NotificationPrefs;
+}
+
+/** Activa/desactiva un tipo de notificación — ver `createNotification` en lib/notifications.ts, que es quien de verdad respeta esto. */
+export async function setNotificationPref(type: NotificationType, enabled: boolean): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { notificationPrefs: true } });
+    const prefs = { ...(user?.notificationPrefs as NotificationPrefs | undefined) };
+    if (enabled) delete prefs[type];
+    else prefs[type] = false;
+    await prisma.user.update({ where: { id: userId }, data: { notificationPrefs: prefs } });
+    revalidatePath("/cuenta");
+    return {};
+  } catch (err) {
+    console.error("No se pudo guardar la preferencia de notificación:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido guardar. Inténtalo de nuevo." };
   }
 }

@@ -171,6 +171,21 @@ export const listWorkspaceMembers = cache(
 );
 
 /**
+ * Categorías que ESTE usuario ha ocultado en Notas/Tablero de este
+ * workspace — preferencia personal (columna en `Membership`, no en
+ * `Workspace`), cacheada por petición igual que `listWorkspaceMembers`:
+ * la piden tanto `NotesSection` como `BoardSection` en la misma
+ * navegación.
+ */
+export const getHiddenCategories = cache(async (userId: string, workspaceId: string): Promise<string[]> => {
+  const membership = await prisma.membership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+    select: { hiddenCategories: true },
+  });
+  return membership?.hiddenCategories ?? [];
+});
+
+/**
  * Comprueba si un usuario es miembro ACTIVE (no PENDING) de un workspace —
  * usado antes de asignarle una tarea o evento: asignar a alguien fuera del
  * workspace, o con una invitación aún sin aceptar, no tendría sentido (no

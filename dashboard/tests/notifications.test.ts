@@ -3,12 +3,16 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const notificationCreate = vi.fn();
 const notificationFindMany = vi.fn();
 const notificationCount = vi.fn();
+const userFindUnique = vi.fn();
 vi.mock("../src/lib/prisma", () => ({
   prisma: {
     notification: {
       create: (...args: unknown[]) => notificationCreate(...args),
       findMany: (...args: unknown[]) => notificationFindMany(...args),
       count: (...args: unknown[]) => notificationCount(...args),
+    },
+    user: {
+      findUnique: (...args: unknown[]) => userFindUnique(...args),
     },
   },
 }));
@@ -17,6 +21,8 @@ beforeEach(() => {
   notificationCreate.mockReset();
   notificationFindMany.mockReset();
   notificationCount.mockReset();
+  userFindUnique.mockReset();
+  userFindUnique.mockResolvedValue({ notificationPrefs: {} });
 });
 
 describe("createNotification", () => {
@@ -26,6 +32,13 @@ describe("createNotification", () => {
     expect(notificationCreate).toHaveBeenCalledWith({
       data: { userId: "u2", type: "ASSIGNED_MESSAGE", title: "Te han asignado una tarea", body: "Llamar al fontanero", link: "/categorias?mensaje=m1" },
     });
+  });
+
+  it("no crea nada si el destinatario ha desactivado ese tipo de notificación", async () => {
+    userFindUnique.mockResolvedValue({ notificationPrefs: { ASSIGNED_MESSAGE: false } });
+    const { createNotification } = await import("../src/lib/notifications");
+    await createNotification({ userId: "u2", type: "ASSIGNED_MESSAGE", title: "Te han asignado una tarea" });
+    expect(notificationCreate).not.toHaveBeenCalled();
   });
 });
 

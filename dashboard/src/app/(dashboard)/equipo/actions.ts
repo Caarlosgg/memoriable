@@ -15,6 +15,7 @@ import {
 import { createNotification } from "@/lib/notifications";
 import { createPasswordResetToken } from "@/lib/passwordReset";
 import { sendAccountSetupEmail, resolveBaseUrl } from "@/lib/email";
+import { logActivity } from "@/lib/activityLog";
 
 export interface WorkspaceSummary {
   id: string;
@@ -196,6 +197,7 @@ export async function addMemberByEmail(
         body: "Acepta la invitación desde el selector de espacios para empezar a colaborar.",
         link: "/equipo",
       }).catch((err) => console.error("No se pudo crear la notificación de invitación (no crítico):", err));
+      logActivity({ workspaceId, userId, tipo: "miembro_invitado", entidad: "membership", entidadId: target.id, detalle: { email: normalizedEmail } }).catch(() => {});
 
       revalidatePath("/equipo");
       return { sent: true };
@@ -228,6 +230,7 @@ export async function addMemberByEmail(
       body: "Activa tu cuenta desde el enlace que te hemos mandado por email.",
       link: "/equipo",
     }).catch((err) => console.error("No se pudo crear la notificación de alta (no crítico):", err));
+    logActivity({ workspaceId, userId, tipo: "miembro_añadido", entidad: "membership", entidadId: newUserId, detalle: { email: normalizedEmail } }).catch(() => {});
 
     revalidatePath("/equipo");
     return { sent: true, accountCreated: true };
@@ -275,6 +278,7 @@ export async function changeRole(
       body: `Ahora tienes rol de ${ROLE_LABEL[role as "MEMBER" | "ADMIN" | "VIEWER"]}.`,
       link: "/equipo",
     }).catch((err) => console.error("No se pudo crear la notificación de cambio de rol (no crítico):", err));
+    logActivity({ workspaceId, userId, tipo: "rol_cambiado", entidad: "membership", entidadId: targetUserId, detalle: { role } }).catch(() => {});
 
     revalidatePath("/equipo");
     return {};
@@ -455,5 +459,23 @@ export async function touchPresence(): Promise<void> {
     });
   } catch (err) {
     console.error("No se pudo actualizar la presencia (no crítico):", err);
+  }
+}
+
+/** Categorías ocultas por el usuario en el workspace activo — preferencia personal, ver getHiddenCategories en lib/workspace.ts. */
+export async function setHiddenCategories(categorias: string[]): Promise<MembershipActionResult> {
+  const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
+  try {
+    await prisma.membership.update({
+      where: { userId_workspaceId: { userId, workspaceId } },
+      data: { hiddenCategories: categorias },
+    });
+    revalidatePath("/", "layout");
+    return {};
+  } catch (err) {
+    console.error("No se pudieron guardar las categorías ocultas:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido guardar." };
   }
 }

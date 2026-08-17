@@ -15,8 +15,16 @@ export interface CreateNotificationInput {
  * falla (normalmente: registrar el error y seguir, nunca tumbar la acción
  * principal por esto — asignar una tarea debe funcionar aunque avisar
  * falle). Sin canal externo todavía: solo aparece en la campana de la app.
+ *
+ * Respeta `User.notificationPrefs` (mapa `NotificationType → boolean`,
+ * ausente = activado): si el destinatario ha desactivado ESTE tipo
+ * explícitamente, no se crea la fila — mismo criterio "silencioso, no
+ * fallido" que el resto de la función.
  */
 export async function createNotification(input: CreateNotificationInput): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { notificationPrefs: true } });
+  const prefs = (user?.notificationPrefs ?? {}) as Partial<Record<NotificationType, boolean>>;
+  if (prefs[input.type] === false) return;
   await prisma.notification.create({ data: input });
 }
 

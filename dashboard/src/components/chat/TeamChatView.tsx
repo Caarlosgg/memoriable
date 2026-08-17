@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
-import { Send, ImagePlus, X, Circle } from "lucide-react";
+import { Send, ImagePlus, X, Bell, BellOff } from "lucide-react";
 import {
   listChatMessages,
   sendChatMessage,
   markChatRead,
   uploadChatImage,
+  setChatMuted,
   type ChatMessageView,
 } from "@/app/(dashboard)/chat/actions";
 import { useChatRealtime } from "@/lib/useChatRealtime";
@@ -17,7 +18,7 @@ import { formatEventTime, shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PresenceSelect, PRESENCE_LABEL, PRESENCE_DOT } from "./PresenceSelect";
+import { PresenceSelect, PRESENCE_LABEL, PRESENCE_BADGE } from "./PresenceSelect";
 
 // Sondeo de RESPALDO, no la vía principal cuando Realtime está configurado
 // (ver useChatRealtime.ts) — cubre huecos de reconexión del WebSocket y,
@@ -52,7 +53,7 @@ function TeamPresenceStrip({ members, currentUserId }: { members: WorkspaceMembe
           <li
             key={m.userId}
             title={`${m.email} · ${online ? "en línea" : "desconectado"} · ${PRESENCE_LABEL[status]}`}
-            className="flex items-center gap-1.5 rounded-full bg-paper px-2 py-1 text-xs text-ink"
+            className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${PRESENCE_BADGE[status]}`}
           >
             <span className="relative shrink-0">
               <Avatar email={m.email} size="xs" />
@@ -61,7 +62,6 @@ function TeamPresenceStrip({ members, currentUserId }: { members: WorkspaceMembe
               />
             </span>
             <span className="truncate">{shortEmailName(m.email)}</span>
-            <Circle aria-hidden size={7} className={`${PRESENCE_DOT[status]} fill-current`} />
           </li>
         );
       })}
@@ -74,14 +74,17 @@ export function TeamChatView({
   currentUserId,
   initialMessages,
   members,
+  initialMuted,
 }: {
   workspaceId: string;
   currentUserId: string;
   initialMessages: ChatMessageView[];
   /** Miembros del workspace activo — presencia/estado en la tira de arriba y tu propio selector. */
   members: WorkspaceMemberInfo[];
+  initialMuted: boolean;
 }) {
   const [messages, setMessages] = useState<PendingMessage[]>(initialMessages);
+  const [muted, setMuted] = useState(initialMuted);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -237,7 +240,23 @@ export function TeamChatView({
     <section aria-label="Chat de equipo" className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <TeamPresenceStrip members={members} currentUserId={currentUserId} />
-        <PresenceSelect current={self?.presenceStatus ?? null} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !muted;
+              setMuted(next);
+              setChatMuted(next).catch(() => setMuted(!next));
+            }}
+            title={muted ? "Activar avisos de este chat" : "Silenciar este chat"}
+            aria-pressed={muted}
+            className="flex items-center gap-1.5 rounded-full border border-paper-line bg-paper px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong"
+          >
+            {muted ? <BellOff aria-hidden size={13} /> : <Bell aria-hidden size={13} />}
+            {muted ? "Silenciado" : "Avisos activos"}
+          </button>
+          <PresenceSelect current={self?.presenceStatus ?? null} />
+        </div>
       </div>
 
       <ul ref={listRef} className="flex min-h-[50vh] flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-paper-line bg-paper-raised p-4">

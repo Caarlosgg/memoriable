@@ -1,17 +1,25 @@
 import { User, CircleCheck } from "lucide-react";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
+import { getActiveWorkspace, getHiddenCategories } from "@/lib/workspace";
 import { LinkTelegramForm } from "@/app/(dashboard)/cuenta/LinkTelegramForm";
 import { ChangePasswordForm } from "@/app/(dashboard)/cuenta/ChangePasswordForm";
 import { ExportSection } from "@/components/ExportSection";
 import { ThemeSettings } from "@/components/ThemeSettings";
+import { NotificationPrefsForm } from "@/components/NotificationPrefsForm";
+import { HiddenCategoriesForm } from "@/components/HiddenCategoriesForm";
+import type { NotificationPrefs } from "@/app/(dashboard)/cuenta/actions";
 
 export async function CuentaSection() {
   const userId = await verifySession();
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { id: userId },
-    select: { email: true, telegramChatId: true, passwordHash: true },
-  });
+  const [user, { workspaceId }] = await Promise.all([
+    prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true, telegramChatId: true, passwordHash: true, notificationPrefs: true },
+    }),
+    getActiveWorkspace(userId),
+  ]);
+  const hiddenCategories = await getHiddenCategories(userId, workspaceId);
 
   return (
     <section aria-labelledby="cuenta-heading" className="flex flex-col gap-6">
@@ -48,6 +56,10 @@ export async function CuentaSection() {
       <ChangePasswordForm hasPassword={Boolean(user.passwordHash)} />
 
       <ThemeSettings />
+
+      <NotificationPrefsForm initialPrefs={(user.notificationPrefs as NotificationPrefs | null) ?? {}} />
+
+      <HiddenCategoriesForm initialHidden={hiddenCategories} />
 
       <ExportSection />
     </section>

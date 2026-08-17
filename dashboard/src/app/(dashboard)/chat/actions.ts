@@ -184,7 +184,7 @@ export async function markChatRead(): Promise<void> {
   }
 }
 
-/** Para el indicador de no leído del menú (Sidebar/BottomTabs) — ver layout.tsx. Best-effort: no bloquea la navegación si falla. */
+/** Para el indicador de no leído del menú (Sidebar/BottomTabs) — ver layout.tsx. Best-effort: no bloquea la navegación si falla. Silenciar el chat (ver setChatMuted) apaga este indicador sin dejar de poder leer/escribir. */
 export async function hasUnreadChat(): Promise<boolean> {
   const userId = await verifySession();
   const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
@@ -193,15 +193,45 @@ export async function hasUnreadChat(): Promise<boolean> {
     const [membership, latest] = await Promise.all([
       prisma.membership.findUnique({
         where: { userId_workspaceId: { userId, workspaceId } },
-        select: { lastChatReadAt: true },
+        select: { lastChatReadAt: true, chatMuted: true },
       }),
       prisma.chatMessage.findFirst({ where: { workspaceId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     ]);
-    if (!latest) return false;
+    if (!latest || membership?.chatMuted) return false;
     if (!membership?.lastChatReadAt) return true;
     return latest.createdAt > membership.lastChatReadAt;
   } catch (err) {
     console.error("No se pudo comprobar si hay mensajes de chat sin leer (no crítico):", err);
     return false;
   }
+}
+
+/** Silencia/reactiva el chat de este workspace para el usuario actual — no afecta a poder leer/escribir, solo al indicador de no leído. */
+export async function setChatMuted(muted: boolean): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  if (isPersonal) return { error: "No aplica en tu espacio personal." };
+  try {
+    await prisma.membership.update({
+      where: { userId_workspaceId: { userId, workspaceId } },
+      data: { chatMuted: muted },
+    });
+    return {};
+  } catch (err) {
+    console.error("No se pudo cambiar el silencio del chat:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido guardar." };
+  }
+}
+
+/** Estado actual de silencio del chat, para pintar el toggle al cargar /chat. */
+export async function getChatMuted(): Promise<boolean> {
+  const userId = await verifySession();
+  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  if (isPersonal) return false;
+  const membership = await prisma.membership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+    select: { chatMuted: true },
+  });
+  return membership?.chatMuted ?? false;
 }

@@ -14,6 +14,7 @@ import { createNotification } from "@/lib/notifications";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } from "@/lib/campoTemplates";
 import { uploadImageToBlob } from "@/lib/blobUpload";
+import { logActivity } from "@/lib/activityLog";
 
 /**
  * Al marcar HECHA una tarjeta (o al cambiarla a una categoría que deja de
@@ -42,11 +43,17 @@ export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
-  await prisma.message.updateMany({
+  const updated = await prisma.message.updateMany({
     where: { id, workspaceId },
     data: { estado, hecho: estado === "HECHO", ...clearEnProgresoIfDone(estado) },
   });
   revalidatePath("/pendientes");
+
+  if (updated.count > 0 && estado === "HECHO") {
+    prisma.message.findUnique({ where: { id }, select: { resumen: true } }).then((m) => {
+      logActivity({ workspaceId, userId, tipo: "tarea_completada", entidad: "mensaje", entidadId: id, detalle: { resumen: m?.resumen } }).catch(() => {});
+    }).catch(() => {});
+  }
 }
 
 /**
@@ -185,6 +192,10 @@ export async function assignMessage(id: string, assigneeId: string | null): Prom
     const result = await prisma.message.updateMany({ where: { id, workspaceId }, data: { assigneeId } });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
     revalidatePath("/pendientes");
+
+    if (assigneeId) {
+      logActivity({ workspaceId, userId, tipo: "tarea_asignada", entidad: "mensaje", entidadId: id, detalle: { assigneeId } }).catch(() => {});
+    }
 
     // No crítico: la tarea ya está asignada, avisar es un extra. Nunca a
     // uno mismo (asignarte tu propia tarea no es noticia).

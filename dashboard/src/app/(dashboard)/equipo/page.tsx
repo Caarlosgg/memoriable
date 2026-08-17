@@ -3,6 +3,7 @@ import { listMyWorkspaces, getWorkspaceMembers } from "./actions";
 import { PendingInvites } from "@/components/equipo/PendingInvites";
 import { CreateTeamForm } from "@/components/equipo/CreateTeamForm";
 import { TeamCard } from "@/components/equipo/TeamCard";
+import { ActivityFeed } from "@/components/equipo/ActivityFeed";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -27,13 +28,15 @@ async function EquipoSection() {
       <PendingInvites invitations={invitations} />
       <CreateTeamForm />
       {teamsWithMembers.map((team) => (
-        <TeamCard
-          key={team.id}
-          workspaceId={team.id}
-          nombre={team.nombre}
-          members={team.members}
-          canManage={team.role === "OWNER" || team.role === "ADMIN"}
-        />
+        <div key={team.id} className="flex flex-col gap-2">
+          <TeamCard
+            workspaceId={team.id}
+            nombre={team.nombre}
+            members={team.members}
+            canManage={team.role === "OWNER" || team.role === "ADMIN"}
+          />
+          <ActivityFeed workspaceId={team.id} />
+        </div>
       ))}
       {teamsWithMembers.length === 0 && (
         <p className="text-center text-sm text-muted">
