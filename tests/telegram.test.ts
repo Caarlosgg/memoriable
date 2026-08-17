@@ -15,10 +15,12 @@ import {
   handlePendingCommand,
   handleSearchCommand,
   handleTextMessage,
+  handleVoiceMessage,
   launchWithRetry,
   registerCommands,
   tryAnswerFocus,
 } from '../src/telegram/bot.js';
+import type { Transcriber } from '../src/ai/transcriber.js';
 import { createLinkAttemptLimiter } from '../src/telegram/linkRateLimit.js';
 import { describeTelegramError, isValidTokenFormat } from '../src/telegram/errors.js';
 import { InMemoryFocusStateStore } from '../src/summary/focusState.js';
@@ -151,6 +153,42 @@ describe('handleTextMessage', () => {
     expect(followUp).toBe('¿Para qué día lo recuerdo?');
     // Nunca bloquea el guardado: se guarda igual, con la mejor categoría posible.
     expect(repository.all()).toHaveLength(1);
+  });
+});
+
+describe('handleVoiceMessage', () => {
+  function fakeTranscriber(text: string | null): Transcriber {
+    return { transcribe: vi.fn().mockResolvedValue(text) };
+  }
+
+  it('transcribe y sigue el mismo camino que un mensaje de texto', async () => {
+    const repository = new InMemoryMessageRepository();
+    const transcriber = fakeTranscriber('Comprar pan y leche');
+    const { reply, followUp } = await handleVoiceMessage(
+      'https://api.telegram.org/file/bot123/voice.ogg',
+      'u1',
+      { categorizer: new OfflineCategorizer(), repository },
+      transcriber,
+    );
+
+    expect(transcriber.transcribe).toHaveBeenCalledWith('https://api.telegram.org/file/bot123/voice.ogg');
+    expect(reply).toContain('<b>Tarea</b>');
+    expect(followUp).toBeUndefined();
+    expect(repository.all()).toHaveLength(1);
+    expect(repository.all()[0]!.contenido).toBe('Comprar pan y leche');
+  });
+
+  it('si no se puede transcribir, avisa en vez de fallar en silencio', async () => {
+    const repository = new InMemoryMessageRepository();
+    const { reply } = await handleVoiceMessage(
+      'https://api.telegram.org/file/bot123/voice.ogg',
+      'u1',
+      { categorizer: new OfflineCategorizer(), repository },
+      fakeTranscriber(null),
+    );
+
+    expect(reply).toBe(REPLIES.voiceFailed);
+    expect(repository.all()).toHaveLength(0);
   });
 });
 

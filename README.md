@@ -36,6 +36,9 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
 - **Categorización + resumen** de cada mensaje vía Groq (`openai/gpt-oss-120b`
   por defecto: modelo abierto de OpenAI servido por Groq, barato y muy rápido,
   sobrado para clasificar/resumir un mensaje corto).
+- **Notas de voz**: mándale un audio y lo transcribe (Groq Whisper, misma
+  `GROQ_API_KEY`) antes de categorizarlo — mismo resultado que escribirlo,
+  sin tener que teclear.
 - **Proactivo con tareas/recordatorios** (Fase 6): si falta un dato importante
   (sobre todo la fecha) el bot lo guarda igual con la mejor categoría posible
   y, aparte, pregunta lo que falta ("¿Para qué día lo recuerdo?") — nunca dejas

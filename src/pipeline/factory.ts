@@ -5,6 +5,7 @@ import { OfflineCategorizer } from '../ai/offlineCategorizer.js';
 import { ResilientCategorizer } from '../ai/resilientCategorizer.js';
 import { GeminiEmbedder, NullEmbedder } from '../ai/embedder.js';
 import type { Categorizer, Embedder } from '../ai/types.js';
+import { GroqTranscriber, NullTranscriber, type Transcriber } from '../ai/transcriber.js';
 import { GroqBriefingGenerator, OfflineBriefingGenerator, type BriefingGenerator } from '../ai/briefing.js';
 import { ResilientBriefingGenerator } from '../ai/resilientBriefing.js';
 import { BudgetedBriefingGenerator } from '../ai/budgetedBriefing.js';
@@ -55,6 +56,18 @@ export function resolveCategorizer(logger: Logger = rootLogger): Categorizer {
     maxMessagesPerDay: env.MAX_MESSAGES_PER_DAY,
   });
   return budgeted;
+}
+
+/**
+ * Transcriptor de notas de voz — mismo proveedor (Groq) que el
+ * categorizador, así que basta con `hasGroq()` para decidir si hay
+ * transcripción real o no. Sin fusible de coste propio: una nota de voz es
+ * un mensaje más, ya cubierto por el mismo `MAX_MESSAGES_PER_DAY` del
+ * categorizador — no hace falta duplicar el control de gasto aquí.
+ */
+export function resolveTranscriber(logger: Logger = rootLogger): Transcriber {
+  if (!hasGroq()) return new NullTranscriber();
+  return new GroqTranscriber(createGroqClient(), logger);
 }
 
 /**

@@ -15,12 +15,16 @@ import { dayKey, buildDailySummary } from '../summary/dailySummary.js';
 import { FileFocusStateStore, type FocusStateStore } from '../summary/focusState.js';
 import { PrismaEventRepository, type EventRepository } from '../db/eventRepository.js';
 import type { BriefingGenerator } from '../ai/briefing.js';
+import { resolveTranscriber } from '../pipeline/factory.js';
+import type { Transcriber } from '../ai/transcriber.js';
 
 /** Respuestas al usuario, centralizadas para poder testearlas. */
 export const REPLIES = {
   welcome: '👋 Envíame un mensaje y lo categorizo y resumo por ti.',
   empty: '🤔 No he recibido texto que analizar. Escríbeme algo y lo clasifico.',
   error: '⚠️ No he podido procesar tu mensaje. Inténtalo de nuevo en un momento.',
+  voiceFailed:
+    '🎙️ No he podido entender el audio. Prueba a mandarlo otra vez, o escríbeme el mensaje directamente.',
   searchUsage: 'ℹ️ Escribe qué quieres buscar. Ejemplo: <code>/buscar factura luz</code>',
   noPending: '✅ No tienes nada pendiente. ¡Todo al día!',
   notLinked:
@@ -187,6 +191,26 @@ export async function handleTextMessage(
 }
 
 /**
+ * Lógica del handler de notas de voz: transcribe con `transcriber` y, si
+ * sale texto, sigue el MISMO camino que un mensaje escrito
+ * (`handleTextMessage`) — categorización, resumen y guardado no distinguen
+ * si el texto vino de teclado o de voz. **Nunca lanza**: sin transcripción
+ * (falta GROQ_API_KEY, o Groq falla), responde con un aviso claro en vez de
+ * dejar al usuario sin respuesta.
+ */
+export async function handleVoiceMessage(
+  audioUrl: string,
+  userId: string,
+  pipeline: Pipeline,
+  transcriber: Transcriber,
+  logger: Logger | undefined = pipeline.logger,
+): Promise<TextMessageResult> {
+  const text = await transcriber.transcribe(audioUrl);
+  if (!text) return { reply: REPLIES.voiceFailed };
+  return handleTextMessage(text, userId, pipeline, logger);
+}
+
+/**
  * Si el chat está esperando la respuesta del "foco del día" (Tier 2.6,
  * ritual matutino) y el mensaje llega el MISMO día en que se propuso, lo
  * consume como esa respuesta — no se guarda como una nota nueva — y
@@ -266,6 +290,8 @@ export function createBot(
   /** Daily Briefing (Tier P1) — sin estos dos, /resumen y /hoy siguen funcionando, solo sin eventos ni consultor de IA. */
   eventRepository?: EventRepository,
   briefingGenerator?: BriefingGenerator,
+  /** Transcripción de notas de voz — sin GROQ_API_KEY, NullTranscriber hace que se avise con REPLIES.voiceFailed en vez de fallar en silencio. */
+  transcriber: Transcriber = resolveTranscriber(logger),
 ): Telegraf | null {
   if (!token) return null;
 
@@ -383,6 +409,29 @@ export function createBot(
     const { reply, followUp } = await handleTextMessage(ctx.message.text, userId, pipeline, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
     // Aparte, nunca en vez de la confirmación de arriba (ver TextMessageResult).
+    if (followUp) await ctx.reply(followUp);
+  });
+
+  // Notas de voz: se transcriben (ver handleVoiceMessage) y siguen el MISMO
+  // camino que un mensaje de texto — sin ritual del foco del día por voz a
+  // propósito (mismo criterio simple que el resto: una nota de voz es una
+  // captura nueva, no se espera que responda a una pregunta del bot).
+  bot.on(message('voice'), async (ctx) => {
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+
+    let audioUrl: string;
+    try {
+      const link = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
+      audioUrl = link.toString();
+    } catch (err) {
+      logger.error('telegram.voice_link_failed', errorContext(err));
+      await ctx.reply(REPLIES.voiceFailed);
+      return;
+    }
+
+    const { reply, followUp } = await handleVoiceMessage(audioUrl, userId, pipeline, transcriber, logger);
+    await ctx.reply(reply, { parse_mode: 'HTML' });
     if (followUp) await ctx.reply(followUp);
   });
 
