@@ -34,6 +34,14 @@ async function CalendarSection({ highlightEventoId }: { highlightEventoId?: stri
 
   return (
     <>
+      {allEventos.length === 0 && (
+        <div className="rounded-xl border border-dashed border-paper-line bg-paper-raised/60 p-8 text-center">
+          <p className="text-muted">
+            Todavía no tienes ningún evento. Créalo con el botón de nuevo evento, o pídeselo al Asistente
+            (&quot;quedar el jueves a las 5&quot;) y aparecerá aquí.
+          </p>
+        </div>
+      )}
       <ResumenSection importantPending={importantPending} upcomingEventos={upcomingEventos} members={members} />
       <CalendarView eventos={allEventos} members={members} highlightEventoId={highlightEventoId} />
     </>

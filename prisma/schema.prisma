@@ -93,6 +93,13 @@ model User {
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
+  /// Cierra manualmente la tarjeta de "primeros pasos" en /asistente (ver
+  /// dashboard/src/components/OnboardingChecklist.tsx) — aparte de
+  /// ocultarse sola al completar lo esencial (Telegram vinculado + primera
+  /// nota guardada), el usuario puede cerrarla en cualquier momento sin
+  /// esperar a terminar los pasos.
+  onboardingDismissed Boolean @default(false)
+
   /// Workspace personal, autocreado al registrarse (Fase Equipo): el
   /// espacio privado 1-a-1 que ya existía implícitamente (userId como
   /// dueño único) ahora es un Workspace real con `personal = true`.
@@ -119,6 +126,8 @@ model User {
   assistantMemories AssistantMemory[]
   activityLogs     ActivityLog[]
   pushSubscriptions PushSubscription[]
+  chatConversationsCreated ChatConversation[]            @relation("ChatConversationCreator")
+  chatParticipations       ChatConversationParticipant[]
 
   @@map("users")
 }
@@ -154,6 +163,7 @@ model Workspace {
   eventos         Evento[]
   campoTemplates  CampoTemplate[]
   chatMessages    ChatMessage[]
+  chatConversations ChatConversation[]
   assistantMemories AssistantMemory[]
   activityLogs    ActivityLog[]
   /// Reverso de User.personalWorkspaceId — como máximo un usuario por
@@ -233,12 +243,6 @@ model Membership {
   status      MembershipStatus @default(ACTIVE)
   joinedAt    DateTime         @default(now())
 
-  /// Último momento en que este miembro entró en /chat (Fase Equipo: chat
-  /// de equipo) — null hasta la primera visita. Sirve solo para calcular
-  /// "hay mensajes nuevos desde tu última visita" (indicador de no leído
-  /// en el menú); no es un registro de auditoría ni de presencia.
-  lastChatReadAt DateTime?
-
   /// Estado manual (ver MemberPresence) — null = disponible por defecto,
   /// sin obligar a elegir nada la primera vez.
   presenceStatus MemberPresence?
@@ -249,11 +253,6 @@ model Membership {
   /// exacto al segundo, es una señal de presencia aproximada, suficiente
   /// para un equipo pequeño.
   lastSeenAt DateTime?
-
-  /// Silencia el chat de este workspace para este miembro — no se enciende
-  /// el punto de "no leído" del menú, aunque sí se sigue pudiendo entrar y
-  /// leer/escribir con normalidad (silenciar no es lo mismo que abandonar).
-  chatMuted Boolean @default(false)
 
   /// Categorías que este miembro ha ocultado en Notas/Tablero — preferencia
   /// PERSONAL, no del workspace: cada uno oculta lo que no usa sin afectar
@@ -383,14 +382,76 @@ model ActivityLog {
   @@map("activity_log")
 }
 
-/// Chat de equipo (Fase Equipo): un canal compartido por workspace, no
-/// comentarios por tarea/evento — cualquier miembro ACTIVO puede escribir y
-/// leer, INCLUIDO el rol VIEWER (el chat es comunicación, no una mutación de
-/// contenido del workspace, así que no lo alcanza `canWrite`). Sin sentido
-/// en el workspace personal (no hay con quién hablar) — la UI no lo monta
-/// ahí. El aviso de mensajes nuevos llega por sondeo/Realtime desde el
-/// cliente (ver dashboard/src/lib/chatRealtime.ts), no por Notification
-/// (un aviso por mensaje sería ruido constante).
+/// Tipo de conversación de chat (Fase Mensajería): individual (2
+/// participantes, como un WhatsApp 1-a-1) o grupo (N participantes, con
+/// nombre propio). Sustituye al antiguo "un único canal por workspace" —
+/// ahora un workspace de equipo puede tener varias conversaciones a la vez.
+enum ChatConversationType {
+  DIRECT
+  GROUP
+}
+
+/// Conversación de chat dentro de un workspace de equipo (Fase Mensajería).
+/// Sin sentido en el workspace personal (no hay con quién hablar) — la UI
+/// no la monta ahí, igual que antes.
+model ChatConversation {
+  id        String               @id @default(cuid())
+  type      ChatConversationType
+  /// Nombre propio, solo en GROUP — en DIRECT se deriva del otro
+  /// participante al mostrarla, no se guarda.
+  nombre    String?
+  /// Solo DIRECT: los dos ids de participante, orden alfabético, unidos por
+  /// "_" — permite encontrar (o evitar duplicar) el hilo 1-a-1 entre dos
+  /// personas concretas de un workspace sin tener que buscar por join.
+  /// Null en GROUP (sin este límite: puede haber varios grupos cualquiera).
+  directKey String?
+  createdAt DateTime             @default(now())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("ChatConversationCreator", fields: [createdById], references: [id])
+
+  participants ChatConversationParticipant[]
+  messages     ChatMessage[]
+
+  @@unique([workspaceId, directKey])
+  @@index([workspaceId])
+  @@map("chat_conversations")
+}
+
+/// Quién participa en cada conversación (Fase Mensajería) — de aquí sale
+/// tanto la lista de miembros de un grupo como el "no leído"/silencio, que
+/// ahora es POR CONVERSACIÓN (antes era uno solo para todo el chat del
+/// workspace, ver Membership — chatMuted/lastChatReadAt se retiraron de
+/// ahí al pasar a varias conversaciones por workspace).
+model ChatConversationParticipant {
+  conversationId String
+  userId         String
+  joinedAt       DateTime  @default(now())
+  /// Último momento en que este participante entró a leer esta
+  /// conversación concreta — null hasta la primera visita.
+  lastReadAt     DateTime?
+  /// Silencia ESTA conversación para este participante — no enciende el
+  /// punto de "no leído" del menú, aunque sí se sigue pudiendo leer/escribir.
+  muted          Boolean   @default(false)
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@map("chat_conversation_participants")
+}
+
+/// Un mensaje dentro de una conversación (Fase Mensajería) — cualquier
+/// participante ACTIVO del workspace puede escribir y leer en las
+/// conversaciones de las que forma parte, INCLUIDO el rol VIEWER (el chat
+/// es comunicación, no una mutación de contenido del workspace, así que no
+/// lo alcanza `canWrite`). El aviso de mensajes nuevos llega por sondeo/
+/// Realtime desde el cliente (ver dashboard/src/lib/chatRealtime.ts), no
+/// por Notification (un aviso por mensaje sería ruido constante).
 model ChatMessage {
   id        String   @id @default(cuid())
   /// Puede quedar vacío si el mensaje es solo una imagen (ver `imagenUrl`)
@@ -407,10 +468,17 @@ model ChatMessage {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// Workspace del que cuelga (denormalizado desde `conversation.workspaceId`)
+  /// — se mantiene para no tener que pasar por la conversación en consultas
+  /// que ya filtran por workspace.
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@index([workspaceId, createdAt])
+  @@index([conversationId, createdAt])
   @@map("chat_messages")
 }
 

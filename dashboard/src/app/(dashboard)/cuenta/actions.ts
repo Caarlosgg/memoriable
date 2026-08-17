@@ -180,3 +180,12 @@ export async function hasPushSubscription(): Promise<boolean> {
   const count = await prisma.pushSubscription.count({ where: { userId } });
   return count > 0;
 }
+
+/** Cierra para siempre la tarjeta de "primeros pasos" de /asistente — ver components/OnboardingChecklist.tsx. */
+export async function dismissOnboarding(): Promise<void> {
+  const userId = await verifySession();
+  await prisma.user.update({ where: { id: userId }, data: { onboardingDismissed: true } }).catch((err) => {
+    console.error("No se pudo cerrar «primeros pasos»:", err);
+  });
+  revalidatePath("/asistente");
+}

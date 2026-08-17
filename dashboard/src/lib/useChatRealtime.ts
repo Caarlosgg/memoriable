@@ -34,7 +34,7 @@ interface TypingPayload {
  * (ver chatRealtime.ts). Sin `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY`
  * configuradas, no se suscribe a nada, `connected` se queda en `false` y
  * `sendTyping` no hace nada — quien use `onMessage` debe apoyarse en un
- * sondeo de respaldo para ese caso (ver TeamChatView.tsx).
+ * sondeo de respaldo para ese caso (ver ConversationThread.tsx).
  */
 export function useChatRealtime(
   workspaceId: string | null,

@@ -492,6 +492,7 @@ export function KanbanBoard({
   }, [findMessage]);
 
   const activeMessage = activeId ? findInState(byEstado, activeId) : undefined;
+  const hasAnyMessages = ESTADOS_TABLERO.some((estado) => byEstado[estado].length > 0);
 
   return (
     <div className="flex flex-col gap-3">
@@ -564,57 +565,66 @@ export function KanbanBoard({
         </button>
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:overflow-x-auto sm:pb-2">
-          {ESTADOS_TABLERO.map((estado) => (
-            <KanbanColumn
-              key={estado}
-              estado={estado}
-              messages={byEstado[estado]}
-              density={density}
-              members={members}
-              currentUserId={currentUserId}
-              filtroCategoria={filtroCategoria}
-              filtroPrioridad={filtroPrioridad}
-              filtroAsignado={filtroAsignado}
-              hiddenIds={hiddenIds}
-              onCycleEstado={handleCycleEstado}
-              onCyclePrioridad={handleCyclePrioridad}
-              onEtiquetaAdd={handleEtiquetaAdd}
-              onAssigneeChange={handleAssigneeChange}
-              onPostpone={handlePostpone}
-              onStartWorking={handleStartWorking}
-              onStopWorking={handleStopWorking}
-              onSaved={handleSaved}
-              onDeleted={handleDeleted}
-              onUndoDelete={handleUndoDelete}
-              label={boardLabels[estado]}
-              canRename={canRenameColumns}
-              onRename={handleRenameColumn}
-            />
-          ))}
+      {!hasFilters && !hasAnyMessages ? (
+        <div className="rounded-xl border border-dashed border-paper-line bg-paper-raised/60 p-8 text-center">
+          <p className="text-muted">
+            Todavía no hay ninguna tarea. Escríbele algo al bot de Telegram (o pídeselo al Asistente) y aparecerá
+            aquí, categorizada y lista para organizar.
+          </p>
         </div>
-        <DragOverlay>
-          {activeMessage ? (
-            <div
-              className={cn(
-                "rotate-2 rounded-xl border border-l-4 border-paper-line bg-paper-raised opacity-95 shadow-xl",
-                density === "compacta" ? "p-2" : "p-3",
-                presentCategory(activeMessage.categoria).borderAccent,
-              )}
-            >
-              <KanbanCardContent message={activeMessage} density={density} />
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:overflow-x-auto sm:pb-2">
+            {ESTADOS_TABLERO.map((estado) => (
+              <KanbanColumn
+                key={estado}
+                estado={estado}
+                messages={byEstado[estado]}
+                density={density}
+                members={members}
+                currentUserId={currentUserId}
+                filtroCategoria={filtroCategoria}
+                filtroPrioridad={filtroPrioridad}
+                filtroAsignado={filtroAsignado}
+                hiddenIds={hiddenIds}
+                onCycleEstado={handleCycleEstado}
+                onCyclePrioridad={handleCyclePrioridad}
+                onEtiquetaAdd={handleEtiquetaAdd}
+                onAssigneeChange={handleAssigneeChange}
+                onPostpone={handlePostpone}
+                onStartWorking={handleStartWorking}
+                onStopWorking={handleStopWorking}
+                onSaved={handleSaved}
+                onDeleted={handleDeleted}
+                onUndoDelete={handleUndoDelete}
+                label={boardLabels[estado]}
+                canRename={canRenameColumns}
+                onRename={handleRenameColumn}
+              />
+            ))}
+          </div>
+          <DragOverlay>
+            {activeMessage ? (
+              <div
+                className={cn(
+                  "rotate-2 rounded-xl border border-l-4 border-paper-line bg-paper-raised opacity-95 shadow-xl",
+                  density === "compacta" ? "p-2" : "p-3",
+                  presentCategory(activeMessage.categoria).borderAccent,
+                )}
+              >
+                <KanbanCardContent message={activeMessage} density={density} />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
     </div>
   );
 }

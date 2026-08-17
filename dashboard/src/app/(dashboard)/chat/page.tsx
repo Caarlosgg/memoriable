@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { verifySession } from "@/lib/dal";
 import { getActiveWorkspace, listWorkspaceMembers } from "@/lib/workspace";
-import { listChatMessages, getChatMuted } from "./actions";
-import { TeamChatView } from "@/components/chat/TeamChatView";
+import { listConversations, listChatMessages } from "./actions";
+import { ChatShell } from "@/components/chat/ChatShell";
 import { PageHeader } from "@/components/PageHeader";
 import { ActiveWorkspaceBadge } from "@/components/ActiveWorkspaceBadge";
 
@@ -18,8 +18,8 @@ export default async function ChatPage() {
         title="Chat"
         help={
           <>
-            Canal compartido para todo el equipo — cualquier miembro puede escribir y leer, incluido el rol de
-            solo lectura. Se actualiza solo, sin recargar la página.
+            Habla en individual con quien quieras del equipo, o crea grupos — como un gestor de mensajería. El
+            grupo &quot;Equipo&quot; incluye a todos por defecto. Se actualiza solo, sin recargar la página.
           </>
         }
       />
@@ -40,18 +40,19 @@ export default async function ChatPage() {
 }
 
 async function ChatSection({ workspaceId, currentUserId }: { workspaceId: string; currentUserId: string }) {
-  const [initialMessages, members, initialMuted] = await Promise.all([
-    listChatMessages(),
+  const [conversations, members] = await Promise.all([
+    listConversations(),
     listWorkspaceMembers(workspaceId, currentUserId),
-    getChatMuted(),
   ]);
+  const initialSelectedId = conversations[0]?.id ?? null;
+  const initialMessages = initialSelectedId ? await listChatMessages(initialSelectedId) : [];
   return (
-    <TeamChatView
-      workspaceId={workspaceId}
-      currentUserId={currentUserId}
+    <ChatShell
+      initialConversations={conversations}
+      initialSelectedId={initialSelectedId}
       initialMessages={initialMessages}
       members={members}
-      initialMuted={initialMuted}
+      currentUserId={currentUserId}
     />
   );
 }

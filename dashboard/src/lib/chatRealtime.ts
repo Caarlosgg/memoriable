@@ -12,9 +12,9 @@
  * que "hubo actividad", nunca leer nada.
  */
 
-/** Canal de Realtime Broadcast para el chat de un workspace. */
-export function chatChannelTopic(workspaceId: string): string {
-  return `chat-${workspaceId}`;
+/** Canal de Realtime Broadcast de UNA conversación (Fase Mensajería: ya no un único canal por workspace). */
+export function chatChannelTopic(conversationId: string): string {
+  return `chat-${conversationId}`;
 }
 
 export const CHAT_NEW_MESSAGE_EVENT = "new-message";

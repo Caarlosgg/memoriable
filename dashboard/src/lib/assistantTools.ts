@@ -11,7 +11,7 @@ import { findSimilarMessages } from "./vectorSearch";
 import { getCuentasConSaldo } from "./ahorros";
 import { FRECUENCIAS, fechaRepeticion } from "./calendar";
 import { canWrite, READONLY_ROLE_MESSAGE, listWorkspaceMembers, isOnline } from "./workspace";
-import { postChatMessage } from "@/app/(dashboard)/chat/actions";
+import { postChatMessage, ensureDefaultGroupConversation } from "@/app/(dashboard)/chat/actions";
 import { saveAssistantMemory, forgetAssistantMemory } from "./assistantMemory";
 import { normalizeForMatch } from "./textMatch";
 import { prisma } from "./prisma";
@@ -914,7 +914,13 @@ export function createAssistantTools(
         if (members.length === 0) {
           throw new Error("No hay chat de equipo en tu espacio personal.");
         }
-        const result = await postChatMessage(workspaceId, userId, texto);
+        // "El equipo" en boca del usuario es el grupo por defecto, no una
+        // conversación individual/otro grupo concreto — el Asistente no
+        // tiene forma de saber a cuál de varios grupos se refiere, así que
+        // siempre escribe al que agrupa a todo el workspace (ver
+        // ensureDefaultGroupConversation).
+        const conversationId = await ensureDefaultGroupConversation(workspaceId, userId);
+        const result = await postChatMessage(conversationId, workspaceId, userId, texto);
         if (result.error || !result.message) {
           throw new Error(result.error || "No se ha podido enviar el mensaje al chat.");
         }

@@ -1,7 +1,7 @@
 /**
  * Sin "server-only" a propósito: `isOnline` es pura (sin cookies/Prisma) y
  * la usan tanto Server Components (workspace.ts la reexporta) como Client
- * Components (TeamChatView.tsx, para pintar el punto de "en línea") — si
+ * Components (ConversationThread.tsx, para pintar el punto de "en línea") — si
  * viviera en workspace.ts, importarla desde un Client Component arrastraría
  * todo ese módulo (cookies, Prisma) al bundle del navegador y rompería el
  * build.

@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
-import { Send, ImagePlus, X, Bell, BellOff } from "lucide-react";
+import { ArrowLeft, Send, ImagePlus, X, Bell, BellOff, Users } from "lucide-react";
 import {
   listChatMessages,
   sendChatMessage,
-  markChatRead,
+  markConversationRead,
   uploadChatImage,
-  setChatMuted,
+  setConversationMuted,
   type ChatMessageView,
+  type ConversationView,
 } from "@/app/(dashboard)/chat/actions";
 import { useChatRealtime } from "@/lib/useChatRealtime";
 import { useVisibilityAwarePolling } from "@/lib/useVisibilityAwarePolling";
@@ -18,7 +19,7 @@ import { formatEventTime, shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PresenceSelect, PRESENCE_LABEL, PRESENCE_BADGE } from "./PresenceSelect";
+import { PresenceSelect, PRESENCE_LABEL } from "./PresenceSelect";
 
 // Sondeo de RESPALDO, no la vía principal cuando Realtime está configurado
 // (ver useChatRealtime.ts) — cubre huecos de reconexión del WebSocket y,
@@ -39,52 +40,30 @@ interface PendingMessage extends ChatMessageView {
   pending?: boolean;
 }
 
-/** Imagen del/miembros del/la fila de "quién está en línea" — separada de la lista de mensajes, informativa. */
-function TeamPresenceStrip({ members, currentUserId }: { members: WorkspaceMemberInfo[]; currentUserId: string }) {
-  const others = members.filter((m) => m.userId !== currentUserId && m.status === "ACTIVE");
-  if (others.length === 0) return null;
-
-  return (
-    <ul className="flex flex-wrap gap-2 rounded-xl border border-paper-line bg-paper-raised/60 p-2.5">
-      {others.map((m) => {
-        const online = isOnline(m.lastSeenAt);
-        const status = m.presenceStatus ?? "DISPONIBLE";
-        return (
-          <li
-            key={m.userId}
-            title={`${m.email} · ${online ? "en línea" : "desconectado"} · ${PRESENCE_LABEL[status]}`}
-            className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${PRESENCE_BADGE[status]}`}
-          >
-            <span className="relative shrink-0">
-              <Avatar email={m.email} size="xs" />
-              <span
-                className={`absolute -right-0.5 -bottom-0.5 h-2 w-2 rounded-full border border-paper ${online ? "bg-accent" : "bg-paper-line"}`}
-              />
-            </span>
-            <span className="truncate">{shortEmailName(m.email)}</span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-export function TeamChatView({
-  workspaceId,
+/**
+ * Hilo de UNA conversación (individual o grupo) — antes era el chat entero
+ * del workspace (`TeamChatView`); ahora `conversationId` decide cuál se
+ * pinta, y todo lo demás (optimista, Realtime, sondeo de respaldo,
+ * "escribiendo…") es exactamente el mismo mecanismo de antes.
+ */
+export function ConversationThread({
+  conversation,
   currentUserId,
   initialMessages,
   members,
-  initialMuted,
+  onBack,
 }: {
-  workspaceId: string;
+  conversation: ConversationView;
   currentUserId: string;
   initialMessages: ChatMessageView[];
-  /** Miembros del workspace activo — presencia/estado en la tira de arriba y tu propio selector. */
+  /** Miembros del workspace activo — presencia/estado del otro (individual) o del grupo. */
   members: WorkspaceMemberInfo[];
-  initialMuted: boolean;
+  /** Solo en móvil: volver a la lista de conversaciones sin perder el sitio. */
+  onBack?: () => void;
 }) {
+  const conversationId = conversation.id;
   const [messages, setMessages] = useState<PendingMessage[]>(initialMessages);
-  const [muted, setMuted] = useState(initialMuted);
+  const [muted, setMuted] = useState(conversation.muted);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -106,24 +85,32 @@ export function TeamChatView({
 
   const pollAndMerge = useCallback(async () => {
     try {
-      const fresh = await listChatMessages(lastIdRef.current);
+      const fresh = await listChatMessages(conversationId, lastIdRef.current);
       if (fresh.length === 0) return;
       lastIdRef.current = fresh.at(-1)!.id;
       const resolvesPending = pendingIdRef.current !== null && fresh.some((m) => m.userId === currentUserId);
       const resolvedId = resolvesPending ? pendingIdRef.current : null;
       if (resolvesPending) pendingIdRef.current = null;
       setMessages((prev) => {
-        const base = resolvedId ? prev.filter((m) => m.id !== resolvedId) : prev;
+        // El aviso de Realtime y el sondeo de respaldo pueden solaparse (p.
+        // ej. justo al enviar: llega el broadcast Y, unos segundos después,
+        // toca el sondeo periódico) — dos llamadas a `pollAndMerge` en
+        // vuelo a la vez pueden traer el MISMO `fresh` dos veces. Filtrar
+        // `prev` por los ids que ya vienen en `fresh` (además del propio
+        // eco optimista) hace la fusión idempotente sin importar cuántas
+        // veces se solape.
+        const freshIds = new Set(fresh.map((m) => m.id));
+        const base = prev.filter((m) => m.id !== resolvedId && !freshIds.has(m.id));
         return [...base, ...fresh];
       });
       // Si ya se ven en pantalla, cuentan como leídos — evita que el punto
       // de "no leído" del menú se encienda por mensajes que el usuario ya
       // tiene delante en este mismo momento.
-      markChatRead().catch(() => {});
+      markConversationRead(conversationId).catch(() => {});
     } catch (err) {
       console.error("No se pudo actualizar el chat (no crítico, se reintenta en el siguiente sondeo):", err);
     }
-  }, [currentUserId]);
+  }, [currentUserId, conversationId]);
 
   const handleTyping = useCallback(
     ({ userId, email }: { userId: string; email: string }) => {
@@ -134,12 +121,13 @@ export function TeamChatView({
     },
     [currentUserId],
   );
-  const { connected, sendTyping } = useChatRealtime(workspaceId, pollAndMerge, handleTyping);
+  const { connected, sendTyping } = useChatRealtime(conversationId, pollAndMerge, handleTyping);
   useVisibilityAwarePolling(pollAndMerge, connected ? SLOW_POLL_MS : FAST_POLL_MS);
 
   useEffect(() => () => clearTimeout(typingExpiryRef.current), []);
 
   const selfEmail = members.find((m) => m.userId === currentUserId)?.email ?? "";
+  const other = conversation.type === "DIRECT" ? members.find((m) => m.userId === conversation.otherUserId) : undefined;
 
   function handleInputChange(value: string) {
     setInput(value);
@@ -150,8 +138,8 @@ export function TeamChatView({
   }
 
   useEffect(() => {
-    markChatRead().catch(() => {});
-  }, []);
+    markConversationRead(conversationId).catch(() => {});
+  }, [conversationId]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
@@ -186,7 +174,7 @@ export function TeamChatView({
       setUploadingImage(true);
       const formData = new FormData();
       formData.append("file", imageToSend.file);
-      const uploadResult = await uploadChatImage(formData);
+      const uploadResult = await uploadChatImage(formData, conversationId);
       setUploadingImage(false);
       if (uploadResult.error || !uploadResult.url) {
         setError(uploadResult.error || "No se ha podido subir la imagen.");
@@ -210,7 +198,7 @@ export function TeamChatView({
     setMessages((prev) => [...prev, optimistic]);
 
     try {
-      const result = await sendChatMessage(trimmed, imagenUrl);
+      const result = await sendChatMessage(conversationId, trimmed, imagenUrl);
       if (result.error || !result.message) {
         setError(result.error || "No se ha podido enviar.");
         pendingIdRef.current = null;
@@ -234,44 +222,68 @@ export function TeamChatView({
     }
   }
 
-  const self = members.find((m) => m.userId === currentUserId);
+  const headerTitle = conversation.type === "GROUP" ? conversation.nombre : shortEmailName(conversation.nombre);
+  const headerSubtitle =
+    conversation.type === "GROUP"
+      ? `${conversation.participantCount} ${conversation.participantCount === 1 ? "persona" : "personas"}`
+      : other
+        ? `${isOnline(other.lastSeenAt) ? "en línea" : "desconectado"} · ${PRESENCE_LABEL[other.presenceStatus ?? "DISPONIBLE"]}`
+        : undefined;
 
   return (
-    <section aria-label="Chat de equipo" className="flex min-h-0 flex-1 flex-col gap-3">
+    <section aria-label={`Conversación: ${headerTitle}`} className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <TeamPresenceStrip members={members} currentUserId={currentUserId} />
+        <div className="flex min-w-0 items-center gap-2">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Volver a conversaciones"
+              className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-paper-line/60 hover:text-ink md:hidden"
+            >
+              <ArrowLeft aria-hidden size={18} />
+            </button>
+          )}
+          {conversation.type === "GROUP" ? (
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-strong">
+              <Users aria-hidden size={14} />
+            </span>
+          ) : (
+            <Avatar email={other?.email ?? headerTitle} size="sm" />
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink">{headerTitle}</p>
+            {headerSubtitle && <p className="truncate text-xs text-muted">{headerSubtitle}</p>}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => {
               const next = !muted;
               setMuted(next);
-              setChatMuted(next).catch(() => setMuted(!next));
+              setConversationMuted(conversationId, next).catch(() => setMuted(!next));
             }}
-            title={muted ? "Activar avisos de este chat" : "Silenciar este chat"}
+            title={muted ? "Activar avisos de esta conversación" : "Silenciar esta conversación"}
             aria-pressed={muted}
             className="flex items-center gap-1.5 rounded-full border border-paper-line bg-paper px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong"
           >
             {muted ? <BellOff aria-hidden size={13} /> : <Bell aria-hidden size={13} />}
             {muted ? "Silenciado" : "Avisos activos"}
           </button>
-          <PresenceSelect current={self?.presenceStatus ?? null} />
+          {conversation.type === "DIRECT" && <PresenceSelect current={members.find((m) => m.userId === currentUserId)?.presenceStatus ?? null} />}
         </div>
       </div>
 
       <ul ref={listRef} className="flex min-h-[50vh] flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-paper-line bg-paper-raised p-4">
-        {messages.length === 0 && (
-          <li className="m-auto text-center text-sm text-muted">
-            Todavía no hay mensajes — escribe el primero.
-          </li>
-        )}
+        {messages.length === 0 && <li className="m-auto text-center text-sm text-muted">Todavía no hay mensajes — escribe el primero.</li>}
         {messages.map((message) => {
           const isSelf = message.userId === currentUserId;
           return (
             <li key={message.id} className={isSelf ? "flex justify-end" : "flex items-end gap-2"}>
               {!isSelf && <Avatar email={message.email} size="sm" />}
               <div className="flex max-w-[75%] flex-col gap-0.5">
-                {!isSelf && (
+                {!isSelf && conversation.type === "GROUP" && (
                   <span className="text-[11px] font-medium text-muted">{shortEmailName(message.email)}</span>
                 )}
                 {message.imagenUrl && (
@@ -293,18 +305,14 @@ export function TeamChatView({
                     {message.texto}
                   </div>
                 )}
-                <span className={`text-[10px] text-muted ${isSelf ? "text-right" : ""}`}>
-                  {formatEventTime(message.createdAt)}
-                </span>
+                <span className={`text-[10px] text-muted ${isSelf ? "text-right" : ""}`}>{formatEventTime(message.createdAt)}</span>
               </div>
             </li>
           );
         })}
       </ul>
 
-      {typingEmail && (
-        <p className="-mt-1 text-xs text-muted italic">{shortEmailName(typingEmail)} está escribiendo…</p>
-      )}
+      {typingEmail && <p className="-mt-1 text-xs text-muted italic">{shortEmailName(typingEmail)} está escribiendo…</p>}
 
       {error && (
         <p role="alert" className="text-sm text-danger">
@@ -330,7 +338,7 @@ export function TeamChatView({
         )}
         <div className="flex gap-2">
           <label htmlFor="chat-input" className="sr-only">
-            Escribe un mensaje para el equipo
+            Escribe un mensaje
           </label>
           <input
             ref={fileInputRef}

@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 /**
  * Sondeo corto que solo corre mientras la pestaña está visible — extraído
  * de `CurrentTaskBar.tsx` (donde nació) para reutilizarlo tal cual en
- * `TeamChatView.tsx`. Una pestaña de fondo (o varias abiertas a la vez, cada
+ * `ConversationThread.tsx`. Una pestaña de fondo (o varias abiertas a la vez, cada
  * una con su propio temporizador) no tiene por qué seguir generando
  * tráfico contra el pool de conexiones de Postgres cada pocos segundos si
  * nadie la está mirando. Al volver a primer plano, refresca al instante y
