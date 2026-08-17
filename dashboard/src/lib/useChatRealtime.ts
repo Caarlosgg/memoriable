@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { createClient, type SupabaseClient, type RealtimeChannel } from "@supabase/supabase-js";
 import {
   chatChannelTopic,
   CHAT_NEW_MESSAGE_EVENT,
+  CHAT_TYPING_EVENT,
   supabaseRealtimeUrl,
   supabaseRealtimeAnonKey,
   isSupabaseRealtimeConfigured,
@@ -22,20 +23,32 @@ function getBrowserClient(): SupabaseClient | null {
   return browserClient;
 }
 
+interface TypingPayload {
+  userId: string;
+  email: string;
+}
+
 /**
  * Se suscribe al canal de Broadcast del chat de un workspace — señal pura
- * ("hay un mensaje nuevo"), sin contenido (ver chatRealtime.ts). Sin
- * `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` configuradas, no se suscribe a
- * nada y `connected` se queda en `false` — quien la use debe apoyarse en un
- * sondeo de respaldo para ese caso (ver TeamChatView.tsx), no asumir que
- * esto entrega todos los mensajes.
+ * ("hay un mensaje nuevo" / "alguien escribe"), sin contenido de mensajes
+ * (ver chatRealtime.ts). Sin `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY`
+ * configuradas, no se suscribe a nada, `connected` se queda en `false` y
+ * `sendTyping` no hace nada — quien use `onMessage` debe apoyarse en un
+ * sondeo de respaldo para ese caso (ver TeamChatView.tsx).
  */
-export function useChatRealtime(workspaceId: string | null, onMessage: () => void): { connected: boolean } {
+export function useChatRealtime(
+  workspaceId: string | null,
+  onMessage: () => void,
+  onTyping?: (payload: TypingPayload) => void,
+): { connected: boolean; sendTyping: (payload: TypingPayload) => void } {
   const [connected, setConnected] = useState(false);
   const onMessageRef = useRef(onMessage);
+  const onTypingRef = useRef(onTyping);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   // Ver el mismo patrón/comentario en useVisibilityAwarePolling.ts.
   useEffect(() => {
     onMessageRef.current = onMessage;
+    onTypingRef.current = onTyping;
   });
 
   useEffect(() => {
@@ -46,13 +59,20 @@ export function useChatRealtime(workspaceId: string | null, onMessage: () => voi
     const channel = client.channel(chatChannelTopic(workspaceId));
     channel
       .on("broadcast", { event: CHAT_NEW_MESSAGE_EVENT }, () => onMessageRef.current())
+      .on("broadcast", { event: CHAT_TYPING_EVENT }, ({ payload }) => onTypingRef.current?.(payload as TypingPayload))
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
+    channelRef.current = channel;
 
     return () => {
       setConnected(false);
+      channelRef.current = null;
       client.removeChannel(channel);
     };
   }, [workspaceId]);
 
-  return { connected };
+  const sendTyping = useCallback((payload: TypingPayload) => {
+    channelRef.current?.send({ type: "broadcast", event: CHAT_TYPING_EVENT, payload });
+  }, []);
+
+  return { connected, sendTyping };
 }

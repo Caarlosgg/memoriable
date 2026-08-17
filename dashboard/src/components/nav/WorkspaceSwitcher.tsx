@@ -48,7 +48,19 @@ export function WorkspaceSwitcher({
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <>
+      {/* `router.refresh()` va envuelto en una transición (ver handleSelect) —
+          React suprime a propósito el fallback de Suspense durante una
+          transición (evita el parpadeo de skeleton), así que sin esto
+          cambiar de equipo no daba NINGUNA señal de que algo estaba
+          pasando hasta que el contenido nuevo aparecía de golpe. */}
+      {pending && (
+        <div
+          aria-hidden
+          className="animate-pulse fixed inset-x-0 top-0 z-50 h-0.5 bg-accent motion-reduce:animate-none"
+        />
+      )}
+      <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -98,6 +110,7 @@ export function WorkspaceSwitcher({
           <Link href="/equipo">Crear o gestionar equipos</Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenu>
+    </>
   );
 }

@@ -23,8 +23,15 @@ import { PresenceSelect, PRESENCE_LABEL, PRESENCE_DOT } from "./PresenceSelect";
 // (ver useChatRealtime.ts) — cubre huecos de reconexión del WebSocket y,
 // sin `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` puestas, es la ÚNICA vía: en
 // ese caso se sondea más seguido para que el chat se siga sintiendo ágil.
-const FAST_POLL_MS = 4000;
+const FAST_POLL_MS = 2000;
 const SLOW_POLL_MS = 20000;
+// Cuánto se mantiene visible "X está escribiendo…" tras el último aviso —
+// no hay evento explícito de "he dejado de escribir", así que se infiere
+// por ausencia: si no llega otro aviso en este margen, se apaga solo.
+const TYPING_EXPIRY_MS = 3000;
+// No reenviar el aviso de "escribiendo" en cada pulsación — de sobra con
+// una vez cada 2s mientras se sigue escribiendo.
+const TYPING_THROTTLE_MS = 2000;
 
 /** Mensaje que aún no ha confirmado el servidor — eco local optimista al enviar. */
 interface PendingMessage extends ChatMessageView {
@@ -90,6 +97,9 @@ export function TeamChatView({
   // correlación, los dos caminos acababan añadiendo el mensaje por
   // separado y se veía duplicado.
   const pendingIdRef = useRef<string | null>(null);
+  const [typingEmail, setTypingEmail] = useState<string | null>(null);
+  const typingExpiryRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lastTypingSentAtRef = useRef(0);
 
   const pollAndMerge = useCallback(async () => {
     try {
@@ -112,8 +122,29 @@ export function TeamChatView({
     }
   }, [currentUserId]);
 
-  const { connected } = useChatRealtime(workspaceId, pollAndMerge);
+  const handleTyping = useCallback(
+    ({ userId, email }: { userId: string; email: string }) => {
+      if (userId === currentUserId) return;
+      setTypingEmail(email);
+      clearTimeout(typingExpiryRef.current);
+      typingExpiryRef.current = setTimeout(() => setTypingEmail(null), TYPING_EXPIRY_MS);
+    },
+    [currentUserId],
+  );
+  const { connected, sendTyping } = useChatRealtime(workspaceId, pollAndMerge, handleTyping);
   useVisibilityAwarePolling(pollAndMerge, connected ? SLOW_POLL_MS : FAST_POLL_MS);
+
+  useEffect(() => () => clearTimeout(typingExpiryRef.current), []);
+
+  const selfEmail = members.find((m) => m.userId === currentUserId)?.email ?? "";
+
+  function handleInputChange(value: string) {
+    setInput(value);
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < TYPING_THROTTLE_MS) return;
+    lastTypingSentAtRef.current = now;
+    sendTyping({ userId: currentUserId, email: selfEmail });
+  }
 
   useEffect(() => {
     markChatRead().catch(() => {});
@@ -252,6 +283,10 @@ export function TeamChatView({
         })}
       </ul>
 
+      {typingEmail && (
+        <p className="-mt-1 text-xs text-muted italic">{shortEmailName(typingEmail)} está escribiendo…</p>
+      )}
+
       {error && (
         <p role="alert" className="text-sm text-danger">
           {error}
@@ -298,7 +333,7 @@ export function TeamChatView({
           <Input
             id="chat-input"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             placeholder="Escribe un mensaje…"
             disabled={sending}
             className="flex-1"

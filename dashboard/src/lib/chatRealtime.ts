@@ -19,6 +19,15 @@ export function chatChannelTopic(workspaceId: string): string {
 
 export const CHAT_NEW_MESSAGE_EVENT = "new-message";
 
+/**
+ * "X está escribiendo…" — señal efímera, cliente a cliente, sobre el
+ * mismo WebSocket ya abierto para los mensajes (sin pasar por el
+ * servidor: no hay nada que guardar ni un mensaje real detrás). Solo
+ * disponible cuando Realtime está configurado — sin él, no hay forma
+ * barata de esto por sondeo, así que sencillamente no se muestra.
+ */
+export const CHAT_TYPING_EVENT = "typing";
+
 export function supabaseRealtimeUrl(): string | undefined {
   return process.env.NEXT_PUBLIC_SUPABASE_URL || undefined;
 }

@@ -127,6 +127,15 @@ export async function POST(req: Request) {
     }
   }
 
+  // Notas ya citadas en turnos ANTERIORES de esta misma conversación (los
+  // metadatos de cada mensaje del Asistente van y vuelven con `messages`,
+  // ver messageMetadata más abajo) — repetir la misma fuente en cada turno
+  // es justo el ruido que se quería quitar (ver Hito 4): si el usuario ya
+  // la vio hace dos mensajes, no hace falta volver a enseñarla.
+  const alreadyCitedIds = new Set(
+    messages.flatMap((m) => m.metadata?.sources?.map((s) => s.id) ?? []),
+  );
+
   // Nunca bloquea la respuesta: sin GEMINI_API_KEY (o si Gemini/BD fallan),
   // el Asistente responde igual, solo que sin notas citadas — dice con
   // naturalidad que no encontró nada relevante (ver el system prompt en
@@ -140,7 +149,7 @@ export async function POST(req: Request) {
         limit: SOURCES_PER_ANSWER,
         maxDistance: SOURCE_MAX_DISTANCE,
       });
-      return toAssistantSources(similar);
+      return toAssistantSources(similar).filter((s) => !alreadyCitedIds.has(s.id));
     } catch (err) {
       console.error("No se pudieron recuperar notas relevantes (se responde sin fuentes):", err);
       return [];
@@ -203,13 +212,15 @@ export async function POST(req: Request) {
     // que la confirma, en el mismo turno (si no, el SDK se pararía justo
     // después de ejecutar la tool sin generar el mensaje final).
     stopWhen: stepCountIs(MAX_TOOL_STEPS),
-    // Mismo criterio que el categorizador del bot (src/ai/categorizer.ts):
-    // clasificar/responder sobre un puñado de notas cortas no necesita
-    // cadena de razonamiento larga. 'low' da respuestas más directas y
-    // rápidas; 'hidden' evita que el razonamiento se mezcle con el texto
-    // visible de la respuesta.
+    // 'medium' (subido desde 'low'): el Asistente ahora hace más — cita
+    // fuentes con umbral, consulta el equipo, actúa sobre tareas por
+    // nombre — y ese razonamiento algo más profundo se nota en respuestas
+    // más precisas, a cambio de una latencia todavía muy por debajo de lo
+    // que se notaría como lento (Groq sigue siendo el proveedor más rápido
+    // disponible). 'hidden' evita que el razonamiento se mezcle con el
+    // texto visible de la respuesta.
     providerOptions: {
-      groq: { reasoningEffort: "low", reasoningFormat: "hidden" },
+      groq: { reasoningEffort: "medium", reasoningFormat: "hidden" },
     },
     // No crítico: si guardar el historial falla, no debe tirar la
     // respuesta que el usuario ya está viendo — solo se registra el aviso.
