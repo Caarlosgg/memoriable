@@ -48,19 +48,30 @@ export async function readSessionCookie(): Promise<string | undefined> {
   return cookieStore.get(SESSION_COOKIE_NAME)?.value;
 }
 
+export interface SessionPayload {
+  userId: string;
+  /** Cuándo se emitió el token (`iat`) — lo usa la revocación de sesiones (ver sessionRevocation.ts). */
+  issuedAt: Date;
+}
+
 /**
- * Verifica un token de sesión y devuelve el id del usuario autenticado, o
- * `null` si no hay sesión válida. Usable tanto desde `cookies()` (Server
- * Components/Actions) como desde `NextRequest.cookies` (Proxy), por eso
- * recibe el valor ya extraído en vez de leerlo él mismo.
+ * Verifica un token de sesión y devuelve el usuario autenticado + cuándo
+ * se emitió, o `null` si no hay sesión válida. Usable tanto desde
+ * `cookies()` (Server Components/Actions) como desde `NextRequest.cookies`
+ * (Proxy), por eso recibe el valor ya extraído en vez de leerlo él mismo.
+ *
+ * Deliberadamente SIN tocar la base de datos: esto corre también en el
+ * Proxy, en cada petición. Que la sesión no haya sido revocada se
+ * comprueba aparte, y solo donde de verdad importa (ver
+ * `assertSessionActive` en sessionRevocation.ts).
  */
-export async function verifySessionToken(
-  token: string | undefined,
-): Promise<string | null> {
+export async function verifySessionToken(token: string | undefined): Promise<SessionPayload | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
-    return typeof payload.userId === "string" ? payload.userId : null;
+    if (typeof payload.userId !== "string" || typeof payload.iat !== "number") return null;
+    // `iat` viaja en segundos (estándar JWT), Date trabaja en milisegundos.
+    return { userId: payload.userId, issuedAt: new Date(payload.iat * 1000) };
   } catch {
     return null;
   }

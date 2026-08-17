@@ -2,7 +2,8 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { Prisma } from "@prisma/client";
-import { hashPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
+import { validarPassword } from "@/lib/passwordPolicy";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { prisma } from "@/lib/prisma";
 import { createVerificationToken } from "@/lib/verification";
@@ -35,13 +36,11 @@ export async function register(
   if (!EMAIL_RE.test(email) || email.length > MAX_EMAIL_LENGTH) {
     return { error: "Escribe un email válido." };
   }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return { error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.` };
-  }
-  // bcrypt ignora más de 72 bytes: se rechaza en vez de truncar en silencio.
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return { error: `La contraseña no puede tener más de ${MAX_PASSWORD_LENGTH} caracteres.` };
-  }
+  // Longitud, composición, contraseñas obvias y derivadas del email — la
+  // misma función que evalúa el formulario en vivo, pero aquí es donde de
+  // verdad se decide (ver lib/passwordPolicy.ts).
+  const passwordError = validarPassword(password, email);
+  if (passwordError) return { error: passwordError };
   if (password !== passwordConfirm) {
     return { error: "Las contraseñas no coinciden." };
   }

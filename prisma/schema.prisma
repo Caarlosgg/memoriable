@@ -93,6 +93,14 @@ model User {
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
 
+  /// Revocación de sesiones sin tabla de sesiones: todo JWT de sesión
+  /// emitido ANTES de esta marca deja de valer (ver
+  /// dashboard/src/lib/sessionRevocation.ts). Null = nunca se ha revocado
+  /// nada, todas las sesiones valen. La mueve a "ahora" el cambio de
+  /// contraseña (incluido el de "olvidé mi contraseña") y el botón de
+  /// "cerrar sesión en el resto de dispositivos" de /cuenta.
+  sessionsValidFrom DateTime?
+
   /// Cierra manualmente la tarjeta de "primeros pasos" en /asistente (ver
   /// dashboard/src/components/OnboardingChecklist.tsx) — aparte de
   /// ocultarse sola al completar lo esencial (Telegram vinculado + primera

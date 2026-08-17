@@ -20,6 +20,23 @@ export interface LoginState {
 const LOGIN_LIMIT = 10;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 
+/**
+ * Segundo freno, por CUENTA — el de arriba solo mira la IP, así que quien
+ * tenga muchas (una botnet, o simplemente salir por IPv6 rotatoria) podía
+ * probar contraseñas contra UNA cuenta concreta sin tope real: 10 intentos
+ * por IP × N IPs. Este límite cuenta los intentos contra el mismo email
+ * vengan de donde vengan, que es lo que de verdad protege a esa cuenta.
+ *
+ * Deliberadamente más alto y con ventana más larga que el de IP: alguien
+ * que de verdad no recuerda su contraseña prueba unas cuantas veces
+ * seguidas, y este límite no debe convertirse en una forma fácil de dejar
+ * fuera a un usuario legítimo ajeno (basta con conocer su email para
+ * gastarle los intentos). El freno duro sigue siendo el de IP; este solo
+ * corta el ataque distribuido.
+ */
+const LOGIN_ACCOUNT_LIMIT = 20;
+const LOGIN_ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
+
 export async function login(
   _prevState: LoginState,
   formData: FormData,
@@ -31,9 +48,18 @@ export async function login(
     return { error: "Escribe tu email y contraseña." };
   }
 
-  const limit = await checkRateLimit(`login:${await clientIp()}`, LOGIN_LIMIT, LOGIN_WINDOW_MS);
-  if (!limit.allowed) {
-    return { error: `Demasiados intentos. Espera ${limit.retryAfterSeconds}s e inténtalo de nuevo.` };
+  // Los dos frenos se comprueban a la vez: son independientes (uno protege
+  // al servidor de una IP abusiva, el otro a UNA cuenta de un ataque
+  // repartido entre muchas IPs) y ninguno sustituye al otro.
+  const [limit, accountLimit] = await Promise.all([
+    checkRateLimit(`login:${await clientIp()}`, LOGIN_LIMIT, LOGIN_WINDOW_MS),
+    checkRateLimit(`login-cuenta:${email}`, LOGIN_ACCOUNT_LIMIT, LOGIN_ACCOUNT_WINDOW_MS),
+  ]);
+  if (!limit.allowed || !accountLimit.allowed) {
+    // Mismo mensaje en ambos casos: distinguirlos diría si el email
+    // existe/está siendo atacado, justo lo que el resto del login evita.
+    const retryAfter = Math.max(limit.allowed ? 0 : limit.retryAfterSeconds, accountLimit.allowed ? 0 : accountLimit.retryAfterSeconds);
+    return { error: `Demasiados intentos. Espera ${retryAfter}s e inténtalo de nuevo.` };
   }
 
   let userId: string;

@@ -65,7 +65,16 @@ export async function resetPasswordWithToken(
       // `accountPending: false` no molesta a una cuenta normal (ya lo era);
       // para una cuenta corporativa (ver equipo/actions.ts) esto ES la
       // activación — elegir contraseña y quedar activo son el mismo paso.
-      prisma.user.update({ where: { id: found.userId }, data: { passwordHash, accountPending: false } }),
+      //
+      // `sessionsValidFrom`: restablecer la contraseña por email es la
+      // señal más fuerte de "creo que alguien ha entrado en mi cuenta" —
+      // se cierran todas las sesiones abiertas (ver sessionRevocation.ts).
+      // Quien lo hace recibe una sesión nueva justo después
+      // (restablecer-password/actions.ts), así que no se echa a sí mismo.
+      prisma.user.update({
+        where: { id: found.userId },
+        data: { passwordHash, accountPending: false, sessionsValidFrom: new Date() },
+      }),
       prisma.passwordResetToken.delete({ where: { id: found.id } }),
     ]);
   } catch {

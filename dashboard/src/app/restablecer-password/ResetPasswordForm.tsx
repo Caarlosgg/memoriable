@@ -1,15 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { resetPassword, type ResetPasswordState } from "./actions";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordRequirements } from "@/components/PasswordRequirements";
 import { Button } from "@/components/ui/button";
 
 const initialState: ResetPasswordState = {};
 
 export function ResetPasswordForm({ token }: { token: string }) {
   const [state, formAction, pending] = useActionState(resetPassword, initialState);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const noCoinciden = passwordConfirm.length > 0 && password !== passwordConfirm;
 
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
@@ -19,33 +23,41 @@ export function ResetPasswordForm({ token }: { token: string }) {
         <label htmlFor="password" className="text-sm font-medium text-ink">
           Nueva contraseña
         </label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           required
           minLength={8}
           autoFocus
           autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           aria-invalid={state?.error ? true : undefined}
           aria-describedby={state?.error ? "reset-password-error" : undefined}
         />
+        <PasswordRequirements password={password} />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="passwordConfirm" className="text-sm font-medium text-ink">
           Confirmar contraseña
         </label>
-        <Input
+        <PasswordInput
           id="passwordConfirm"
           name="passwordConfirm"
-          type="password"
           required
           minLength={8}
           autoComplete="new-password"
-          aria-invalid={state?.error ? true : undefined}
-          aria-describedby={state?.error ? "reset-password-error" : undefined}
+          value={passwordConfirm}
+          onChange={(e) => setPasswordConfirm(e.target.value)}
+          aria-invalid={noCoinciden || state?.error ? true : undefined}
+          aria-describedby={noCoinciden ? "reset-mismatch" : state?.error ? "reset-password-error" : undefined}
         />
+        {noCoinciden && (
+          <p id="reset-mismatch" className="text-xs text-danger">
+            Las contraseñas no coinciden.
+          </p>
+        )}
       </div>
 
       {state?.error && (

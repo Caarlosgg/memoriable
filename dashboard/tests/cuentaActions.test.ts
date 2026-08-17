@@ -14,6 +14,17 @@ vi.mock("@/lib/auth", () => ({
   MAX_PASSWORD_LENGTH: 72,
 }));
 
+// Cambiar la contraseña echa de las demás sesiones y emite una nueva para
+// este dispositivo (ver sessionRevocation.ts) — sin mockear esto, firmar el
+// JWT fallaría por falta de secreto en el entorno de test.
+const createSession = vi.fn();
+vi.mock("@/lib/session", () => ({ createSession: (...args: unknown[]) => createSession(...args) }));
+
+const revokeAllSessions = vi.fn();
+vi.mock("@/lib/sessionRevocation", () => ({
+  revokeAllSessions: (...args: unknown[]) => revokeAllSessions(...args),
+}));
+
 const userFindUniqueOrThrow = vi.fn();
 const userUpdate = vi.fn();
 vi.mock("@/lib/prisma", () => ({
@@ -31,6 +42,11 @@ beforeEach(() => {
   verifyPassword.mockReset();
   userFindUniqueOrThrow.mockReset();
   userUpdate.mockReset();
+  userUpdate.mockResolvedValue({});
+  createSession.mockReset();
+  createSession.mockResolvedValue(undefined);
+  revokeAllSessions.mockReset();
+  revokeAllSessions.mockResolvedValue(undefined);
 });
 
 describe("changePassword", () => {
@@ -70,7 +86,35 @@ describe("changePassword", () => {
     const { changePassword } = await import("../src/app/(dashboard)/cuenta/actions");
     const result = await changePassword("buena", "nuevaClave1", "nuevaClave1");
     expect(result.ok).toBe(true);
-    expect(userUpdate).toHaveBeenCalledWith({ where: { id: "u1" }, data: { passwordHash: "hashed-nueva" } });
+    expect(userUpdate).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { passwordHash: "hashed-nueva", sessionsValidFrom: expect.any(Date) },
+    });
+  });
+
+  it("cambiar la contraseña echa de las DEMÁS sesiones, pero no de la de este dispositivo", async () => {
+    // Es justo lo que espera quien cambia la contraseña porque cree que
+    // alguien más ha entrado: el resto de sesiones caen (sessionsValidFrom)
+    // y a él se le emite una nueva para no tener que volver a entrar.
+    userFindUniqueOrThrow.mockResolvedValue({ passwordHash: "hash-actual" });
+    verifyPassword.mockResolvedValue(true);
+    const { changePassword } = await import("../src/app/(dashboard)/cuenta/actions");
+    await changePassword("buena", "nuevaClave1", "nuevaClave1");
+
+    expect(userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ sessionsValidFrom: expect.any(Date) }) }),
+    );
+    expect(createSession).toHaveBeenCalledWith("u1");
+  });
+
+  it("si la contraseña actual no es correcta, NO revoca ninguna sesión", async () => {
+    userFindUniqueOrThrow.mockResolvedValue({ passwordHash: "hash-actual" });
+    verifyPassword.mockResolvedValue(false);
+    const { changePassword } = await import("../src/app/(dashboard)/cuenta/actions");
+    await changePassword("mala", "nuevaClave1", "nuevaClave1");
+
+    expect(userUpdate).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it("con cuenta sin contraseña (solo Google), no exige la actual y la añade directamente", async () => {
@@ -79,6 +123,29 @@ describe("changePassword", () => {
     const result = await changePassword("", "nuevaClave1", "nuevaClave1");
     expect(result.ok).toBe(true);
     expect(verifyPassword).not.toHaveBeenCalled();
-    expect(userUpdate).toHaveBeenCalledWith({ where: { id: "u1" }, data: { passwordHash: "hashed-nueva" } });
+    expect(userUpdate).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { passwordHash: "hashed-nueva", sessionsValidFrom: expect.any(Date) },
+    });
+  });
+});
+
+describe("closeOtherSessions", () => {
+  it("revoca todo y emite una sesión nueva para el dispositivo actual", async () => {
+    const { closeOtherSessions } = await import("../src/app/(dashboard)/cuenta/actions");
+    const result = await closeOtherSessions();
+
+    expect(result.ok).toBe(true);
+    expect(revokeAllSessions).toHaveBeenCalledWith("u1");
+    expect(createSession).toHaveBeenCalledWith("u1");
+  });
+
+  it("informa del fallo sin romper si la revocación no se puede guardar", async () => {
+    revokeAllSessions.mockRejectedValue(new Error("ECONNREFUSED"));
+    const { closeOtherSessions } = await import("../src/app/(dashboard)/cuenta/actions");
+    const result = await closeOtherSessions();
+
+    expect(result.error).toMatch(/No se ha podido completar/);
+    expect(createSession).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import { verifySession } from "@/lib/dal";
-import { generateLinkCode, hashPassword, verifyPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@/lib/auth";
+import { generateLinkCode, hashPassword, verifyPassword } from "@/lib/auth";
+import { validarPassword } from "@/lib/passwordPolicy";
+import { createSession } from "@/lib/session";
+import { revokeAllSessions } from "@/lib/sessionRevocation";
 import { prisma } from "@/lib/prisma";
 import { buildExportData, toExportJson, toExportMarkdown, isExportScope, type ExportScope } from "@/lib/exportData";
 import type { NotificationType } from "@prisma/client";
@@ -55,12 +58,8 @@ export async function changePassword(
 ): Promise<ChangePasswordResult> {
   const userId = await verifySession();
 
-  if (newPassword.length < MIN_PASSWORD_LENGTH) {
-    return { error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.` };
-  }
-  if (newPassword.length > MAX_PASSWORD_LENGTH) {
-    return { error: `La contraseña no puede tener más de ${MAX_PASSWORD_LENGTH} caracteres.` };
-  }
+  const passwordError = validarPassword(newPassword);
+  if (passwordError) return { error: passwordError };
   if (newPassword !== newPasswordConfirm) {
     return { error: "Las contraseñas no coinciden." };
   }
@@ -74,12 +73,43 @@ export async function changePassword(
     }
 
     const passwordHash = await hashPassword(newPassword);
-    await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    // Cambiar la contraseña echa de TODAS las sesiones abiertas: es
+    // justo lo que espera quien la cambia porque cree que alguien más ha
+    // entrado (ver sessionRevocation.ts). `sessionsValidFrom` y el hash
+    // se escriben juntos — no tendría sentido que uno se aplicara y el
+    // otro no.
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, sessionsValidFrom: new Date() },
+    });
+    // ...menos de la de este dispositivo: quien acaba de demostrar que
+    // sabe la contraseña actual no tiene por qué volver a entrar. Se le
+    // emite una sesión nueva (posterior a la marca, así que válida).
+    await createSession(userId);
     return { ok: true };
   } catch (err) {
     console.error("Error al cambiar la contraseña:", err);
     Sentry.captureException(err);
     return { error: "No se ha podido cambiar la contraseña. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * "Cerrar sesión en el resto de dispositivos", sin cambiar la contraseña —
+ * para quien se dejó la sesión abierta en un ordenador ajeno. Misma
+ * mecánica que el cambio de contraseña: se revoca todo y se emite una
+ * sesión nueva para el dispositivo actual.
+ */
+export async function closeOtherSessions(): Promise<{ error?: string; ok?: boolean }> {
+  const userId = await verifySession();
+  try {
+    await revokeAllSessions(userId);
+    await createSession(userId);
+    return { ok: true };
+  } catch (err) {
+    console.error("No se pudieron cerrar las demás sesiones:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido completar. Inténtalo de nuevo." };
   }
 }
 

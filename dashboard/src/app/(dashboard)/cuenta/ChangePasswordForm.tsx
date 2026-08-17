@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useRef, useState } from "react";
 import { KeyRound } from "lucide-react";
 import { changePassword, type ChangePasswordResult } from "./actions";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordRequirements } from "@/components/PasswordRequirements";
 import { Button } from "@/components/ui/button";
 
 const initialState: ChangePasswordResult = {};
@@ -11,6 +12,9 @@ const initialState: ChangePasswordResult = {};
 /** Formulario de cambiar/añadir contraseña con sesión ya abierta — distinto del flujo de "olvidé mi contraseña" (ver actions.ts). */
 export function ChangePasswordForm({ hasPassword }: { hasPassword: boolean }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
+  const noCoinciden = newPasswordConfirm.length > 0 && newPassword !== newPasswordConfirm;
 
   const action = async (_prev: ChangePasswordResult, formData: FormData): Promise<ChangePasswordResult> => {
     const result = await changePassword(
@@ -18,7 +22,13 @@ export function ChangePasswordForm({ hasPassword }: { hasPassword: boolean }) {
       String(formData.get("newPassword") ?? ""),
       String(formData.get("newPasswordConfirm") ?? ""),
     );
-    if (result.ok) formRef.current?.reset();
+    if (result.ok) {
+      formRef.current?.reset();
+      // `form.reset()` no toca el estado de React de los campos
+      // controlados — sin esto, los valores volverían a aparecer.
+      setNewPassword("");
+      setNewPasswordConfirm("");
+    }
     return result;
   };
   const [state, formAction, pending] = useActionState(action, initialState);
@@ -40,27 +50,44 @@ export function ChangePasswordForm({ hasPassword }: { hasPassword: boolean }) {
             <label htmlFor="currentPassword" className="text-sm font-medium text-ink">
               Contraseña actual
             </label>
-            <Input id="currentPassword" name="currentPassword" type="password" required autoComplete="current-password" />
+            <PasswordInput id="currentPassword" name="currentPassword" required autoComplete="current-password" />
           </div>
         )}
         <div className="flex flex-col gap-1.5">
           <label htmlFor="newPassword" className="text-sm font-medium text-ink">
             {hasPassword ? "Contraseña nueva" : "Contraseña"}
           </label>
-          <Input id="newPassword" name="newPassword" type="password" required minLength={8} autoComplete="new-password" />
+          <PasswordInput
+            id="newPassword"
+            name="newPassword"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+          <PasswordRequirements password={newPassword} />
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="newPasswordConfirm" className="text-sm font-medium text-ink">
             Confirmar
           </label>
-          <Input
+          <PasswordInput
             id="newPasswordConfirm"
             name="newPasswordConfirm"
-            type="password"
             required
             minLength={8}
             autoComplete="new-password"
+            value={newPasswordConfirm}
+            onChange={(e) => setNewPasswordConfirm(e.target.value)}
+            aria-invalid={noCoinciden ? true : undefined}
+            aria-describedby={noCoinciden ? "cuenta-mismatch" : undefined}
           />
+          {noCoinciden && (
+            <p id="cuenta-mismatch" className="text-xs text-danger">
+              Las contraseñas no coinciden.
+            </p>
+          )}
         </div>
 
         {state.error && (

@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
-import { hashPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
+import { validarPassword } from "@/lib/passwordPolicy";
 import { createSession } from "@/lib/session";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { resetPasswordWithToken } from "@/lib/passwordReset";
@@ -27,12 +28,11 @@ export async function resetPassword(
   const passwordConfirm = String(formData.get("passwordConfirm") ?? "");
 
   if (!token) return { error: "Enlace no válido.", tokenInvalido: true };
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return { error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.` };
-  }
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return { error: `La contraseña no puede tener más de ${MAX_PASSWORD_LENGTH} caracteres.` };
-  }
+  // Sin `email`: aquí solo se tiene el token, y resolver el email del
+  // usuario solo para esta comprobación obligaría a consultarlo ANTES de
+  // pasar el rate limit — el resto de la política sí aplica igual.
+  const passwordError = validarPassword(password);
+  if (passwordError) return { error: passwordError };
   if (password !== passwordConfirm) {
     return { error: "Las contraseñas no coinciden." };
   }

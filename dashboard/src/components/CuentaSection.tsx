@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getActiveWorkspace, getHiddenCategories } from "@/lib/workspace";
 import { LinkTelegramForm } from "@/app/(dashboard)/cuenta/LinkTelegramForm";
 import { ChangePasswordForm } from "@/app/(dashboard)/cuenta/ChangePasswordForm";
+import { CloseOtherSessionsForm } from "@/app/(dashboard)/cuenta/CloseOtherSessionsForm";
 import { ExportSection } from "@/components/ExportSection";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { NotificationPrefsForm } from "@/components/NotificationPrefsForm";
@@ -56,6 +57,8 @@ export async function CuentaSection() {
       </div>
 
       <ChangePasswordForm hasPassword={Boolean(user.passwordHash)} />
+
+      <CloseOtherSessionsForm />
 
       <ThemeSettings />
 

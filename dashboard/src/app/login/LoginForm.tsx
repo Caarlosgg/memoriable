@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { login, type LoginState } from "./actions";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { ResendVerification } from "@/components/ResendVerification";
 
@@ -40,10 +41,13 @@ export function LoginForm() {
             ¿La olvidaste?
           </Link>
         </div>
-        <Input
+        {/* Sin lista de requisitos a propósito: aquí se escribe una
+            contraseña QUE YA EXISTE — enseñarle las reglas nuevas a quien
+            solo quiere entrar (y cuya contraseña puede ser anterior a
+            ellas) sería ruido y daría a entender que la suya ya no vale. */}
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           required
           autoComplete="current-password"
           aria-invalid={state?.error ? true : undefined}

@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import type { EstadoTarea, Prioridad } from "@prisma/client";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
+import { isSessionActive } from "@/lib/sessionRevocation";
 import { searchMessages } from "@/lib/data";
 import { getActiveWorkspace } from "@/lib/workspace";
 import { isCategory } from "@/lib/categories";
@@ -30,10 +31,11 @@ function parseHasta(value: string | null): Date | null {
 // sesión y responden 401 en JSON en vez de redirigir a /login).
 export async function GET(request: NextRequest) {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  const userId = await verifySessionToken(token);
-  if (!userId) {
+  const session = await verifySessionToken(token);
+  if (!session || !(await isSessionActive(session.userId, session.issuedAt))) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
+  const userId = session.userId;
 
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
 

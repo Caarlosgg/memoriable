@@ -4,6 +4,7 @@ import { streamText, convertToModelMessages, createUIMessageStreamResponse, toUI
 import type { ToolSet, UIMessage, InferUITools, UIDataTypes } from "ai";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
+import { isSessionActive } from "@/lib/sessionRevocation";
 import { resolveEmbedder } from "@/lib/pipeline";
 import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
@@ -69,10 +70,11 @@ function lastUserQuestion(messages: UIMessage[]): string {
 // sesión y responden 401 en JSON en vez de redirigir a /login).
 export async function POST(req: Request) {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  const sessionUserId = await verifySessionToken(token);
-  if (!sessionUserId) {
+  const session = await verifySessionToken(token);
+  if (!session || !(await isSessionActive(session.userId, session.issuedAt))) {
     return errorResponse("No autenticado", 401);
   }
+  const sessionUserId = session.userId;
   // Reasignado a un `const` propio: el estrechamiento de tipo de
   // `sessionUserId` (de `string | null` a `string`) tras el `if` de arriba
   // no se propaga dentro de las funciones anidadas de más abajo (TypeScript

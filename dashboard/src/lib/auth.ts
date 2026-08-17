@@ -4,16 +4,12 @@ import bcrypt from "bcryptjs";
 import * as argon2 from "@node-rs/argon2";
 
 /**
- * Máximo de la contraseña. Ya no es por el límite de 72 bytes de bcrypt
- * (argon2id no lo tiene), pero se mantiene como tope general de tamaño de
- * entrada: sin él, alguien podría mandar una contraseña gigantesca solo para
- * hacer más caro el hasheo en el servidor (coste de CPU/memoria proporcional
- * al tamaño de la entrada).
+ * Reexportadas desde `passwordPolicy.ts`, que es donde viven ahora junto
+ * al resto de la política (y SIN "server-only", para que el formulario
+ * pueda evaluar los mismos requisitos en vivo). Se mantienen aquí para no
+ * romper a quien ya las importaba de este módulo.
  */
-export const MAX_PASSWORD_LENGTH = 72;
-
-/** Mínimo razonable para no aceptar contraseñas triviales sin ser puntilloso. */
-export const MIN_PASSWORD_LENGTH = 8;
+export { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "./passwordPolicy";
 
 /** Detecta si un hash ya está en formato argon2 (vs. bcrypt heredado). */
 function isArgon2Hash(hash: string): boolean {

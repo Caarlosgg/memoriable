@@ -11,7 +11,11 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const authenticated = await verifySessionToken(token);
+  // Solo la firma del token, sin comprobar revocación (eso exige tocar la
+  // BD y esto corre en CADA petición) — de ahí lo de "optimista": una
+  // sesión revocada llega hasta el Server Component, y es `verifySession()`
+  // quien la echa de verdad a /login.
+  const authenticated = (await verifySessionToken(token)) !== null;
 
   if (pathname === "/login" || pathname === "/registro" || pathname === "/olvide-password") {
     if (authenticated) {

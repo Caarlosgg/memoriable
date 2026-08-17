@@ -5,6 +5,8 @@ import { useActionState, useState } from "react";
 import { Mail, CircleAlert } from "lucide-react";
 import { register, type RegisterState } from "./actions";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordRequirements } from "@/components/PasswordRequirements";
 import { Button } from "@/components/ui/button";
 import { ResendVerification } from "@/components/ResendVerification";
 
@@ -48,6 +50,12 @@ function RegisteredConfirmation({ email, emailSent }: { email: string; emailSent
 export function RegisterForm() {
   const [state, formAction, pending] = useActionState(register, initialState);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  // Aviso en vivo de que no coinciden, en vez de descubrirlo al enviar —
+  // solo cuando ya ha escrito algo en la confirmación, para no marcar en
+  // rojo un campo que aún está a medias.
+  const noCoinciden = passwordConfirm.length > 0 && password !== passwordConfirm;
 
   if (state?.registered) {
     return <RegisteredConfirmation email={email} emailSent={state.emailSent ?? false} />;
@@ -75,32 +83,40 @@ export function RegisterForm() {
         <label htmlFor="password" className="text-sm font-medium text-ink">
           Contraseña
         </label>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           required
           minLength={8}
           autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           aria-invalid={state?.error ? true : undefined}
           aria-describedby={state?.error ? "register-error" : undefined}
         />
+        <PasswordRequirements password={password} />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="passwordConfirm" className="text-sm font-medium text-ink">
           Confirmar contraseña
         </label>
-        <Input
+        <PasswordInput
           id="passwordConfirm"
           name="passwordConfirm"
-          type="password"
           required
           minLength={8}
           autoComplete="new-password"
-          aria-invalid={state?.error ? true : undefined}
-          aria-describedby={state?.error ? "register-error" : undefined}
+          value={passwordConfirm}
+          onChange={(e) => setPasswordConfirm(e.target.value)}
+          aria-invalid={noCoinciden || state?.error ? true : undefined}
+          aria-describedby={noCoinciden ? "register-mismatch" : state?.error ? "register-error" : undefined}
         />
+        {noCoinciden && (
+          <p id="register-mismatch" className="text-xs text-danger">
+            Las contraseñas no coinciden.
+          </p>
+        )}
       </div>
 
       {state?.error && (
