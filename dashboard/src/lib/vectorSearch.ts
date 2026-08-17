@@ -31,7 +31,7 @@ function toVectorLiteral(embedding: number[]): string {
 export async function findSimilarMessages(
   workspaceId: string,
   queryEmbedding: number[],
-  options: SearchFilters & { limit?: number } = {},
+  options: SearchFilters & { limit?: number; maxDistance?: number } = {},
 ): Promise<Message[]> {
   const limit = Math.max(0, options.limit ?? 5);
   const categoria = options.categoria ?? null;
@@ -40,6 +40,13 @@ export async function findSimilarMessages(
   const desde = options.desde ?? null;
   const hasta = options.hasta ?? null;
   const etiqueta = options.etiqueta ?? null;
+  // Sin umbral por defecto (mismo comportamiento que antes): el Buscador
+  // (`searchMessages` en data.ts) llama a esta función sin `maxDistance` a
+  // propósito — en una búsqueda explícita del usuario, mostrar el mejor
+  // resultado aunque sea imperfecto es la UX correcta. Los sitios
+  // automáticos (citas del Asistente, `encontrarTareaPendiente`) sí lo
+  // pasan, para no citar/actuar sobre notas que no tienen nada que ver.
+  const maxDistance = options.maxDistance ?? null;
   const literal = toVectorLiteral(queryEmbedding);
 
   return prisma.$queryRaw<Message[]>`
@@ -53,6 +60,7 @@ export async function findSimilarMessages(
       AND (${desde}::timestamptz IS NULL OR "fecha" >= ${desde}::timestamptz)
       AND (${hasta}::timestamptz IS NULL OR "fecha" <= ${hasta}::timestamptz)
       AND (${etiqueta}::text IS NULL OR "etiquetas" @> ARRAY[${etiqueta}]::text[])
+      AND (${maxDistance}::float IS NULL OR ("embedding" <=> ${literal}::vector) <= ${maxDistance})
     ORDER BY "embedding" <=> ${literal}::vector
     LIMIT ${limit}
   `;

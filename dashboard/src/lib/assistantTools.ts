@@ -14,6 +14,14 @@ import { canWrite, READONLY_ROLE_MESSAGE } from "./workspace";
 import { prisma } from "./prisma";
 import type { WorkspaceRole } from "@prisma/client";
 
+// Distancia coseno máxima para que una coincidencia semántica cuente como
+// "la tarea de la que habla el usuario" — más estricto que el umbral de las
+// fuentes citadas (ver SOURCE_MAX_DISTANCE en api/asistente/route.ts): esta
+// función alimenta completarTarea/aplazarTarea/asignarTarea, que ACTÚAN
+// sobre la tarea encontrada — una coincidencia floja aquí completa/aplaza/
+// asigna la tarea equivocada, no solo cita una nota de más.
+const TASK_MATCH_MAX_DISTANCE = 0.4;
+
 /**
  * Normaliza texto para comparar por voz: minúsculas + sin tildes/diacríticos.
  * Sin esto, "Reunión" (guardado con tilde) y "reunion" (como lo dice o lo
@@ -178,7 +186,10 @@ async function encontrarTareaPendiente(workspaceId: string, descripcion: string)
     try {
       const embedding = await resolveEmbedder().embedQuery(descripcion);
       if (!embedding) return null;
-      const similares = await findSimilarMessages(workspaceId, embedding, { limit: 8 });
+      const similares = await findSimilarMessages(workspaceId, embedding, {
+        limit: 8,
+        maxDistance: TASK_MATCH_MAX_DISTANCE,
+      });
       return similares.find(isPendienteAccionable) ?? null;
     } catch (err) {
       console.error("No se pudo buscar la tarea semánticamente (se usa el resultado por texto):", err);
