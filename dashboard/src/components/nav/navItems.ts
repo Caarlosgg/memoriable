@@ -1,4 +1,4 @@
-import { MessageCircle, StickyNote, ListTodo, CalendarDays, PiggyBank, Users, User, type LucideIcon } from "lucide-react";
+import { MessageCircle, MessagesSquare, StickyNote, ListTodo, CalendarDays, PiggyBank, Users, User, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -16,7 +16,12 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/categorias", label: "Notas", Icon: StickyNote },
   { href: "/pendientes", label: "Tablero", Icon: ListTodo },
   { href: "/calendario", label: "Calendario", Icon: CalendarDays },
+  // Ahorros (personal) y Chat (equipo) ocupan el mismo puesto en la lista a
+  // propósito — son mutuamente excluyentes según el modo (ver Sidebar.tsx/
+  // BottomTabs.tsx), así que el resto del menú no "salta" de sitio al
+  // cambiar de workspace.
   { href: "/ahorros", label: "Ahorros", Icon: PiggyBank },
+  { href: "/chat", label: "Chat", Icon: MessagesSquare },
   { href: "/equipo", label: "Equipo", Icon: Users },
   { href: "/cuenta", label: "Cuenta", Icon: User },
 ];

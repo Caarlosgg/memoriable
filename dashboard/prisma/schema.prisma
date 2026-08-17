@@ -74,6 +74,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   memberships      Membership[]
   notifications    Notification[]
+  chatMessages     ChatMessage[]
 
   @@map("users")
 }
@@ -91,6 +92,7 @@ model Workspace {
   messages       Message[]
   eventos        Evento[]
   campoTemplates CampoTemplate[]
+  chatMessages   ChatMessage[]
   personalOf     User?    @relation("PersonalWorkspace")
 
   @@map("workspaces")
@@ -133,6 +135,9 @@ model Membership {
   role        WorkspaceRole    @default(MEMBER)
   status      MembershipStatus @default(ACTIVE)
   joinedAt    DateTime         @default(now())
+
+  /// Ver ../../prisma/schema.prisma: última visita a /chat (Fase Equipo), para el indicador de no leído.
+  lastChatReadAt DateTime?
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -195,6 +200,22 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+/// Ver ../../prisma/schema.prisma: chat de equipo (Fase Equipo).
+model ChatMessage {
+  id        String   @id @default(cuid())
+  texto     String
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("chat_messages")
 }
 
 /// Ver ../../prisma/schema.prisma: estado en el tablero kanban (Fase 3).

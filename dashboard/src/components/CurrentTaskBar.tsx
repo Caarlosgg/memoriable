@@ -7,6 +7,7 @@ import { presentCategory } from "@/lib/categories";
 import { shortEmailName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { EN_PROGRESO_CHANGED_EVENT, notifyTaskPatchedElsewhere } from "@/lib/enProgresoEvents";
+import { useVisibilityAwarePolling } from "@/lib/useVisibilityAwarePolling";
 
 /**
  * Sondeo corto (no WebSocket/SSE — no hay infraestructura de tiempo real en
@@ -52,59 +53,14 @@ export function CurrentTaskBar({
       .catch((err) => console.error("No se pudo consultar «en curso ahora» (no crítico):", err));
   }, []);
 
+  useVisibilityAwarePolling(refresh, POLL_MS);
+
   useEffect(() => {
-    refresh();
-    // Solo sondea mientras la pestaña está visible — una pestaña de fondo
-    // (o varias abiertas a la vez, cada una con su propio temporizador) no
-    // tiene por qué seguir generando tráfico contra el pool de conexiones
-    // de Postgres cada 20s si nadie la está mirando. Al volver a primer
-    // plano, se refresca al instante y el sondeo se reanuda.
-    let id: ReturnType<typeof setInterval> | undefined;
-    // `visibilitychange` (volver a esta pestaña) y `focus` (la ventana
-    // recupera el foco del SO) no son el mismo evento — con dos ventanas
-    // una junto a otra, solo `focus` avisa al cambiar entre ellas sin que
-    // la pestaña llegue a ocultarse. Pero al volver de una pestaña en
-    // segundo plano (el caso más común) los dos SUELEN dispararse casi a
-    // la vez, duplicando la consulta — este margen mínimo evita el doble
-    // `refresh()` sin perder ninguno de los dos casos reales.
-    let lastRefreshAt = 0;
-    const DEDUPE_MS = 1000;
-    function dedupedRefresh() {
-      const now = Date.now();
-      if (now - lastRefreshAt < DEDUPE_MS) return;
-      lastRefreshAt = now;
-      refresh();
-    }
-    function startPolling() {
-      if (id !== undefined) return;
-      id = setInterval(refresh, POLL_MS);
-    }
-    function stopPolling() {
-      if (id === undefined) return;
-      clearInterval(id);
-      id = undefined;
-    }
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        dedupedRefresh();
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    }
-    if (document.visibilityState === "visible") startPolling();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", dedupedRefresh);
     // Cambios hechos por TI en esta misma pestaña (botones de la tarjeta
     // del tablero) se notan al instante, sin esperar al sondeo — ver
     // lib/enProgresoEvents.ts.
     window.addEventListener(EN_PROGRESO_CHANGED_EVENT, refresh);
-    return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", dedupedRefresh);
-      window.removeEventListener(EN_PROGRESO_CHANGED_EVENT, refresh);
-    };
+    return () => window.removeEventListener(EN_PROGRESO_CHANGED_EVENT, refresh);
   }, [refresh]);
 
   const mine = items.find((i) => i.enProgresoPorId === currentUserId);

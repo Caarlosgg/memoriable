@@ -51,6 +51,7 @@ export function Sidebar({
   isPersonal,
   notifications,
   unreadCount,
+  hasUnreadChat = false,
   isSuperAdmin = false,
 }: {
   workspaces: WorkspaceSummary[];
@@ -58,6 +59,8 @@ export function Sidebar({
   isPersonal: boolean;
   notifications: Notification[];
   unreadCount: number;
+  /** Hay mensajes de chat de equipo posteriores a tu última visita — ver chat/actions.ts hasUnreadChat. */
+  hasUnreadChat?: boolean;
   /** Muestra el enlace "Admin" (panel global, fuera del alcance de un OWNER/ADMIN normal de workspace) — ver lib/dal.ts requireSuperAdmin. */
   isSuperAdmin?: boolean;
 }) {
@@ -69,9 +72,13 @@ export function Sidebar({
   // indicador, la única forma de saberlo era volver a /asistente y
   // comprobar. No se muestra estando ya ahí: el propio chat ya lo enseña.
   const { isBusy: assistantBusy } = useAssistant();
-  // Ahorros es siempre personal (ver lib/workspace.ts) — no tiene sentido
-  // en un workspace de equipo, así que desaparece del menú al cambiar a uno.
-  const baseItems = isPersonal ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/ahorros");
+  // Ahorros es siempre personal y Chat siempre de equipo (ver
+  // lib/workspace.ts) — cada uno desaparece del menú en el modo contrario.
+  const baseItems = NAV_ITEMS.filter((item) => {
+    if (item.href === "/ahorros") return isPersonal;
+    if (item.href === "/chat") return !isPersonal;
+    return true;
+  });
   const items = isSuperAdmin
     ? [...baseItems, { href: "/admin", label: "Admin", Icon: ShieldCheck }]
     : baseItems;
@@ -140,15 +147,16 @@ export function Sidebar({
               >
                 <span className="relative shrink-0">
                   <item.Icon aria-hidden size={18} />
-                  {item.href === "/asistente" && assistantBusy && !active && (
-                    <span
-                      aria-label="El Asistente está pensando"
-                      className="absolute -right-0.5 -top-0.5 flex h-2 w-2"
-                    >
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-                    </span>
-                  )}
+                  {((item.href === "/asistente" && assistantBusy) || (item.href === "/chat" && hasUnreadChat)) &&
+                    !active && (
+                      <span
+                        aria-label={item.href === "/asistente" ? "El Asistente está pensando" : "Hay mensajes de chat sin leer"}
+                        className="absolute -right-0.5 -top-0.5 flex h-2 w-2"
+                      >
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+                      </span>
+                    )}
                 </span>
                 {!collapsed && <span>{item.label}</span>}
               </Link>
