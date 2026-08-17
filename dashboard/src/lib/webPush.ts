@@ -23,6 +23,14 @@ export interface PushPayload {
   title: string;
   body?: string;
   link?: string;
+  /**
+   * Agrupa avisos: dos push con el mismo `tag` no se apilan, el segundo
+   * sustituye al primero. Para el chat es lo que evita que cinco mensajes
+   * seguidos de la misma conversación dejen cinco avisos en la bandeja del
+   * sistema (ver chatNotifications.ts). Sin `tag`, cada aviso es
+   * independiente — el comportamiento de siempre para asignaciones.
+   */
+  tag?: string;
 }
 
 /**

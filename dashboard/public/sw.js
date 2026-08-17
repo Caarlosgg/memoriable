@@ -56,7 +56,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 // Push notifications (Web Push estándar, VAPID) — ver lib/webPush.ts en el
-// servidor. El payload es JSON plano: { title, body, link }.
+// servidor. El payload es JSON plano: { title, body, link, tag }.
 self.addEventListener("push", (event) => {
   if (!event.data) return;
   let payload;
@@ -70,6 +70,13 @@ self.addEventListener("push", (event) => {
       body: payload.body,
       icon: "/icons/192",
       badge: "/icons/192",
+      // `tag` agrupa: varios mensajes de la MISMA conversación sustituyen
+      // al aviso anterior en vez de apilarse. `renotify` hace que aun así
+      // avise (vibración/sonido) — si no, el reemplazo pasaría
+      // desapercibido. Sin `tag` (asignaciones), cada aviso es
+      // independiente, como hasta ahora.
+      tag: payload.tag,
+      renotify: Boolean(payload.tag),
       data: { link: payload.link || "/" },
     }),
   );

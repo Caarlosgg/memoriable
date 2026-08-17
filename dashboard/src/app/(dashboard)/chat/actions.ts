@@ -7,6 +7,7 @@ import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { getActiveWorkspace, isActiveMember } from "@/lib/workspace";
 import { uploadImageToBlob } from "@/lib/blobUpload";
+import { notifyChatParticipants } from "@/lib/chatNotifications";
 import {
   chatChannelTopic,
   CHAT_NEW_MESSAGE_EVENT,
@@ -346,6 +347,10 @@ export async function postChatMessage(
       include: { user: { select: { email: true } } },
     });
     await broadcastNewChatMessage(conversationId);
+    // Push a los demás participantes no silenciados. `void` a propósito:
+    // el mensaje ya está guardado y el aviso no debe retrasar la respuesta
+    // al que escribe (ni tumbarla si falla — ver chatNotifications.ts).
+    void notifyChatParticipants(conversationId, userId, trimmed, Boolean(imagenUrl));
     revalidatePath("/chat");
     return {
       message: {

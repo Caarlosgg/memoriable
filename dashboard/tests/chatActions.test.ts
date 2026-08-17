@@ -5,6 +5,15 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
 vi.mock("@/lib/blobUpload", () => ({ uploadImageToBlob: vi.fn() }));
 
+const notifyChatParticipants =
+  vi.fn<(conversationId: string, senderUserId: string, texto: string, tieneImagen: boolean) => Promise<void>>(
+    async () => {},
+  );
+vi.mock("@/lib/chatNotifications", () => ({
+  notifyChatParticipants: (conversationId: string, senderUserId: string, texto: string, tieneImagen: boolean) =>
+    notifyChatParticipants(conversationId, senderUserId, texto, tieneImagen),
+}));
+
 // Sin configurar Realtime, `broadcastNewChatMessage` no hace nada — así los
 // tests no dependen de red ni de Supabase (regla 3 de CLAUDE.md).
 vi.mock("@/lib/chatRealtime", () => ({
@@ -132,6 +141,21 @@ describe("sendChatMessage", () => {
         data: { texto: "hola", imagenUrl: null, userId: "u1", workspaceId: "w1", conversationId: "c1" },
       }),
     );
+  });
+
+  it("avisa por push a los demás participantes, con el texto ya recortado", async () => {
+    chatMessageCreate.mockResolvedValue({
+      id: "m1",
+      texto: "hola",
+      imagenUrl: null,
+      createdAt: new Date(),
+      userId: "u1",
+      user: { email: "ana@example.com" },
+    });
+    const { sendChatMessage } = await import("../src/app/(dashboard)/chat/actions");
+    await sendChatMessage("c1", "  hola  ");
+
+    expect(notifyChatParticipants).toHaveBeenCalledWith("c1", "u1", "hola", false);
   });
 
   it("rechaza un mensaje vacío sin imagen", async () => {
