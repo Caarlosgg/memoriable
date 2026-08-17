@@ -12,6 +12,8 @@ import { getCuentasConSaldo } from "./ahorros";
 import { FRECUENCIAS, fechaRepeticion } from "./calendar";
 import { canWrite, READONLY_ROLE_MESSAGE, listWorkspaceMembers, isOnline } from "./workspace";
 import { postChatMessage } from "@/app/(dashboard)/chat/actions";
+import { saveAssistantMemory, forgetAssistantMemory } from "./assistantMemory";
+import { normalizeForMatch } from "./textMatch";
 import { prisma } from "./prisma";
 import type { WorkspaceRole } from "@prisma/client";
 
@@ -22,21 +24,6 @@ import type { WorkspaceRole } from "@prisma/client";
 // sobre la tarea encontrada — una coincidencia floja aquí completa/aplaza/
 // asigna la tarea equivocada, no solo cita una nota de más.
 const TASK_MATCH_MAX_DISTANCE = 0.4;
-
-/**
- * Normaliza texto para comparar por voz: minúsculas + sin tildes/diacríticos.
- * Sin esto, "Reunión" (guardado con tilde) y "reunion" (como lo dice o lo
- * transcribe el usuario, o como lo normaliza el propio modelo) no
- * coinciden con un `includes` normal — un fallo real de coincidencia
- * detectado en verificación en vivo, no algo teórico.
- */
-function normalizeForMatch(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
-}
 
 /**
  * Resuelve un nombre o email libre ("benitoelrey", "Benito", su email
@@ -932,6 +919,42 @@ export function createAssistantTools(
           throw new Error(result.error || "No se ha podido enviar el mensaje al chat.");
         }
         return { texto: result.message.texto };
+      },
+    }),
+    recordarPreferencia: tool({
+      description:
+        "Guarda un hecho o preferencia sobre el usuario o su negocio para recordarlo SIEMPRE, en cualquier conversación futura (no solo en esta) — cosas como horarios, prioridades fijas de un cliente, o cómo prefiere que le hables. Llámala cuando el usuario te pida explícitamente que recuerdes algo (\"recuerda que los jueves cierro antes\", \"a partir de ahora háblame de tú\"), o cuando detectes tú mismo un patrón claro y repetido y tenga sentido ofrecerte a recordarlo. No la uses para hechos de una sola vez sin valor futuro (para eso ya existe crearNota).",
+      inputSchema: z.object({
+        hecho: z.string().min(1).describe("El hecho o preferencia, en una frase corta y clara, tal como debe recordarse."),
+      }),
+      execute: async ({ hecho }) => {
+        try {
+          const saved = await saveAssistantMemory(userId, workspaceId, hecho);
+          return { hecho: saved.hecho };
+        } catch (err) {
+          console.error("La tool recordarPreferencia no pudo guardar el hecho:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido guardar eso. Inténtalo de nuevo en un momento.");
+        }
+      },
+    }),
+    olvidarPreferencia: tool({
+      description:
+        "Olvida un hecho o preferencia guardada antes con recordarPreferencia, descrito en lenguaje libre (\"olvida lo de que cierro los jueves antes\"). Si no encuentra nada parecido, dilo con naturalidad — no inventes que lo has olvidado si no había nada guardado.",
+      inputSchema: z.object({
+        descripcion: z.string().min(1).describe("Descripción libre de qué hecho olvidar, tal como lo diría el usuario."),
+      }),
+      execute: async ({ descripcion }) => {
+        try {
+          const forgotten = await forgetAssistantMemory(userId, workspaceId, descripcion);
+          if (!forgotten) throw new Error(`No tengo nada guardado parecido a "${descripcion}".`);
+          return { olvidado: true };
+        } catch (err) {
+          if (err instanceof Error && err.message.startsWith("No tengo nada guardado")) throw err;
+          console.error("La tool olvidarPreferencia no pudo borrar el hecho:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido olvidar eso. Inténtalo de nuevo en un momento.");
+        }
       },
     }),
   } satisfies ToolSet;

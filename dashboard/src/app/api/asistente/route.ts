@@ -7,10 +7,11 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { resolveEmbedder } from "@/lib/pipeline";
 import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
-import { toAssistantSources, buildContextBlock, buildSystemPrompt, buildWorkspaceContextLine, buildAmbientBlock, type AssistantSource, type AssistantWorkspaceMemberInfo } from "@/lib/assistantContext";
+import { toAssistantSources, buildContextBlock, buildSystemPrompt, buildWorkspaceContextLine, buildAmbientBlock, buildMemoryBlock, type AssistantSource, type AssistantWorkspaceMemberInfo } from "@/lib/assistantContext";
 import { resolveAmbientStats, resolveWorkspaceNombre, resolveWorkspaceMembers } from "@/lib/assistantAmbient";
 import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
+import { listAssistantMemories } from "@/lib/assistantMemory";
 import { getActiveWorkspace } from "@/lib/workspace";
 
 // Verificado en vivo: una petición con dos llamadas a herramienta con
@@ -190,22 +191,35 @@ export async function POST(req: Request) {
     }
   }
 
+  // Igual de no-crítico: sin memoria, el Asistente responde igual, solo
+  // sin recordar hechos de conversaciones anteriores.
+  async function resolveMemory(): Promise<string> {
+    try {
+      const memories = await listAssistantMemories(userId, workspaceId);
+      return buildMemoryBlock(memories.map((m) => m.hecho));
+    } catch (err) {
+      console.error("No se pudo cargar la memoria del Asistente (se responde sin ella):", err);
+      return "";
+    }
+  }
+
   // Independientes entre sí (ninguna depende del resultado de otra) — en
   // paralelo en vez de en secuencia recorta el tiempo hasta el primer
   // token de la respuesta. Cada una atrapa sus propios errores, así que
   // Promise.all nunca rechaza por un fallo aislado de una de ellas.
-  const [conversationId, sources, workspaceInfo, ambientBlock] = await Promise.all([
+  const [conversationId, sources, workspaceInfo, ambientBlock, memoryBlock] = await Promise.all([
     resolveConversationId(),
     resolveSources(),
     resolveWorkspaceInfo(),
     resolveAmbient(),
+    resolveMemory(),
   ]);
   const { members } = workspaceInfo;
   const workspaceLine = buildWorkspaceContextLine({ isPersonal, nombre: workspaceInfo.nombre, role, members });
 
   const result = streamText({
     model: groq("openai/gpt-oss-120b"),
-    system: buildSystemPrompt(buildContextBlock(sources), new Date(), { workspaceLine, ambientBlock }),
+    system: buildSystemPrompt(buildContextBlock(sources), new Date(), { workspaceLine, ambientBlock, memoryBlock }),
     messages: await convertToModelMessages(messages),
     tools: createAssistantTools(userId, workspaceId, role, members),
     // Permite encadenar la llamada a `crearNota` con la respuesta de texto

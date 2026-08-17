@@ -78,6 +78,13 @@ model User {
   /// cualquier operación de bootstrap sensible.
   isSuperAdmin Boolean @default(false)
 
+  /// Preferencias de notificación por tipo — mapa `Record<NotificationType,
+  /// boolean>` (Fase Equipo). Ausente = todo activado (comportamiento de
+  /// siempre): solo se guarda lo que el usuario ha desactivado
+  /// explícitamente, mismo criterio "proporcional al uso real" que
+  /// Message.camposExtra — no una fila completa por cada tipo posible.
+  notificationPrefs Json @default("{}")
+
   /// Chat de Telegram vinculado a esta cuenta (null hasta que se vincula
   /// con /vincular). Único: un chat solo puede pertenecer a una cuenta.
   telegramChatId    BigInt?   @unique
@@ -109,6 +116,8 @@ model User {
   memberships      Membership[]
   notifications    Notification[]
   chatMessages     ChatMessage[]
+  assistantMemories AssistantMemory[]
+  activityLogs     ActivityLog[]
 
   @@map("users")
 }
@@ -134,6 +143,8 @@ model Workspace {
   eventos         Evento[]
   campoTemplates  CampoTemplate[]
   chatMessages    ChatMessage[]
+  assistantMemories AssistantMemory[]
+  activityLogs    ActivityLog[]
   /// Reverso de User.personalWorkspaceId — como máximo un usuario por
   /// workspace personal (impuesto por el @unique del otro lado).
   personalOf  User?    @relation("PersonalWorkspace")
@@ -228,6 +239,16 @@ model Membership {
   /// para un equipo pequeño.
   lastSeenAt DateTime?
 
+  /// Silencia el chat de este workspace para este miembro — no se enciende
+  /// el punto de "no leído" del menú, aunque sí se sigue pudiendo entrar y
+  /// leer/escribir con normalidad (silenciar no es lo mismo que abandonar).
+  chatMuted Boolean @default(false)
+
+  /// Categorías que este miembro ha ocultado en Notas/Tablero — preferencia
+  /// PERSONAL, no del workspace: cada uno oculta lo que no usa sin afectar
+  /// a los demás miembros del mismo equipo.
+  hiddenCategories String[] @default([])
+
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -301,6 +322,36 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+/// Registro de actividad del workspace (Fase Equipo) — "qué ha pasado en
+/// el equipo", sin destinatario (a diferencia de Notification, que es
+/// personal para quien recibe el aviso). `tipo` es texto libre (mismo
+/// criterio que Message.categoria), no un enum — nuevos tipos de
+/// actividad no deben exigir una migración de esquema.
+model ActivityLog {
+  id        String   @id @default(cuid())
+  /// P.ej. "nota_creada", "tarea_asignada", "tarea_completada".
+  tipo      String
+  /// Qué tipo de cosa fue ("mensaje", "evento", "miembro") — para poder
+  /// enlazar o filtrar sin tener que interpretar `tipo` a mano.
+  entidad   String
+  /// Id de la entidad afectada (mensaje/evento/usuario) — null si no aplica.
+  entidadId String?
+  /// Datos libres del evento (p. ej. el resumen del mensaje, el email
+  /// asignado) — para que el feed pueda mostrar algo legible sin tener que
+  /// volver a consultar la entidad, que puede haberse borrado ya.
+  detalle   Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("activity_log")
 }
 
 /// Chat de equipo (Fase Equipo): un canal compartido por workspace, no
@@ -641,4 +692,29 @@ model AssistantExchange {
   @@index([userId])
   @@index([conversationId])
   @@map("assistant_exchanges")
+}
+
+/// Memoria persistente del Asistente (distinta de AssistantExchange, que es
+/// solo un log de turnos purgado a los 7 días): hechos/preferencias cortos
+/// en lenguaje natural que el Asistente debe recordar SIEMPRE, no solo
+/// dentro de la conversación en curso ("los jueves cierro antes", "el
+/// cliente López siempre es prioridad"). Escopado a un workspace concreto
+/// (no global cruzando espacios) — mismo criterio que el resto del
+/// esquema: todo cuelga de un Workspace, el personal incluido, así que un
+/// hecho dicho en el equipo de un negocio no se filtra al espacio personal
+/// ni a otro equipo distinto.
+model AssistantMemory {
+  id        String   @id @default(cuid())
+  hecho     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceId])
+  @@map("assistant_memories")
 }

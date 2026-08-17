@@ -340,18 +340,32 @@ export function buildAmbientBlock(stats: AmbientStats): string {
   return partes.join(" ");
 }
 
+/**
+ * Bloque de memoria persistente (ver assistantMemory.ts) — hechos que se
+ * recuerdan SIEMPRE, no solo dentro de esta conversación (a diferencia de
+ * `contextBlock`, que son notas citadas por relevancia semántica de esta
+ * pregunta en concreto). Pura y testeable sin BD.
+ */
+export function buildMemoryBlock(hechos: string[]): string {
+  if (hechos.length === 0) return "";
+  return hechos.map((h) => `- ${h}`).join("\n");
+}
+
 /** System prompt completo (reglas + fecha actual + contexto). Pura salvo por `now`, que por defecto es "ahora mismo". */
 export function buildSystemPrompt(
   contextBlock: string,
   now: Date = new Date(),
-  extra?: { workspaceLine?: string; ambientBlock?: string },
+  extra?: { workspaceLine?: string; ambientBlock?: string; memoryBlock?: string },
 ): string {
   const offset = madridUtcOffset(now);
   const workspaceSection = extra?.workspaceLine ? `\n\n${extra.workspaceLine}` : "";
   const ambientSection = extra?.ambientBlock ? `\n\nEstado actual (para responder con criterio a preguntas generales sobre cómo va la semana, sin que cuente como fuente citable): ${extra.ambientBlock}` : "";
+  const memorySection = extra?.memoryBlock
+    ? `\n\nCosas que el usuario te ha pedido recordar siempre (usa recordarPreferencia/olvidarPreferencia para actualizarlas, no las repitas en cada respuesta salvo que sean relevantes para lo que se está hablando):\n${extra.memoryBlock}`
+    : "";
   return `${SYSTEM_PROMPT_BASE}
 
-Fecha y hora actuales en España: ${NOW_FORMATTER.format(now)} (desfase respecto a UTC: ${offset}) — usa esto para calcular cualquier fecha relativa ("mañana", "el jueves", "en dos semanas") y para el desfase que le corresponde a fechaInicio/fechaFin en crearEvento.${workspaceSection}${ambientSection}
+Fecha y hora actuales en España: ${NOW_FORMATTER.format(now)} (desfase respecto a UTC: ${offset}) — usa esto para calcular cualquier fecha relativa ("mañana", "el jueves", "en dos semanas") y para el desfase que le corresponde a fechaInicio/fechaFin en crearEvento.${workspaceSection}${ambientSection}${memorySection}
 
 Contexto (notas guardadas relevantes para esta pregunta):
 ${contextBlock}`;

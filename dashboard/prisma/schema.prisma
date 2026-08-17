@@ -54,6 +54,9 @@ model User {
   /// Ver ../../prisma/schema.prisma: acceso al panel de administración global (/admin).
   isSuperAdmin Boolean @default(false)
 
+  /// Ver ../../prisma/schema.prisma: preferencias de notificación por tipo.
+  notificationPrefs Json @default("{}")
+
   telegramChatId    BigInt?   @unique
   linkCode          String?   @unique
   linkCodeExpiresAt DateTime?
@@ -75,6 +78,8 @@ model User {
   memberships      Membership[]
   notifications    Notification[]
   chatMessages     ChatMessage[]
+  assistantMemories AssistantMemory[]
+  activityLogs     ActivityLog[]
 
   @@map("users")
 }
@@ -93,6 +98,8 @@ model Workspace {
   eventos        Evento[]
   campoTemplates CampoTemplate[]
   chatMessages   ChatMessage[]
+  assistantMemories AssistantMemory[]
+  activityLogs   ActivityLog[]
   personalOf     User?    @relation("PersonalWorkspace")
 
   @@map("workspaces")
@@ -151,6 +158,12 @@ model Membership {
 
   /// Ver ../../prisma/schema.prisma: último latido de actividad, para "en línea".
   lastSeenAt DateTime?
+
+  /// Ver ../../prisma/schema.prisma: silencia el chat de este workspace para este miembro.
+  chatMuted Boolean @default(false)
+
+  /// Ver ../../prisma/schema.prisma: categorías ocultas por este miembro (preferencia personal).
+  hiddenCategories String[] @default([])
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -213,6 +226,25 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+/// Ver ../../prisma/schema.prisma: registro de actividad del workspace (Fase Equipo).
+model ActivityLog {
+  id        String   @id @default(cuid())
+  tipo      String
+  entidad   String
+  entidadId String?
+  detalle   Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("activity_log")
 }
 
 /// Ver ../../prisma/schema.prisma: chat de equipo (Fase Equipo).
@@ -452,4 +484,23 @@ model AssistantExchange {
   @@index([userId])
   @@index([conversationId])
   @@map("assistant_exchanges")
+}
+
+/// Ver ../../prisma/schema.prisma: memoria persistente del Asistente
+/// (hechos/preferencias que se recuerdan siempre, distinto del log de
+/// turnos purgado a los 7 días de AssistantExchange).
+model AssistantMemory {
+  id        String   @id @default(cuid())
+  hecho     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceId])
+  @@map("assistant_memories")
 }
