@@ -332,7 +332,11 @@ export function ConversationThread({
                   onClick={() => handleDeleteMessage(message.id)}
                   aria-label="Borrar este mensaje"
                   title="Borrar este mensaje"
-                  className="shrink-0 rounded-full p-1.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none hover:text-danger"
+                  // En móvil NO hay hover: dejarlo en `opacity-0` hasta
+                  // pasar el ratón hacía imposible borrar desde el teléfono.
+                  // Visible siempre en pantalla pequeña; en escritorio sí se
+                  // esconde hasta el hover, donde sí existe.
+                  className="shrink-0 rounded-full p-2 text-muted opacity-100 transition-opacity hover:text-danger focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none sm:p-1.5 sm:opacity-0 sm:group-hover:opacity-100"
                 >
                   <Trash2 aria-hidden size={13} />
                 </button>
