@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { verifySession } from "@/lib/dal";
 import { Sidebar } from "@/components/nav/Sidebar";
 import { BottomTabs } from "@/components/nav/BottomTabs";
@@ -14,39 +15,31 @@ import { hasUnreadChat as checkHasUnreadChat } from "@/app/(dashboard)/chat/acti
 import { listNotifications, getUnreadCount } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 
-export default async function DashboardLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  // Comprobación "de verdad" (no solo la optimista de proxy.ts): si no hay
-  // sesión válida, redirige a /login.
-  const userId = await verifySession();
-  // Workspace activo + lista de espacios: resuelto una vez aquí (no en cada
-  // Sidebar/MobileHeader por separado) y pasado como prop — evita que cada
-  // uno vuelva a consultar la BD para lo mismo en el mismo render.
-  const [{ workspaceId: activeWorkspaceId, isPersonal }, workspaces, notifications, unreadCount, currentUser] =
-    await Promise.all([
-      getActiveWorkspace(userId),
-      listMyWorkspaces(),
-      listNotifications(userId, 8),
-      getUnreadCount(userId),
-      // Best-effort: solo decide si se muestra el enlace "Admin" en el
-      // Sidebar, no es un dato imprescindible para poder entrar.
-      prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }).catch(() => null),
-    ]);
-  const isSuperAdmin = currentUser?.isSuperAdmin ?? false;
-
-  // Ninguna depende de la otra (ambas solo necesitan userId/activeWorkspaceId,
-  // ya resueltos arriba) — en paralelo en vez de en secuencia, mismo
-  // criterio que el resto de este archivo, para no sumar una ida y vuelta
-  // extra a la BD en cada navegación dentro de un workspace de equipo.
-  const [briefing, memberEmailById, hasUnreadChat] = await Promise.all([
+/**
+ * Resumen del día + "en curso ahora" (Fase Equipo): deliberadamente FUERA
+ * del `Promise.all` bloqueante de `DashboardLayout` — son un modal y un
+ * widget flotante, ninguno de los dos hace falta para que la página en sí
+ * (`children`) se pueda pintar. Antes bloqueaban TODA la respuesta del
+ * servidor (TTFB) en CADA navegación por cifras que ni siquiera se ven de
+ * inmediato — verificado en Vercel Speed Insights: TTFB de varios segundos
+ * en rutas que no tocan nada de esto. Envuelto en `<Suspense>` en el
+ * layout, este componente transmite (streaming) su HTML en cuanto está
+ * listo, sin retrasar el resto.
+ */
+async function PeripheralWidgets({
+  userId,
+  activeWorkspaceId,
+  isPersonal,
+}: {
+  userId: string;
+  activeWorkspaceId: string;
+  isPersonal: boolean;
+}) {
+  const [briefing, memberEmailById] = await Promise.all([
     // No crítico: si falla, el dashboard sigue funcionando igual, solo sin
-    // el modal del resumen del día (no es un dato imprescindible para
-    // entrar). Fase Equipo: SIEMPRE el workspace personal, nunca el activo
-    // (ver getDailyBriefing en lib/dailyBriefing.ts) — "tu día" no cambia
-    // si tienes seleccionado un workspace de equipo.
+    // el modal del resumen del día. Fase Equipo: SIEMPRE el workspace
+    // personal, nunca el activo (ver getDailyBriefing en lib/dailyBriefing.ts)
+    // — "tu día" no cambia si tienes seleccionado un workspace de equipo.
     getPersonalWorkspaceId(userId)
       .then((personalWorkspaceId) => getDailyBriefing(personalWorkspaceId))
       .catch((err) => {
@@ -64,10 +57,45 @@ export default async function DashboardLayout({
             console.error("No se pudieron cargar los miembros del equipo para «en curso ahora» (no crítico):", err);
             return {};
           }),
-    // Best-effort: solo enciende el punto de "no leído" del menú, no es un
-    // dato imprescindible para poder entrar.
-    checkHasUnreadChat().catch(() => false),
   ]);
+
+  return (
+    <>
+      {briefing && <DailyBriefingModal userId={userId} data={briefing} />}
+      <CurrentTaskBar currentUserId={userId} memberEmailById={memberEmailById} />
+    </>
+  );
+}
+
+export default async function DashboardLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  // Comprobación "de verdad" (no solo la optimista de proxy.ts): si no hay
+  // sesión válida, redirige a /login.
+  const userId = await verifySession();
+  // Solo lo que hace falta para pintar la barra lateral/cabecera sin salto
+  // visual (Sidebar/MobileHeader se ven de inmediato, sin skeleton) —
+  // el resumen del día y "en curso ahora" ya NO están aquí, ver
+  // `PeripheralWidgets` arriba.
+  const [{ workspaceId: activeWorkspaceId, isPersonal }, workspaces, notifications, unreadCount, currentUser, hasUnreadChat] =
+    await Promise.all([
+      getActiveWorkspace(userId),
+      listMyWorkspaces(),
+      listNotifications(userId, 8),
+      getUnreadCount(userId),
+      // Best-effort: solo decide si se muestra el enlace "Admin" en el
+      // Sidebar, no es un dato imprescindible para poder entrar.
+      prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }).catch(() => null),
+      // Best-effort: solo enciende el punto de "no leído" del menú, no es un
+      // dato imprescindible para poder entrar. Se queda en esta ola (no en
+      // `PeripheralWidgets`) porque Sidebar/BottomTabs la necesitan ya
+      // resuelta — no está pensada para reaccionar a un valor que llegue
+      // más tarde por streaming.
+      checkHasUnreadChat().catch(() => false),
+    ]);
+  const isSuperAdmin = currentUser?.isSuperAdmin ?? false;
 
   return (
     <UndoToastProvider>
@@ -99,8 +127,9 @@ export default async function DashboardLayout({
           </div>
           <BottomTabs isPersonal={isPersonal} hasUnreadChat={hasUnreadChat} />
           <CommandPalette />
-          {briefing && <DailyBriefingModal userId={userId} data={briefing} />}
-          <CurrentTaskBar currentUserId={userId} memberEmailById={memberEmailById} />
+          <Suspense fallback={null}>
+            <PeripheralWidgets userId={userId} activeWorkspaceId={activeWorkspaceId} isPersonal={isPersonal} />
+          </Suspense>
         </div>
       </AssistantProvider>
     </UndoToastProvider>
