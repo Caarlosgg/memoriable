@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Plus, CalendarCheck2 } from "lucide-react";
 import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, type WeekDay } from "@/lib/calendar";
 import { formatEventTime } from "@/lib/format";
 import { avatarColorClass } from "@/lib/avatar";
+import { cn } from "@/lib/utils";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
@@ -225,23 +226,31 @@ export function CalendarView({
           </div>
 
           <div className="grid grid-cols-7 gap-1">
-            {monthGrid.map((day) => {
+            {monthGrid.map((day, i) => {
               const key = dateKey(day.date);
               const dayEventos = byDay.get(key) ?? [];
               const inMonth = day.inMonth;
+              const isWeekend = i % 7 >= 5;
+              const hasEventos = dayEventos.length > 0;
               return (
                 <div
                   key={key}
-                  className={`flex min-h-[80px] flex-col gap-1 rounded-lg border p-1.5 text-xs ${
-                    inMonth ? "border-paper-line bg-paper" : "border-transparent bg-paper/40"
-                  } ${day.isToday ? "border-accent ring-1 ring-accent" : ""}`}
+                  className={cn(
+                    "flex min-h-[80px] flex-col gap-1 rounded-lg border p-1.5 text-xs transition-colors",
+                    inMonth ? (isWeekend ? "border-paper-line bg-paper-line/20" : "border-paper-line bg-paper") : "border-transparent bg-paper/40",
+                    hasEventos && inMonth && !day.isToday && "border-accent/30",
+                    day.isToday && "border-accent bg-accent-soft/50 ring-1 ring-accent",
+                  )}
                 >
                   <span
-                    className={`font-medium ${
+                    className={`flex items-center gap-1 font-medium ${
                       day.isToday ? "text-accent-strong" : inMonth ? "text-ink" : "text-muted"
                     }`}
                   >
                     {day.date.getUTCDate()}
+                    {hasEventos && !day.isToday && (
+                      <span aria-hidden className="h-1 w-1 rounded-full bg-accent" />
+                    )}
                   </span>
                   <div className="flex flex-col gap-0.5">
                     {dayEventos.slice(0, MAX_CHIPS_PER_DAY_MONTH).map((evento) => {

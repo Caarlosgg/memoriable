@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireSuperAdmin } from "@/lib/dal";
 import { listAdminUsers } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
+import { BackLink } from "@/components/BackLink";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { AdminUsersTable } from "@/components/admin/AdminUsersTable";
 
@@ -16,6 +17,7 @@ async function AdminUsersSection() {
 export default function AdminUsersPage() {
   return (
     <>
+      <BackLink href="/admin" label="Administración" />
       <PageHeader
         title="Usuarios"
         help={

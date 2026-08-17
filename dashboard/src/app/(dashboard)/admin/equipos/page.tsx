@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireSuperAdmin } from "@/lib/dal";
 import { listAdminWorkspaces } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
+import { BackLink } from "@/components/BackLink";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { AdminWorkspacesTable } from "@/components/admin/AdminWorkspacesTable";
 
@@ -16,6 +17,7 @@ async function AdminWorkspacesSection() {
 export default function AdminWorkspacesPage() {
   return (
     <>
+      <BackLink href="/admin" label="Administración" />
       <PageHeader
         title="Equipos"
         help={
