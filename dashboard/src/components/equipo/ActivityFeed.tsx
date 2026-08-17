@@ -1,4 +1,4 @@
-import { History, StickyNote, CircleCheck, UserRound, UserPlus, ShieldCheck } from "lucide-react";
+import { History, StickyNote, CircleCheck, UserRound, UserPlus, ShieldCheck, Crown } from "lucide-react";
 import { listActivity } from "@/lib/activityLog";
 import { formatDate } from "@/lib/format";
 
@@ -9,6 +9,7 @@ const TIPO_LABEL: Record<string, { texto: string; Icon: typeof History }> = {
   miembro_invitado: { texto: "invitó a alguien al equipo", Icon: UserPlus },
   miembro_añadido: { texto: "añadió a alguien al equipo", Icon: UserPlus },
   rol_cambiado: { texto: "cambió el rol de alguien", Icon: ShieldCheck },
+  propiedad_transferida: { texto: "transfirió la propiedad del equipo", Icon: Crown },
 };
 
 function activityLabel(tipo: string): string {

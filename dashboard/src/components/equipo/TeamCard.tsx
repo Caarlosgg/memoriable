@@ -26,6 +26,7 @@ export function TeamCard({
   const [nameInput, setNameInput] = useState(nombre);
   const [nameError, setNameError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const callerIsOwner = members.some((m) => m.isSelf && m.role === "OWNER");
 
   function handleSaveName() {
     setNameError(null);
@@ -102,7 +103,7 @@ export function TeamCard({
       )}
       <ul className="flex flex-col gap-1.5">
         {members.map((m) => (
-          <MemberRow key={m.userId} workspaceId={workspaceId} member={m} canManage={canManage} />
+          <MemberRow key={m.userId} workspaceId={workspaceId} member={m} canManage={canManage} callerIsOwner={callerIsOwner} />
         ))}
       </ul>
       {canManage && (

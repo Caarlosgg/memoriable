@@ -242,10 +242,62 @@ export async function addMemberByEmail(
 }
 
 /**
+ * Transfiere la propiedad del equipo a otro miembro ACTIVO — el antiguo
+ * owner pasa a ADMIN (no se queda sin acceso, solo sin ser "el dueño").
+ * Solo el OWNER actual puede hacerlo. Necesario para la continuidad de un
+ * negocio pequeño: sin esto, si quien creó el equipo lo deja, nadie puede
+ * volver a asignar un propietario (`changeRole` excluye OWNER a
+ * propósito). Transacción: las dos escrituras se hacen juntas — nunca
+ * debe quedar un equipo con dos owners, ni sin ninguno.
+ */
+export async function transferOwnership(workspaceId: string, nuevoOwnerId: string): Promise<MembershipActionResult> {
+  const userId = await verifySession();
+  if (nuevoOwnerId === userId) return { error: "Ya eres el propietario." };
+
+  try {
+    const [requester, target] = await Promise.all([
+      prisma.membership.findUnique({ where: { userId_workspaceId: { userId, workspaceId } } }),
+      prisma.membership.findUnique({ where: { userId_workspaceId: { userId: nuevoOwnerId, workspaceId } } }),
+    ]);
+    if (!requester || requester.status !== "ACTIVE" || requester.role !== "OWNER") {
+      return { error: "Solo el propietario actual puede transferir la propiedad." };
+    }
+    if (!target || target.status !== "ACTIVE") {
+      return { error: "Esa persona no es miembro activo de este equipo." };
+    }
+
+    await prisma.$transaction([
+      prisma.membership.update({ where: { userId_workspaceId: { userId, workspaceId } }, data: { role: "ADMIN" } }),
+      prisma.membership.update({
+        where: { userId_workspaceId: { userId: nuevoOwnerId, workspaceId } },
+        data: { role: "OWNER" },
+      }),
+    ]);
+
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { nombre: true } });
+    await createNotification({
+      userId: nuevoOwnerId,
+      type: "ROLE_CHANGED",
+      title: `Ahora eres el propietario de "${workspace?.nombre ?? "el equipo"}"`,
+      body: "Se te ha transferido la propiedad del equipo.",
+      link: "/equipo",
+    }).catch((err) => console.error("No se pudo crear la notificación de transferencia (no crítico):", err));
+    logActivity({ workspaceId, userId, tipo: "propiedad_transferida", entidad: "membership", entidadId: nuevoOwnerId, detalle: {} }).catch(() => {});
+
+    revalidatePath("/equipo");
+    return {};
+  } catch (err) {
+    console.error("Error al transferir la propiedad:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido transferir la propiedad. Inténtalo de nuevo." };
+  }
+}
+
+/**
  * Cambia el rol de un miembro ya activo. No se puede usar para asignar
- * OWNER (transferencia de propiedad, fuera de esta fase) ni para
- * cambiarte el rol a ti mismo (evita que un owner se autodegrade y se
- * quede sin poder deshacerlo).
+ * OWNER (para eso está `transferOwnership`, con su propio guardado) ni
+ * para cambiarte el rol a ti mismo (evita que un owner se autodegrade y
+ * se quede sin poder deshacerlo).
  */
 export async function changeRole(
   workspaceId: string,

@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, LogOut } from "lucide-react";
+import { Trash2, LogOut, Crown } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
-import { changeRole, removeMember, leaveWorkspace } from "@/app/(dashboard)/equipo/actions";
+import { changeRole, removeMember, leaveWorkspace, transferOwnership } from "@/app/(dashboard)/equipo/actions";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -24,15 +24,32 @@ export function MemberRow({
   workspaceId,
   member,
   canManage,
+  callerIsOwner = false,
 }: {
   workspaceId: string;
   member: WorkspaceMemberInfo;
   canManage: boolean;
+  /** Solo el OWNER actual puede transferir la propiedad — distinto de `canManage` (OWNER o ADMIN). */
+  callerIsOwner?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const canEditThis = canManage && !member.isSelf && member.role !== "OWNER";
+  const canTransferTo = callerIsOwner && !member.isSelf && member.role !== "OWNER" && member.status === "ACTIVE";
+
+  function handleTransferOwnership() {
+    if (!confirm(`¿Hacer a ${member.email} propietario del equipo? Tú pasarás a Administrador.`)) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await transferOwnership(workspaceId, member.userId);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function handleRoleChange(role: string) {
     setError(null);
@@ -106,6 +123,19 @@ export function MemberRow({
           </select>
         ) : (
           <span className="shrink-0 text-xs text-muted">{ROLE_LABELS[member.role] ?? member.role}</span>
+        )}
+
+        {canTransferTo && (
+          <button
+            type="button"
+            onClick={handleTransferOwnership}
+            disabled={pending}
+            aria-label={`Hacer a ${member.email} propietario del equipo`}
+            title="Hacer propietario"
+            className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-highlight-soft hover:text-highlight-strong focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          >
+            <Crown aria-hidden size={14} />
+          </button>
         )}
 
         {canEditThis && (
