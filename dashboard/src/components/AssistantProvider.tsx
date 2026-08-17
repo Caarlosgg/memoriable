@@ -131,6 +131,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }
 
   function handleNewConversation() {
+    // Si había una petición en vuelo de la conversación anterior, su
+    // respuesta llegaría tarde y se mezclaría con el estado de la nueva
+    // conversación (mismo `messages`/`conversationId` del hook) — se aborta
+    // primero para que no quede huérfana.
+    stop();
     setConversationId(crypto.randomUUID());
     setMessages([]);
     clearError();

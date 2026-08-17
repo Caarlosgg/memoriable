@@ -22,6 +22,12 @@ export const maxDuration = 60;
 
 const DEFAULT_MAX_QUESTIONS_PER_DAY = 30;
 const SOURCES_PER_ANSWER = 5;
+// Distancia coseno máxima para citar una nota como fuente automática — sin
+// esto, en un workspace con pocas notas el Asistente podía citar 3-4 que no
+// tenían nada que ver, solo por ser "las menos lejanas" de lo que había.
+// Mejor citar de menos que citar ruido; ver `encontrarTareaPendiente` en
+// assistantTools.ts para el umbral (más estricto) de las tools que ACTÚAN.
+const SOURCE_MAX_DISTANCE = 0.6;
 // Turnos de herramienta que se dejan encadenar antes de forzar la respuesta
 // final. Ya no es la defensa principal contra peticiones repetidas ("todos
 // los jueves durante 5 semanas") — para eso, crearEvento/registrarAhorro
@@ -130,7 +136,10 @@ export async function POST(req: Request) {
     try {
       const queryEmbedding = await resolveEmbedder().embedQuery(question);
       if (!queryEmbedding) return [];
-      const similar = await findSimilarMessages(workspaceId, queryEmbedding, { limit: SOURCES_PER_ANSWER });
+      const similar = await findSimilarMessages(workspaceId, queryEmbedding, {
+        limit: SOURCES_PER_ANSWER,
+        maxDistance: SOURCE_MAX_DISTANCE,
+      });
       return toAssistantSources(similar);
     } catch (err) {
       console.error("No se pudieron recuperar notas relevantes (se responde sin fuentes):", err);
@@ -204,12 +213,32 @@ export async function POST(req: Request) {
     },
     // No crítico: si guardar el historial falla, no debe tirar la
     // respuesta que el usuario ya está viendo — solo se registra el aviso.
-    onFinish: async ({ text }) => {
-      if (!question || !text) return;
+    //
+    // `text` puede venir vacío aunque el turno SÍ haya hecho algo: si
+    // `stopWhen` corta justo después de una llamada a herramienta (crear
+    // una nota, asignar una tarea…) sin que el modelo llegue a generar el
+    // mensaje de confirmación, antes se perdía el intercambio entero — el
+    // usuario veía el resultado en pantalla, pero al recargar desaparecía.
+    // `toolCalls` cubre ese caso con una respuesta de reserva corta.
+    onFinish: async ({ text, toolCalls }) => {
+      if (!question) return;
+      const respuesta = text || (toolCalls.length > 0 ? "Hecho — acción completada." : "");
+      if (!respuesta) return;
       try {
-        await saveExchange(userId, conversationId, question, text);
+        await saveExchange(userId, conversationId, question, respuesta);
       } catch (err) {
         console.error("No se pudo guardar el intercambio en el historial:", err);
+      }
+    },
+    // Si la generación se aborta a medias (p. ej. el cliente cierra la
+    // conexión, o un turno lento choca con `maxDuration`), `onFinish` nunca
+    // llega a llamarse — sin esto, el turno desaparecía en silencio.
+    onAbort: async () => {
+      if (!question) return;
+      try {
+        await saveExchange(userId, conversationId, question, "(La respuesta se interrumpió antes de completarse.)");
+      } catch (err) {
+        console.error("No se pudo guardar el intercambio interrumpido en el historial:", err);
       }
     },
   });
