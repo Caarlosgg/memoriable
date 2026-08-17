@@ -118,6 +118,7 @@ model User {
   chatMessages     ChatMessage[]
   assistantMemories AssistantMemory[]
   activityLogs     ActivityLog[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -137,6 +138,16 @@ model Workspace {
   /// alta de cuenta (registro/actions.ts, googleOAuth.ts).
   personal  Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  /// Nombres personalizados de las 3 columnas del tablero (Fase Equipo) —
+  /// mapa `Record<EstadoTarea, string>`, solo las que se han renombrado
+  /// (ausente = usa la etiqueta por defecto, "Por hacer"/"En progreso"/
+  /// "Hecho", ver ESTADO_PRESENTATION en lib/kanban.ts). El color y el
+  /// propio flujo de trabajo (3 estados fijos, con qué se considera "en
+  /// curso"/"hecho") no cambian — un obrador puede llamar "Pedidos" a
+  /// "Por hacer" sin que el resto de la lógica del tablero necesite saber
+  /// nada de eso.
+  boardLabels Json @default("{}")
 
   memberships     Membership[]
   messages        Message[]
@@ -322,6 +333,24 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+/// Suscripción push del navegador (Web Push estándar, VAPID) — un usuario
+/// puede tener varias (un móvil, un portátil...). Se crea al aceptar el
+/// permiso de notificaciones desde /cuenta; se borra sola si el navegador
+/// la invalida (endpoint caducado, ver lib/webPush.ts).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 /// Registro de actividad del workspace (Fase Equipo) — "qué ha pasado en

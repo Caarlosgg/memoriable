@@ -80,6 +80,7 @@ model User {
   chatMessages     ChatMessage[]
   assistantMemories AssistantMemory[]
   activityLogs     ActivityLog[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -92,6 +93,9 @@ model Workspace {
   nombre    String
   personal  Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  /// Ver ../../prisma/schema.prisma: nombres personalizados de las 3 columnas del tablero.
+  boardLabels Json @default("{}")
 
   memberships    Membership[]
   messages       Message[]
@@ -226,6 +230,21 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+/// Ver ../../prisma/schema.prisma: suscripción push del navegador (Web Push, VAPID).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 /// Ver ../../prisma/schema.prisma: registro de actividad del workspace (Fase Equipo).

@@ -1,6 +1,7 @@
 import "server-only";
 import type { NotificationType } from "@prisma/client";
 import { prisma } from "./prisma";
+import { sendPushToUser } from "./webPush";
 
 export interface CreateNotificationInput {
   userId: string;
@@ -20,12 +21,19 @@ export interface CreateNotificationInput {
  * ausente = activado): si el destinatario ha desactivado ESTE tipo
  * explícitamente, no se crea la fila — mismo criterio "silencioso, no
  * fallido" que el resto de la función.
+ *
+ * Además de guardarla en la bandeja, intenta un push al navegador (ver
+ * lib/webPush.ts) — best-effort de verdad: si falla, la notificación ya
+ * está guardada, así que nunca se propaga el error hacia arriba.
  */
 export async function createNotification(input: CreateNotificationInput): Promise<void> {
   const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { notificationPrefs: true } });
   const prefs = (user?.notificationPrefs ?? {}) as Partial<Record<NotificationType, boolean>>;
   if (prefs[input.type] === false) return;
   await prisma.notification.create({ data: input });
+  sendPushToUser(input.userId, { title: input.title, body: input.body, link: input.link }).catch((err) => {
+    console.error("No se pudo mandar el push de la notificación (no crítico):", err);
+  });
 }
 
 /** Notificaciones de un usuario, más recientes primero — bandeja completa (/notificaciones) o la campana (con `limit` bajo). */

@@ -54,3 +54,42 @@ self.addEventListener("fetch", (event) => {
   // Todo lo demás (el documento HTML, que lleva datos incrustados; RSC
   // payloads; etc.) no se intercepta: va directo a la red.
 });
+
+// Push notifications (Web Push estándar, VAPID) — ver lib/webPush.ts en el
+// servidor. El payload es JSON plano: { title, body, link }.
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    return;
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "MemorIAble", {
+      body: payload.body,
+      icon: "/icons/192",
+      badge: "/icons/192",
+      data: { link: payload.link || "/" },
+    }),
+  );
+});
+
+// Al pulsar el aviso: si ya hay una pestaña abierta, la enfoca y navega ahí
+// dentro (sin abrir una segunda); si no, abre una nueva en el enlace.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const link = event.notification.data?.link || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) {
+          client.focus();
+          if ("navigate" in client) client.navigate(link);
+          return;
+        }
+      }
+      return self.clients.openWindow(link);
+    }),
+  );
+});

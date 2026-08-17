@@ -139,3 +139,44 @@ export async function setNotificationPref(type: NotificationType, enabled: boole
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
   }
 }
+
+export interface PushSubscriptionInput {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+/** Guarda una suscripción push del navegador — se llama tras aceptar el permiso de notificaciones (ver PushNotificationsToggle.tsx). `endpoint` es único: si ya existía (mismo navegador, re-suscrito), la actualiza en vez de duplicarla. */
+export async function savePushSubscription(subscription: PushSubscriptionInput): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  try {
+    await prisma.pushSubscription.upsert({
+      where: { endpoint: subscription.endpoint },
+      update: { userId, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
+      create: {
+        userId,
+        endpoint: subscription.endpoint,
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
+      },
+    });
+    return {};
+  } catch (err) {
+    console.error("No se pudo guardar la suscripción push:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido activar. Inténtalo de nuevo." };
+  }
+}
+
+/** Borra una suscripción push (al desactivar el toggle, o si el navegador la invalida). */
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  await prisma.pushSubscription.deleteMany({ where: { endpoint } }).catch((err) => {
+    console.error("No se pudo borrar la suscripción push (no crítico):", err);
+  });
+}
+
+/** Si ESTE usuario ya tiene alguna suscripción push guardada — para pintar el toggle ya activado al cargar /cuenta (no dice si ESTE navegador está suscrito, ver PushNotificationsToggle.tsx). */
+export async function hasPushSubscription(): Promise<boolean> {
+  const userId = await verifySession();
+  const count = await prisma.pushSubscription.count({ where: { userId } });
+  return count > 0;
+}

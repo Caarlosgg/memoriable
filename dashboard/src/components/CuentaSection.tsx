@@ -8,16 +8,18 @@ import { ExportSection } from "@/components/ExportSection";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { NotificationPrefsForm } from "@/components/NotificationPrefsForm";
 import { HiddenCategoriesForm } from "@/components/HiddenCategoriesForm";
-import type { NotificationPrefs } from "@/app/(dashboard)/cuenta/actions";
+import { PushNotificationsToggle } from "@/components/PushNotificationsToggle";
+import { hasPushSubscription, type NotificationPrefs } from "@/app/(dashboard)/cuenta/actions";
 
 export async function CuentaSection() {
   const userId = await verifySession();
-  const [user, { workspaceId }] = await Promise.all([
+  const [user, { workspaceId }, pushEnabled] = await Promise.all([
     prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { email: true, telegramChatId: true, passwordHash: true, notificationPrefs: true },
     }),
     getActiveWorkspace(userId),
+    hasPushSubscription(),
   ]);
   const hiddenCategories = await getHiddenCategories(userId, workspaceId);
 
@@ -58,6 +60,8 @@ export async function CuentaSection() {
       <ThemeSettings />
 
       <NotificationPrefsForm initialPrefs={(user.notificationPrefs as NotificationPrefs | null) ?? {}} />
+
+      <PushNotificationsToggle initialEnabled={pushEnabled} />
 
       <HiddenCategoriesForm initialHidden={hiddenCategories} />
 
