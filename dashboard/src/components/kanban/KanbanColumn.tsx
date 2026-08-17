@@ -7,7 +7,7 @@ import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import { ESTADO_PRESENTATION } from "@/lib/kanban";
 import type { Category } from "@/lib/categories";
 import { MessageDetailDialog, type EditableFields } from "@/components/MessageDetailDialog";
-import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { KanbanCard } from "./KanbanCard";
 import type { KanbanDensity } from "./useKanbanDensity";
 
@@ -67,7 +67,7 @@ function KanbanColumnImpl({
   onUndoDelete,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: estado });
-  const { label, Icon } = ESTADO_PRESENTATION[estado];
+  const { label, Icon, color } = ESTADO_PRESENTATION[estado];
 
   const filtered = useMemo(
     () =>
@@ -95,7 +95,7 @@ function KanbanColumnImpl({
         id={`columna-${estado}`}
         className="flex items-center gap-2 text-sm font-semibold text-ink"
       >
-        <Icon aria-hidden size={16} className="text-accent" />
+        <Icon aria-hidden size={16} className={color} />
         {label}
         <span className="ml-auto rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-muted">
           {filtered.length}

@@ -5,10 +5,17 @@ import { esAccionable } from "./categories";
 /** Columnas del tablero, de izquierda a derecha. Única fuente de verdad del orden. */
 export const ESTADOS_TABLERO: readonly EstadoTarea[] = ["POR_HACER", "EN_PROGRESO", "HECHO"] as const;
 
-export const ESTADO_PRESENTATION: Record<EstadoTarea, { label: string; Icon: LucideIcon }> = {
-  POR_HACER: { label: "Por hacer", Icon: Circle },
-  EN_PROGRESO: { label: "En progreso", Icon: CircleDot },
-  HECHO: { label: "Hecho", Icon: CircleCheckBig },
+/**
+ * `color`/`colorSoft` reutilizan los mismos tokens que `PRIORIDAD_PRESENTATION`
+ * — sin colores nuevos. EN_PROGRESO usa el mismo verde que `WorkingOnControl`
+ * ya usa para "en curso" (coherencia con ese indicador); HECHO usa su
+ * versión sólida (lectura clara de "completado"); POR_HACER se queda
+ * neutro, como estaba.
+ */
+export const ESTADO_PRESENTATION: Record<EstadoTarea, { label: string; Icon: LucideIcon; color: string; colorSoft: string }> = {
+  POR_HACER: { label: "Por hacer", Icon: Circle, color: "text-muted", colorSoft: "bg-paper-line/60" },
+  EN_PROGRESO: { label: "En progreso", Icon: CircleDot, color: "text-accent-strong", colorSoft: "bg-accent-soft" },
+  HECHO: { label: "Hecho", Icon: CircleCheckBig, color: "text-accent-ink", colorSoft: "bg-accent-strong" },
 };
 
 /** Siguiente estado en el ciclo Por hacer → En progreso → Hecho → Por hacer. */

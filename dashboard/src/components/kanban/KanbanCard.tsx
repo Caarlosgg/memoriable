@@ -13,7 +13,7 @@ import { checklistToArray, checklistProgress } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
 import { AssigneeControl } from "@/components/AssigneeControl";
 import { PostponeControl } from "@/components/PostponeControl";
-import type { WorkspaceMemberInfo } from "@/app/(dashboard)/equipo/actions";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import type { KanbanDensity } from "./useKanbanDensity";
 
 interface KanbanCardContentProps {
@@ -126,7 +126,8 @@ export function KanbanCardContent({
   const { Icon: CategoryIcon, color } = presentCategory(message.categoria);
   const priority = PRIORIDAD_PRESENTATION[message.prioridad];
   const PriorityIcon = PRIORIDAD_ICON;
-  const EstadoIcon = ESTADO_PRESENTATION[message.estado].Icon;
+  const estado = ESTADO_PRESENTATION[message.estado];
+  const EstadoIcon = estado.Icon;
   const compacta = density === "compacta";
 
   const [addingTag, setAddingTag] = useState(false);
@@ -195,16 +196,16 @@ export function KanbanCardContent({
                 onCycleEstado(message.id);
               }}
               title="Cambiar estado"
-              aria-label={`Estado ${ESTADO_PRESENTATION[message.estado].label}. Cambiar.`}
-              className="flex items-center gap-1 rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-ink transition-[filter] hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              aria-label={`Estado ${estado.label}. Cambiar.`}
+              className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-[filter] hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${estado.colorSoft} ${estado.color}`}
             >
               <EstadoIcon aria-hidden size={11} />
-              {ESTADO_PRESENTATION[message.estado].label}
+              {estado.label}
             </button>
           ) : (
-            <span className="flex items-center gap-1 rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-ink">
+            <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${estado.colorSoft} ${estado.color}`}>
               <EstadoIcon aria-hidden size={11} />
-              {ESTADO_PRESENTATION[message.estado].label}
+              {estado.label}
             </span>
           )}
           {onCyclePrioridad ? (
