@@ -27,6 +27,44 @@ function clearEnProgresoIfDone(estado?: EstadoTarea, categoria?: string): Prisma
   return shouldClearEnProgreso(estado, categoria) ? { enProgresoPorId: null, enProgresoDesde: null } : {};
 }
 
+const MAX_BOARD_LABEL_LENGTH = 30;
+
+/**
+ * Renombra una columna del tablero (Fase Equipo) para todo el workspace —
+ * `nombre: null`/vacío quita el override y vuelve a la etiqueta por
+ * defecto (ver ESTADO_PRESENTATION en lib/kanban.ts). El flujo en sí (3
+ * estados fijos) no cambia, solo cómo se llaman — mismo permiso que
+ * cualquier otro cambio de contenido compartido (`canWrite`, no solo
+ * admin/owner).
+ */
+export async function setBoardLabel(estado: EstadoTarea, nombre: string | null): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  const trimmed = nombre?.trim() ?? "";
+  if (trimmed.length > MAX_BOARD_LABEL_LENGTH) {
+    return { error: `El nombre no puede tener más de ${MAX_BOARD_LABEL_LENGTH} caracteres.` };
+  }
+
+  try {
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { boardLabels: true } });
+    const labels = { ...(workspace?.boardLabels as Partial<Record<EstadoTarea, string>> | null) };
+    if (trimmed) labels[estado] = trimmed;
+    else delete labels[estado];
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { boardLabels: labels as Prisma.InputJsonValue },
+    });
+    revalidatePath("/pendientes");
+    return {};
+  } catch (err) {
+    console.error("No se pudo renombrar la columna del tablero:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido guardar. Inténtalo de nuevo." };
+  }
+}
+
 /**
  * Mueve una tarjeta del tablero a otra columna. `hecho` se mantiene
  * sincronizado con `estado` (hecho = estado === HECHO): el bot y el resumen

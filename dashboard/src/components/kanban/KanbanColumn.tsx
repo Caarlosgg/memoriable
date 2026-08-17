@@ -1,8 +1,9 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { Pencil, Check, X } from "lucide-react";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import { ESTADO_PRESENTATION } from "@/lib/kanban";
 import type { Category } from "@/lib/categories";
@@ -32,6 +33,11 @@ interface KanbanColumnProps {
   onSaved: (id: string, patch: EditableFields) => void;
   onDeleted: (id: string) => void;
   onUndoDelete: (id: string) => void;
+  /** Nombre personalizado de esta columna (ver Workspace.boardLabels) — ausente = etiqueta por defecto. */
+  label?: string;
+  /** VIEWER no puede renombrar — mismo permiso que crear/editar contenido. */
+  canRename?: boolean;
+  onRename?: (estado: EstadoTarea, nombre: string | null) => void;
 }
 
 /**
@@ -65,9 +71,25 @@ function KanbanColumnImpl({
   onSaved,
   onDeleted,
   onUndoDelete,
+  label: customLabel,
+  canRename = false,
+  onRename,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: estado });
-  const { label, Icon, color } = ESTADO_PRESENTATION[estado];
+  const { label: defaultLabel, Icon, color } = ESTADO_PRESENTATION[estado];
+  const label = customLabel || defaultLabel;
+  const [editing, setEditing] = useState(false);
+  const [nameInput, setNameInput] = useState(label);
+
+  function startEditing() {
+    setNameInput(label);
+    setEditing(true);
+  }
+  function handleSaveLabel() {
+    const trimmed = nameInput.trim();
+    onRename?.(estado, trimmed === defaultLabel || trimmed === "" ? null : trimmed);
+    setEditing(false);
+  }
 
   const filtered = useMemo(
     () =>
@@ -91,16 +113,60 @@ function KanbanColumnImpl({
         isOver ? "border-accent bg-accent-soft/60" : "border-paper-line bg-paper-raised/60"
       }`}
     >
-      <h3
-        id={`columna-${estado}`}
-        className="flex items-center gap-2 text-sm font-semibold text-ink"
-      >
-        <Icon aria-hidden size={16} className={color} />
-        {label}
-        <span className="ml-auto rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-muted">
-          {filtered.length}
-        </span>
-      </h3>
+      {editing ? (
+        <div className="flex items-center gap-1.5">
+          <Icon aria-hidden size={16} className={`shrink-0 ${color}`} />
+          <input
+            autoFocus
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSaveLabel();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            maxLength={30}
+            aria-label={`Nombre de la columna ${defaultLabel}`}
+            className="min-w-0 flex-1 rounded-lg border border-accent bg-paper px-2 py-1 text-sm text-ink outline-none"
+          />
+          <button
+            type="button"
+            onClick={handleSaveLabel}
+            aria-label="Guardar nombre"
+            className="shrink-0 rounded-full p-1 text-accent transition-colors hover:bg-accent-soft"
+          >
+            <Check aria-hidden size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            aria-label="Cancelar"
+            className="shrink-0 rounded-full p-1 text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+          >
+            <X aria-hidden size={15} />
+          </button>
+        </div>
+      ) : (
+        <h3
+          id={`columna-${estado}`}
+          className="flex items-center gap-2 text-sm font-semibold text-ink"
+        >
+          <Icon aria-hidden size={16} className={color} />
+          {label}
+          {canRename && (
+            <button
+              type="button"
+              onClick={startEditing}
+              aria-label={`Renombrar la columna ${label}`}
+              className="rounded-full p-1 text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong"
+            >
+              <Pencil aria-hidden size={12} />
+            </button>
+          )}
+          <span className="ml-auto rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-muted">
+            {filtered.length}
+          </span>
+        </h3>
+      )}
 
       <SortableContext items={filtered.map((m) => m.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="flex min-h-[80px] flex-col gap-2.5">

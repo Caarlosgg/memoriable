@@ -35,6 +35,7 @@ import {
   postponeMessage,
   startWorkingOn,
   stopWorkingOn,
+  setBoardLabel,
 } from "@/app/(dashboard)/actions";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import type { EditableFields } from "@/components/MessageDetailDialog";
@@ -60,15 +61,36 @@ export function KanbanBoard({
   initialColumns,
   members = [],
   currentUserId,
+  boardLabels: initialBoardLabels = {},
+  canRenameColumns = false,
 }: {
   initialColumns: BoardColumn[];
   members?: WorkspaceMemberInfo[];
   currentUserId: string;
+  /** Nombres personalizados de columna por workspace (ver Workspace.boardLabels) — ausente = etiqueta por defecto. */
+  boardLabels?: Partial<Record<EstadoTarea, string>>;
+  /** VIEWER no puede renombrar columnas — mismo permiso que crear/editar contenido (`canWrite`). */
+  canRenameColumns?: boolean;
 }) {
   const [byEstado, setByEstado] = useState<ByEstado>(
     () => Object.fromEntries(initialColumns.map((c) => [c.estado, c.messages])) as ByEstado,
   );
   const [density, setDensity] = useKanbanDensity();
+  const [boardLabels, setBoardLabels] = useState(initialBoardLabels);
+
+  const handleRenameColumn = useCallback((estado: EstadoTarea, nombre: string | null) => {
+    const previous = boardLabels[estado];
+    setBoardLabels((prev) => {
+      const next = { ...prev };
+      if (nombre) next[estado] = nombre;
+      else delete next[estado];
+      return next;
+    });
+    setBoardLabel(estado, nombre).catch((err) => {
+      console.error("No se pudo renombrar la columna:", err);
+      setBoardLabels((prev) => ({ ...prev, [estado]: previous }));
+    });
+  }, [boardLabels]);
 
   // Filtro visual (Fase F): no toca `byEstado` (los datos reales, con los
   // que trabajan drag/optimista), solo lo que se pasa a renderizar.
@@ -573,6 +595,9 @@ export function KanbanBoard({
               onSaved={handleSaved}
               onDeleted={handleDeleted}
               onUndoDelete={handleUndoDelete}
+              label={boardLabels[estado]}
+              canRename={canRenameColumns}
+              onRename={handleRenameColumn}
             />
           ))}
         </div>

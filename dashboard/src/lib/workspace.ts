@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
-import type { Prisma, WorkspaceRole, MembershipStatus, MemberPresence } from "@prisma/client";
+import type { Prisma, WorkspaceRole, MembershipStatus, MemberPresence, EstadoTarea } from "@prisma/client";
 import { prisma } from "./prisma";
 
 export const ACTIVE_WORKSPACE_COOKIE = "active_workspace";
@@ -183,6 +183,17 @@ export const getHiddenCategories = cache(async (userId: string, workspaceId: str
     select: { hiddenCategories: true },
   });
   return membership?.hiddenCategories ?? [];
+});
+
+/**
+ * Nombres personalizados de las 3 columnas del tablero de este workspace
+ * (Fase Equipo) — ver `Workspace.boardLabels`. Cacheada por petición: la
+ * pide tanto `BoardSection` como cualquier otro sitio que muestre las
+ * columnas del tablero en la misma navegación.
+ */
+export const getBoardLabels = cache(async (workspaceId: string): Promise<Partial<Record<EstadoTarea, string>>> => {
+  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { boardLabels: true } });
+  return (workspace?.boardLabels as Partial<Record<EstadoTarea, string>> | null) ?? {};
 });
 
 /**
