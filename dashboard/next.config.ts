@@ -8,6 +8,22 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  experimental: {
+    serverActions: {
+      /**
+       * Las peticiones de Server Action van capadas a 1 MB por defecto
+       * (ver node_modules/next/dist/docs/01-app/02-guides/server-actions.md),
+       * pero `blobUpload.ts` valida hasta 8 MB de imagen. Es decir: cualquier
+       * captura de pantalla de más de 1 MB —una de un monitor grande lo pasa
+       * de sobra— ya fallaba con un error opaco del framework ANTES de llegar
+       * a nuestra validación, y el usuario solo veía que "no se puede subir".
+       *
+       * 10 MB = los 8 MB que de verdad admitimos + el margen que se lleva la
+       * codificación multipart del formulario.
+       */
+      bodySizeLimit: "10mb",
+    },
+  },
 };
 
 // Sentry (observabilidad, ver instrumentation.ts/sentry.*.config.ts): solo

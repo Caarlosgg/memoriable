@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronsUpDown, Check, Users } from "lucide-react";
+import { ChevronsUpDown, Check } from "lucide-react";
+import { modoDe, MODO_PRESENTATION } from "@/lib/modo";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -37,6 +38,16 @@ export function WorkspaceSwitcher({
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
   const selectable = workspaces.filter((w) => w.status === "ACTIVE");
   const invitations = workspaces.filter((w) => w.status === "PENDING");
+  // El selector es lo único que dice en qué CONTEXTO estás. Antes usaba el
+  // mismo icono  para tu espacio personal y para un equipo, así que
+  // cambiar de uno a otro no se notaba — y con el contenido cambiando debajo,
+  // eso confunde. Ahora el icono y el color son los del modo (ver lib/modo.ts).
+  const modo = modoDe(active?.personal ?? true);
+  const { Icon: ModoIcon, acento, descripcion } = MODO_PRESENTATION[modo];
+  // Personal siempre primero y separado: no es "un espacio más" de la lista,
+  // es el tuyo.
+  const personal = selectable.filter((w) => w.personal);
+  const equipos = selectable.filter((w) => !w.personal);
 
   function handleSelect(workspaceId: string) {
     setOpen(false);
@@ -68,10 +79,13 @@ export function WorkspaceSwitcher({
           title={collapsed ? (active?.nombre ?? "Workspace") : undefined}
           className="relative flex w-full items-center gap-2 rounded-lg border border-paper-line px-3 py-2 text-sm text-ink transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-60"
         >
-          <Users aria-hidden size={16} className="shrink-0 text-muted" />
+          <ModoIcon aria-hidden size={16} className={`shrink-0 ${acento}`} />
           {!collapsed && (
             <>
-              <span className="flex-1 truncate text-left font-medium">{active?.nombre ?? "Personal"}</span>
+              <span className="flex min-w-0 flex-1 flex-col text-left">
+                <span className="truncate font-medium leading-tight">{active?.nombre ?? "Personal"}</span>
+                <span className="truncate text-[11px] leading-tight text-muted">{descripcion}</span>
+              </span>
               <ChevronsUpDown aria-hidden size={14} className="shrink-0 text-muted" />
             </>
           )}
@@ -86,13 +100,27 @@ export function WorkspaceSwitcher({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>Tus espacios</DropdownMenuLabel>
-        {selectable.map((w) => (
+        <DropdownMenuLabel>Tu espacio</DropdownMenuLabel>
+        {personal.map((w) => (
           <DropdownMenuItem key={w.id} onSelect={() => handleSelect(w.id)}>
+            <MODO_PRESENTATION.personal.Icon aria-hidden size={14} className={MODO_PRESENTATION.personal.acento} />
             <span className="flex-1 truncate">{w.nombre}</span>
             {w.id === activeWorkspaceId && <Check aria-hidden size={14} className="text-accent" />}
           </DropdownMenuItem>
         ))}
+        {equipos.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Tus equipos</DropdownMenuLabel>
+            {equipos.map((w) => (
+              <DropdownMenuItem key={w.id} onSelect={() => handleSelect(w.id)}>
+                <MODO_PRESENTATION.equipo.Icon aria-hidden size={14} className={MODO_PRESENTATION.equipo.acento} />
+                <span className="flex-1 truncate">{w.nombre}</span>
+                {w.id === activeWorkspaceId && <Check aria-hidden size={14} className="text-accent" />}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
         {invitations.length > 0 && (
           <>
             <DropdownMenuSeparator />

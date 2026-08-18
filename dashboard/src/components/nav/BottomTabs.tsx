@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Ellipsis } from "lucide-react";
 import { useAssistant } from "@/components/AssistantProvider";
-import { NAV_ITEMS } from "./navItems";
+import { navItemsDeModo } from "./navItems";
+import { modoDe } from "@/lib/modo";
 
 /**
  * Barra de pestañas inferior en móvil: con pocos destinos, se siente más
@@ -16,14 +17,10 @@ const MAX_TABS_MOVIL = 4;
 
 export function BottomTabs({ isPersonal, hasUnreadChat = false }: { isPersonal: boolean; hasUnreadChat?: boolean }) {
   const pathname = usePathname();
-  // Ahorros es siempre personal (ver lib/workspace.ts) — desaparece del
-  // menú en modo equipo. El chat ya no depende del workspace activo (ver
-  // el mismo comentario en Sidebar.tsx).
-  const candidatos = NAV_ITEMS.filter((item) => {
-    if (!item.enMovil) return false;
-    if (item.href === "/ahorros") return isPersonal;
-    return true;
-  });
+  // Mismo criterio de modo que el menú de escritorio (ver navItemsDeModo),
+  // filtrado además por lo que cabe en una barra de móvil. Antes la regla de
+  // modo estaba duplicada aquí y en Sidebar, y divergieron.
+  const candidatos = navItemsDeModo(modoDe(isPersonal)).filter((item) => item.enMovil);
   // TOPE DURO de 4 + "Más". Al dejar de filtrar el chat por workspace, en
   // modo personal pasaban a caber 6 pestañas más "Más": en una pantalla de
   // teléfono eso son ~7 columnas de 50px, con las etiquetas partidas o

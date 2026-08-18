@@ -9,7 +9,8 @@ import { ChevronsLeft, ChevronsRight, LogOut, Search, ShieldCheck } from "lucide
 import { logout } from "@/app/actions";
 import type { WorkspaceSummary } from "@/app/(dashboard)/equipo/actions";
 import { useAssistant } from "@/components/AssistantProvider";
-import { NAV_ITEMS } from "./navItems";
+import { navItemsDeModo } from "./navItems";
+import { modoDe } from "@/lib/modo";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { NotificationBell } from "./NotificationBell";
 
@@ -72,16 +73,13 @@ export function Sidebar({
   // indicador, la única forma de saberlo era volver a /asistente y
   // comprobar. No se muestra estando ya ahí: el propio chat ya lo enseña.
   const { isBusy: assistantBusy } = useAssistant();
-  // Ahorros es siempre personal (ver lib/workspace.ts) — desaparece del
-  // menú en modo equipo. El chat ya no depende del workspace activo (es
-  // del usuario, no del equipo — ver ChatConversation en el schema): se ve
-  // en los dos modos.
-  const baseItems = NAV_ITEMS.filter((item) => {
-    if (item.href === "/ahorros") return isPersonal;
-    return true;
-  });
+  // Qué destinos existen en cada modo lo decide navItems.ts, no este
+  // componente — antes la regla vivía duplicada aquí y en BottomTabs, y
+  // divergieron.
+  const modo = modoDe(isPersonal);
+  const baseItems = navItemsDeModo(modo);
   const items = isSuperAdmin
-    ? [...baseItems, { href: "/admin", label: "Admin", Icon: ShieldCheck }]
+    ? [...baseItems, { href: "/admin", label: "Admin", Icon: ShieldCheck, modos: [modo] }]
     : baseItems;
 
   return (
