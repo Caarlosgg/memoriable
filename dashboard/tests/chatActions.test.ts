@@ -24,13 +24,6 @@ vi.mock("@/lib/chatRealtime", () => ({
   isSupabaseRealtimeConfigured: () => false,
 }));
 
-const getActiveWorkspace = vi.fn();
-const isActiveMember = vi.fn();
-vi.mock("@/lib/workspace", () => ({
-  getActiveWorkspace: (...args: unknown[]) => getActiveWorkspace(...args),
-  isActiveMember: (...args: unknown[]) => isActiveMember(...args),
-}));
-
 const participantFindUnique = vi.fn();
 const participantUpsert = vi.fn();
 const chatMessageDeleteMany = vi.fn();
@@ -39,6 +32,7 @@ const chatMessageFindMany = vi.fn();
 const chatMessageFindUnique = vi.fn();
 const conversationFindFirst = vi.fn();
 const conversationUpsert = vi.fn();
+const userFindUnique = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     chatConversationParticipant: {
@@ -60,6 +54,10 @@ vi.mock("@/lib/prisma", () => ({
       upsert: (...args: unknown[]) => conversationUpsert(...args),
       create: vi.fn(),
     },
+    user: {
+      findUnique: (...args: unknown[]) => userFindUnique(...args),
+      count: vi.fn(),
+    },
     membership: { findMany: vi.fn(async () => []), count: vi.fn() },
   },
 }));
@@ -67,10 +65,6 @@ vi.mock("@/lib/prisma", () => ({
 const CONVERSACION_PROPIA = { conversation: { id: "c1", workspaceId: "w1", type: "GROUP" } };
 
 beforeEach(() => {
-  getActiveWorkspace.mockReset();
-  getActiveWorkspace.mockResolvedValue({ workspaceId: "w1", isPersonal: false, role: "MEMBER" });
-  isActiveMember.mockReset();
-  isActiveMember.mockResolvedValue(true);
   participantFindUnique.mockReset();
   participantFindUnique.mockResolvedValue(CONVERSACION_PROPIA);
   participantUpsert.mockReset();
@@ -81,6 +75,8 @@ beforeEach(() => {
   chatMessageFindUnique.mockReset();
   conversationFindFirst.mockReset();
   conversationUpsert.mockReset();
+  userFindUnique.mockReset();
+  userFindUnique.mockResolvedValue({ id: "u2" });
 });
 
 describe("deleteChatMessage", () => {
@@ -194,21 +190,34 @@ describe("createDirectConversation", () => {
     expect(conversationUpsert).not.toHaveBeenCalled();
   });
 
-  it("rechaza a quien no es miembro activo del workspace", async () => {
-    isActiveMember.mockResolvedValue(false);
+  it("rechaza a alguien sin cuenta en la app", async () => {
+    userFindUnique.mockResolvedValue(null);
     const { createDirectConversation } = await import("../src/app/(dashboard)/chat/actions");
-    const result = await createDirectConversation("u-fuera");
+    const result = await createDirectConversation("u-inexistente");
 
-    expect(result.error).toMatch(/no es miembro de este equipo/);
+    expect(result.error).toMatch(/no tiene cuenta en MemorIAble/);
     expect(conversationUpsert).not.toHaveBeenCalled();
   });
 
+  it("no depende de ningún workspace: crea el hilo sin comprobar equipo ni espacio activo", async () => {
+    conversationUpsert.mockResolvedValue({ id: "c-directa" });
+    const { createDirectConversation } = await import("../src/app/(dashboard)/chat/actions");
+    const result = await createDirectConversation("u2");
+
+    expect(result.conversationId).toBe("c-directa");
+    expect(conversationUpsert.mock.calls[0]![0].create.workspaceId).toBeUndefined();
+  });
+
+  // ÚLTIMO test de este describe a propósito: `vi.doMock` + `vi.resetModules`
+  // cambia qué usuario devuelve `verifySession` para el resto del archivo, y
+  // un test posterior que asumiera seguir siendo "u1" fallaría por eso, no
+  // por su propia lógica.
   it("usa una clave estable entre los dos participantes, para no duplicar el hilo según quién lo abra", async () => {
     conversationUpsert.mockResolvedValue({ id: "c-directa" });
     const { createDirectConversation } = await import("../src/app/(dashboard)/chat/actions");
 
     await createDirectConversation("u2");
-    const primeraClave = conversationUpsert.mock.calls[0]![0].where.workspaceId_directKey.directKey;
+    const primeraClave = conversationUpsert.mock.calls[0]![0].where.directKey;
 
     conversationUpsert.mockClear();
     // El mismo par, pero mirado desde el otro lado: la clave debe coincidir
@@ -217,17 +226,9 @@ describe("createDirectConversation", () => {
     vi.resetModules();
     const { createDirectConversation: crearDesdeU2 } = await import("../src/app/(dashboard)/chat/actions");
     await crearDesdeU2("u1");
-    const segundaClave = conversationUpsert.mock.calls[0]![0].where.workspaceId_directKey.directKey;
+    const segundaClave = conversationUpsert.mock.calls[0]![0].where.directKey;
 
     expect(primeraClave).toBe(segundaClave);
-  });
-
-  it("no está disponible en el espacio personal (no hay con quién hablar)", async () => {
-    getActiveWorkspace.mockResolvedValue({ workspaceId: "w-personal", isPersonal: true, role: "OWNER" });
-    const { createDirectConversation } = await import("../src/app/(dashboard)/chat/actions");
-    const result = await createDirectConversation("u2");
-
-    expect(result.error).toMatch(/espacio personal/);
   });
 });
 

@@ -1,4 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+// Import ESTÁTICO a propósito: `vi.mock` lo hoistea Vitest por encima de
+// los imports, así que no hace falta el `await import()` dentro de cada
+// test (y este archivo no usa `vi.doMock`/`resetModules`, que sería el
+// único motivo real para hacerlo dinámico).
+//
+// Con el import dentro del primer `it()`, compilar este módulo (Prisma, el
+// pipeline, la búsqueda vectorial, el contexto de equipo) se le cargaba al
+// presupuesto de tiempo de ESE test — que con la suite entera en paralelo
+// hacía saltar el timeout de forma intermitente en un test de una función
+// pura. Estáticamente, ese coste se paga al recolectar, fuera del timeout.
+import { createAssistantTools, resolverMiembro } from "../src/lib/assistantTools";
 import type { StoredMessage } from "../src/lib/botPipeline/repository";
 
 // @sentry/nextjs de verdad es pesado de importar (arrastra instrumentación
@@ -121,54 +132,17 @@ function fakePendiente(overrides: Partial<import("@prisma/client").Message> = {}
 }
 
 describe("resolverMiembro", () => {
-  const members = [
-    { userId: "u-benito", email: "benitoelrey@example.com", isSelf: false },
-    { userId: "u-ana", email: "ana.garcia@example.com", isSelf: false },
-  ];
-
-  it("resuelve por email completo (sin importar mayúsculas)", async () => {
-    const { resolverMiembro } = await import("../src/lib/assistantTools");
-    expect(resolverMiembro("BenitoElRey@example.com", members)).toMatchObject({ userId: "u-benito" });
-  });
-
-  it("resuelve por la parte local del email (lo que la gente usa como 'nombre')", async () => {
-    const { resolverMiembro } = await import("../src/lib/assistantTools");
-    expect(resolverMiembro("benitoelrey", members)).toMatchObject({ userId: "u-benito" });
-  });
-
-  it("resuelve por coincidencia parcial en cualquier sentido (apodo corto)", async () => {
-    const { resolverMiembro } = await import("../src/lib/assistantTools");
-    expect(resolverMiembro("ana", members)).toMatchObject({ userId: "u-ana" });
-  });
-
-  it("ignora tildes/mayúsculas al comparar", async () => {
-    const { resolverMiembro } = await import("../src/lib/assistantTools");
-    const withAccent = [{ userId: "u-x", email: "maría@example.com", isSelf: false }];
-    expect(resolverMiembro("Maria", withAccent)).toMatchObject({ userId: "u-x" });
-  });
-
-  it("una coincidencia exacta de la parte local gana a una parcial anterior en la lista (no depende del orden)", async () => {
-    // Bug real encontrado en revisión de código: antes, la comprobación
-    // exacta y la parcial vivían en el mismo `.find()`, así que si
-    // "ana.garcia@..." aparecía ANTES que "ana@..." en la lista,
-    // `.includes("ana")` la hacía ganar por delante de la coincidencia
-    // exacta — asignando en silencio a la persona equivocada.
-    const { resolverMiembro } = await import("../src/lib/assistantTools");
-    const conAmbas = [
-      { userId: "u-ana-garcia", email: "ana.garcia@example.com", isSelf: false },
-      { userId: "u-ana", email: "ana@example.com", isSelf: false },
+  // La lógica de coincidencia vive en `matchPersonaPorEmail` (textMatch.ts) y
+  // se prueba a fondo allí, sin arrastrar todo el grafo de assistantTools.
+  // Aquí solo se comprueba que `resolverMiembro` delega de verdad — que es
+  // lo único que puede romperse en este módulo.
+  it("delega en el criterio compartido de coincidencia por email", async () => {
+    const members = [
+      { userId: "u-benito", email: "benitoelrey@example.com", isSelf: false },
+      { userId: "u-ana", email: "ana.garcia@example.com", isSelf: false },
     ];
-    expect(resolverMiembro("ana", conAmbas)).toMatchObject({ userId: "u-ana" });
-  });
-
-  it("devuelve null si nadie encaja — nunca asigna 'a lo que más se parezca' sin overlap real", async () => {
-    const { resolverMiembro } = await import("../src/lib/assistantTools");
+    expect(resolverMiembro("benitoelrey", members)).toMatchObject({ userId: "u-benito" });
     expect(resolverMiembro("pedro", members)).toBeNull();
-  });
-
-  it("devuelve null con una cadena vacía", async () => {
-    const { resolverMiembro } = await import("../src/lib/assistantTools");
-    expect(resolverMiembro("   ", members)).toBeNull();
   });
 });
 
@@ -207,7 +181,6 @@ describe("createAssistantTools", () => {
   });
 
   it("crearNota guarda el contenido con el mismo pipeline que la captura rápida, ligado al usuario de la sesión, e invalida Tablero/Categorías", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearNota.execute!(
@@ -227,7 +200,6 @@ describe("createAssistantTools", () => {
   });
 
   it("crearNota con asignadoA resuelve el miembro real y actualiza la nota ya guardada con su assigneeId", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.crearNota.execute!(
@@ -240,7 +212,6 @@ describe("createAssistantTools", () => {
   });
 
   it("crearNota con asignadoA que no coincide con nadie del equipo: guarda la nota sin asignar y lo avisa", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.crearNota.execute!(
@@ -258,7 +229,6 @@ describe("createAssistantTools", () => {
     // la escritura hubiera funcionado — el Asistente decía "asignada a X"
     // aunque la nota se hubiera guardado sin asignar de verdad.
     messageUpdate.mockRejectedValueOnce(new Error("conexión perdida"));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.crearNota.execute!(
@@ -272,7 +242,6 @@ describe("createAssistantTools", () => {
 
   it("ante un fallo al guardar, lanza un mensaje en español sin filtrar detalles internos", async () => {
     captureMessage.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -289,7 +258,6 @@ describe("createAssistantTools", () => {
     revalidatePath.mockImplementation(() => {
       throw new Error("revalidatePath fuera de contexto de petición");
     });
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearNota.execute!(
@@ -301,7 +269,6 @@ describe("createAssistantTools", () => {
   });
 
   it("crearEvento guarda la cita ligada al usuario de la sesión e invalida /calendario", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearEvento.execute!(
@@ -317,7 +284,6 @@ describe("createAssistantTools", () => {
   });
 
   it("crearEvento con repetir crea toda la serie en una sola llamada a la tool", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearEvento.execute!(
@@ -342,7 +308,6 @@ describe("createAssistantTools", () => {
   });
 
   it("crearEvento con asignadoA resuelve el miembro real y guarda assigneeId", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.crearEvento.execute!(
@@ -357,7 +322,6 @@ describe("createAssistantTools", () => {
   });
 
   it("crearEvento con asignadoA que no coincide con nadie del equipo: crea el evento sin asignar y lo avisa", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.crearEvento.execute!(
@@ -370,7 +334,6 @@ describe("createAssistantTools", () => {
   });
 
   it("crearEvento rechaza una fecha de inicio que no se puede interpretar", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -384,7 +347,6 @@ describe("createAssistantTools", () => {
 
   it("crearEvento: ante un fallo al guardar, lanza un mensaje en español sin detalles internos", async () => {
     eventoCreate.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -399,7 +361,6 @@ describe("createAssistantTools", () => {
     revalidatePath.mockImplementation(() => {
       throw new Error("revalidatePath fuera de contexto de petición");
     });
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.crearEvento.execute!(
@@ -411,7 +372,6 @@ describe("createAssistantTools", () => {
 
   it("completarTarea encuentra la pendiente por similitud semántica (aunque no repita el texto exacto) y la marca hecha", async () => {
     findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1", resumen: "Llamar al fontanero" })]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
@@ -433,7 +393,6 @@ describe("createAssistantTools", () => {
       fakePendiente({ id: "no-accionable", categoria: "idea" }),
       fakePendiente({ id: "la-buena" }),
     ]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
@@ -446,7 +405,6 @@ describe("createAssistantTools", () => {
   it("completarTarea cae a búsqueda de texto si no hay embedder (embedQuery devuelve null)", async () => {
     embedQuery.mockResolvedValue(null);
     messageFindFirst.mockResolvedValue(fakePendiente({ id: "p2" }));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
@@ -460,7 +418,6 @@ describe("createAssistantTools", () => {
   it("completarTarea: si semántica y texto encuentran candidatos distintos, gana la semántica (misma calidad que antes, ahora en paralelo)", async () => {
     findSimilarMessages.mockResolvedValue([fakePendiente({ id: "por-semantica" })]);
     messageFindFirst.mockResolvedValue(fakePendiente({ id: "por-texto" }));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
@@ -471,7 +428,6 @@ describe("createAssistantTools", () => {
   });
 
   it("completarTarea lanza (en español) si no encuentra ninguna coincidencia", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -488,7 +444,6 @@ describe("createAssistantTools", () => {
     revalidatePath.mockImplementation(() => {
       throw new Error("revalidatePath fuera de contexto de petición");
     });
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.completarTarea.execute!(
@@ -501,7 +456,6 @@ describe("createAssistantTools", () => {
 
   it("aplazarTarea encuentra la pendiente y le pone la nueva fecha límite", async () => {
     findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1", resumen: "Llamar al fontanero" })]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.aplazarTarea.execute!(
@@ -518,7 +472,6 @@ describe("createAssistantTools", () => {
 
   it("aplazarTarea sin `fecha` quita la fecha límite", async () => {
     findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1" })]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.aplazarTarea.execute!(
@@ -531,7 +484,6 @@ describe("createAssistantTools", () => {
   });
 
   it("aplazarTarea lanza (en español) si la fecha no se entiende", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -544,7 +496,6 @@ describe("createAssistantTools", () => {
   });
 
   it("aplazarTarea lanza (en español) si no encuentra ninguna coincidencia", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -558,7 +509,6 @@ describe("createAssistantTools", () => {
 
   it("asignarTarea encuentra la pendiente y la asigna a un miembro real del equipo (corrección tras crearla, como pide el usuario)", async () => {
     findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1", resumen: "Revisar la caldera" })]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.asignarTarea.execute!(
@@ -575,7 +525,6 @@ describe("createAssistantTools", () => {
 
   it("asignarTarea con quitarAsignacion quita la asignación sin buscar a nadie", async () => {
     findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1" })]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.asignarTarea.execute!(
@@ -588,7 +537,6 @@ describe("createAssistantTools", () => {
   });
 
   it("asignarTarea lanza en español si no dice a quién asignarla ni pide quitar la asignación", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -598,7 +546,6 @@ describe("createAssistantTools", () => {
   });
 
   it("asignarTarea lanza en español si el nombre no coincide con nadie del equipo, sin buscar la tarea", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     await expect(
@@ -612,7 +559,6 @@ describe("createAssistantTools", () => {
   });
 
   it("asignarTarea lanza (en español) si no encuentra ninguna tarea pendiente que coincida", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     await expect(
@@ -626,7 +572,6 @@ describe("createAssistantTools", () => {
 
   it("registrarAhorro guarda el movimiento en una cuenta existente que coincide por nombre", async () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Fondo de emergencia", userId: "u1" }]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
@@ -646,7 +591,6 @@ describe("createAssistantTools", () => {
 
   it("registrarAhorro con repetir registra toda la serie en una sola llamada a la tool", async () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "PruebaTrade", userId: "u1" }]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
@@ -661,7 +605,6 @@ describe("createAssistantTools", () => {
   it("registrarAhorro crea la cuenta sobre la marcha si no hay ninguna parecida", async () => {
     cuentaAhorroFindMany.mockResolvedValue([]);
     cuentaAhorroCreate.mockResolvedValue({ id: "c2", nombre: "Viaje a Japón", userId: "u1" });
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
@@ -680,7 +623,6 @@ describe("createAssistantTools", () => {
 
   it("registrarAhorro acepta un importe negativo como retirada", async () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Viaje", userId: "u1" }]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
@@ -695,7 +637,6 @@ describe("createAssistantTools", () => {
   });
 
   it("registrarAhorro rechaza un importe que redondea a cero", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -709,7 +650,6 @@ describe("createAssistantTools", () => {
 
   it("registrarAhorro: ante un fallo al buscar/crear la cuenta, lanza un mensaje en español sin detalles internos", async () => {
     cuentaAhorroFindMany.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -724,7 +664,6 @@ describe("createAssistantTools", () => {
   it("registrarAhorro: ante un fallo al guardar el movimiento, lanza un mensaje en español sin detalles internos", async () => {
     cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Viaje", userId: "u1" }]);
     movimientoAhorroCreate.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432 supabase pooler"));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -740,7 +679,6 @@ describe("createAssistantTools", () => {
     revalidatePath.mockImplementation(() => {
       throw new Error("revalidatePath fuera de contexto de petición");
     });
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.registrarAhorro.execute!(
@@ -753,7 +691,6 @@ describe("createAssistantTools", () => {
 
   it("editarEvento busca solo entre eventos futuros (hoy incluido) y cambia los campos dados", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.editarEvento.execute!(
@@ -774,7 +711,6 @@ describe("createAssistantTools", () => {
 
   it("editarEvento encuentra el evento aunque las tildes no coincidan (guardado con tilde, descripción sin ella o al revés)", async () => {
     eventoFindMany.mockResolvedValue([{ ...fakeEvento, titulo: "Reunión de seguimiento" }]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.editarEvento.execute!(
@@ -788,7 +724,6 @@ describe("createAssistantTools", () => {
 
   it("editarEvento lanza si no encuentra ningún evento que coincida", async () => {
     eventoFindMany.mockResolvedValue([]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -802,7 +737,6 @@ describe("createAssistantTools", () => {
 
   it("editarEvento lanza si no se le da ningún campo que cambiar", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -816,7 +750,6 @@ describe("createAssistantTools", () => {
 
   it("editarEvento con asignadoA asigna un evento ya creado a un miembro real del equipo (corrección tras crearlo)", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.editarEvento.execute!(
@@ -833,7 +766,6 @@ describe("createAssistantTools", () => {
 
   it("editarEvento con quitarAsignacion quita la asignación sin poner a otra persona", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.editarEvento.execute!(
@@ -854,7 +786,6 @@ describe("createAssistantTools", () => {
     // seguía reportando `asignadoA: asignado.email` — el Asistente podía
     // decir "asignada a X" con el evento en realidad guardado sin asignar.
     eventoFindMany.mockResolvedValue([fakeEvento]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.editarEvento.execute!(
@@ -871,7 +802,6 @@ describe("createAssistantTools", () => {
 
   it("editarEvento con asignadoA que no coincide con nadie del equipo lanza en español, sin tocar el evento", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     await expect(
@@ -885,7 +815,6 @@ describe("createAssistantTools", () => {
 
   it("editarEvento rechaza una fecha nueva que no se puede interpretar", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -899,7 +828,6 @@ describe("createAssistantTools", () => {
 
   it("borrarEvento encuentra y borra el evento que coincide", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.borrarEvento.execute!(
@@ -914,7 +842,6 @@ describe("createAssistantTools", () => {
 
   it("borrarEvento lanza si no encuentra ningún evento que coincida", async () => {
     eventoFindMany.mockResolvedValue([]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -929,7 +856,6 @@ describe("createAssistantTools", () => {
   it("borrarEvento: ante un fallo al borrar, lanza un mensaje en español sin detalles internos", async () => {
     eventoFindMany.mockResolvedValue([fakeEvento]);
     eventoDeleteMany.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -942,7 +868,6 @@ describe("createAssistantTools", () => {
       { id: "c1", nombre: "Viaje", saldoCentimos: 5000, objetivoCentimos: null, createdAt: new Date(), userId: "u1" },
       { id: "c2", nombre: "Fondo de emergencia", saldoCentimos: 12000, objetivoCentimos: null, createdAt: new Date(), userId: "u1" },
     ]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.consultarAhorros.execute!({}, { toolCallId: "c", messages: [], context: undefined });
@@ -960,7 +885,6 @@ describe("createAssistantTools", () => {
     getCuentasConSaldo.mockResolvedValue([
       { id: "c1", nombre: "Fondo de emergencia", saldoCentimos: 12000, objetivoCentimos: null, createdAt: new Date(), userId: "u1" },
     ]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     const result = await tools.consultarAhorros.execute!(
@@ -973,7 +897,6 @@ describe("createAssistantTools", () => {
 
   it("consultarAhorros lanza si pregunta por una cuenta que no existe", async () => {
     getCuentasConSaldo.mockResolvedValue([]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -983,7 +906,6 @@ describe("createAssistantTools", () => {
 
   it("consultarAhorros: ante un fallo al leer, lanza un mensaje en español sin detalles internos", async () => {
     getCuentasConSaldo.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -1007,7 +929,6 @@ describe("createAssistantTools", () => {
         { assigneeId: "u-ana" },
         { assigneeId: "u-ana" },
       ]);
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.analizarEquipo.execute!({}, { toolCallId: "c", messages: [], context: undefined });
@@ -1025,7 +946,6 @@ describe("createAssistantTools", () => {
   });
 
   it("analizarEquipo lanza en español en el workspace personal (sin equipo que analizar)", async () => {
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER");
 
     await expect(
@@ -1035,7 +955,6 @@ describe("createAssistantTools", () => {
 
   it("analizarEquipo: ante un fallo al leer, lanza un mensaje en español sin detalles internos", async () => {
     messageFindMany.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
-    const { createAssistantTools } = await import("../src/lib/assistantTools");
     const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     await expect(
@@ -1045,7 +964,6 @@ describe("createAssistantTools", () => {
 
   describe("rol VIEWER (solo lectura)", () => {
     it("crearNota rechaza con rol VIEWER, sin llegar a guardar nada", async () => {
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       await expect(
         tools.crearNota.execute!({ contenido: "algo" }, { toolCallId: "c", messages: [], context: undefined }),
@@ -1054,7 +972,6 @@ describe("createAssistantTools", () => {
     });
 
     it("crearEvento rechaza con rol VIEWER", async () => {
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       await expect(
         tools.crearEvento.execute!(
@@ -1066,7 +983,6 @@ describe("createAssistantTools", () => {
     });
 
     it("completarTarea rechaza con rol VIEWER", async () => {
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       await expect(
         tools.completarTarea.execute!({ descripcion: "algo" }, { toolCallId: "c", messages: [], context: undefined }),
@@ -1075,7 +991,6 @@ describe("createAssistantTools", () => {
     });
 
     it("aplazarTarea rechaza con rol VIEWER", async () => {
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       await expect(
         tools.aplazarTarea.execute!(
@@ -1087,7 +1002,6 @@ describe("createAssistantTools", () => {
     });
 
     it("asignarTarea rechaza con rol VIEWER", async () => {
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       await expect(
         tools.asignarTarea.execute!(
@@ -1099,7 +1013,6 @@ describe("createAssistantTools", () => {
     });
 
     it("editarEvento rechaza con rol VIEWER", async () => {
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       await expect(
         tools.editarEvento.execute!(
@@ -1111,7 +1024,6 @@ describe("createAssistantTools", () => {
     });
 
     it("borrarEvento rechaza con rol VIEWER", async () => {
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       await expect(
         tools.borrarEvento.execute!({ descripcion: "médico" }, { toolCallId: "c", messages: [], context: undefined }),
@@ -1120,7 +1032,6 @@ describe("createAssistantTools", () => {
 
     it("registrarAhorro NO se bloquea con rol VIEWER (Ahorros es siempre personal)", async () => {
       cuentaAhorroFindMany.mockResolvedValue([{ id: "c1", nombre: "Fondo de emergencia", userId: "u1" }]);
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       const result = await tools.registrarAhorro.execute!(
         { cuenta: "fondo de emergencia", importe: 50 },
@@ -1131,7 +1042,6 @@ describe("createAssistantTools", () => {
 
     it("consultarAhorros NO se bloquea con rol VIEWER (Ahorros es siempre personal)", async () => {
       getCuentasConSaldo.mockResolvedValue([{ nombre: "Fondo de emergencia", saldoCentimos: 12000 }]);
-      const { createAssistantTools } = await import("../src/lib/assistantTools");
       const tools = createAssistantTools("u1", "w1", "VIEWER");
       const result = await tools.consultarAhorros.execute!({}, { toolCallId: "c", messages: [], context: undefined });
       expect(result).toMatchObject({ totalCentimos: 12000 });

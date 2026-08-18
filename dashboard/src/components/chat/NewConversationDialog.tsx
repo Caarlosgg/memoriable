@@ -1,56 +1,43 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Plus, Users, User } from "lucide-react";
-import { createDirectConversation, createGroupConversation } from "@/app/(dashboard)/chat/actions";
-import type { WorkspaceMemberInfo } from "@/lib/workspace";
+import { Plus, Users, User, X } from "lucide-react";
+import { createDirectConversation, createGroupConversation, type UserSearchResult } from "@/app/(dashboard)/chat/actions";
 import { shortEmailName } from "@/lib/format";
-import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { UserSearchPicker } from "./UserSearchPicker";
 
 type Mode = "individual" | "grupo";
 
 /**
  * Crear conversación nueva — individual (1 a 1, reutiliza el hilo si ya
- * existía, ver createDirectConversation) o grupo (nombre + varios
- * miembros). Un único diálogo con dos modos en vez de dos botones/rutas
- * distintas: la elección de con quién hablar es lo único que cambia.
+ * existía, ver createDirectConversation) o grupo (nombre + varias
+ * personas). Con CUALQUIERA que tenga cuenta en MemorIAble, no solo
+ * compañeros del equipo activo: el chat es del usuario, no del workspace
+ * (ver el comentario de ChatConversation en el schema).
  */
 export function NewConversationDialog({
-  members,
   currentUserId,
   onCreated,
 }: {
-  members: WorkspaceMemberInfo[];
   currentUserId: string;
   onCreated: (conversationId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("individual");
   const [groupName, setGroupName] = useState("");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<UserSearchResult[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const others = members.filter((m) => m.userId !== currentUserId && m.status === "ACTIVE");
 
   function reset() {
     setMode("individual");
     setGroupName("");
-    setSelectedIds(new Set());
+    setSelected([]);
     setError(null);
     setPending(false);
-  }
-
-  function toggleSelected(userId: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
-      return next;
-    });
   }
 
   async function handleCreateDirect(userId: string) {
@@ -70,7 +57,7 @@ export function NewConversationDialog({
   async function handleCreateGroup() {
     setPending(true);
     setError(null);
-    const result = await createGroupConversation(groupName, [...selectedIds]);
+    const result = await createGroupConversation(groupName, selected.map((u) => u.userId));
     setPending(false);
     if (result.error || !result.conversationId) {
       setError(result.error || "No se ha podido crear el grupo.");
@@ -80,6 +67,8 @@ export function NewConversationDialog({
     reset();
     onCreated(result.conversationId);
   }
+
+  const excludeIds = new Set([currentUserId, ...selected.map((u) => u.userId)]);
 
   return (
     <Dialog
@@ -108,24 +97,12 @@ export function NewConversationDialog({
           </ModeButton>
         </div>
 
-        {others.length === 0 ? (
-          <p className="text-sm text-muted">No hay más miembros activos en este equipo todavía.</p>
-        ) : mode === "individual" ? (
-          <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
-            {others.map((m) => (
-              <li key={m.userId}>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => handleCreateDirect(m.userId)}
-                  className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left text-sm text-ink transition-colors hover:bg-accent-soft disabled:opacity-50"
-                >
-                  <Avatar email={m.email} size="sm" />
-                  <span className="truncate">{shortEmailName(m.email)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+        {mode === "individual" ? (
+          <UserSearchPicker
+            excludeIds={new Set([currentUserId])}
+            onPick={(u) => handleCreateDirect(u.userId)}
+            placeholder="Busca a alguien por email…"
+          />
         ) : (
           <div className="flex flex-col gap-3">
             <label htmlFor="group-name" className="sr-only">
@@ -138,30 +115,25 @@ export function NewConversationDialog({
               placeholder="Nombre del grupo…"
               maxLength={40}
             />
-            <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto">
-              {others.map((m) => {
-                const checked = selectedIds.has(m.userId);
-                return (
-                  <li key={m.userId}>
-                    <label className="flex cursor-pointer items-center gap-2.5 rounded-lg p-2 text-sm text-ink transition-colors hover:bg-accent-soft">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleSelected(m.userId)}
-                        className="h-4 w-4 shrink-0 rounded border-paper-line accent-accent"
-                      />
-                      <Avatar email={m.email} size="sm" />
-                      <span className="truncate">{shortEmailName(m.email)}</span>
-                    </label>
+            {selected.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5">
+                {selected.map((u) => (
+                  <li key={u.userId} className="flex items-center gap-1 rounded-full bg-accent-soft py-1 pr-1 pl-2.5 text-xs text-accent-strong">
+                    {shortEmailName(u.email)}
+                    <button
+                      type="button"
+                      onClick={() => setSelected((prev) => prev.filter((x) => x.userId !== u.userId))}
+                      aria-label={`Quitar a ${u.email}`}
+                      className="rounded-full p-0.5 hover:bg-accent/30"
+                    >
+                      <X aria-hidden size={11} />
+                    </button>
                   </li>
-                );
-              })}
-            </ul>
-            <Button
-              type="button"
-              onClick={handleCreateGroup}
-              disabled={pending || groupName.trim() === "" || selectedIds.size === 0}
-            >
+                ))}
+              </ul>
+            )}
+            <UserSearchPicker excludeIds={excludeIds} onPick={(u) => setSelected((prev) => [...prev, u])} placeholder="Añade personas por email…" />
+            <Button type="button" onClick={handleCreateGroup} disabled={pending || groupName.trim() === "" || selected.length === 0}>
               {pending ? "Creando…" : "Crear grupo"}
             </Button>
           </div>

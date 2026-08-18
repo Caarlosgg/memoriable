@@ -2,7 +2,7 @@ import "server-only";
 import type { Message, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { ACTIONABLE_CATEGORIES, CATEGORIES, type Category } from "./categories";
-import { ESTADOS_TABLERO } from "./kanban";
+import { resolverColumnas, columnaDeTarjeta, type ColumnaTablero } from "./boardColumns";
 import { hybridSearch, type SearchFilters } from "./hybridSearch";
 import { findSimilarMessages } from "./vectorSearch";
 import { resolveEmbedder } from "./pipeline";
@@ -162,7 +162,8 @@ export async function searchMessages(
 }
 
 export interface BoardColumn {
-  estado: Message["estado"];
+  /** Id de la columna: el valor del enum en las por defecto, un cuid en las propias (ver boardColumns.ts). */
+  columnaId: string;
   messages: Message[];
 }
 
@@ -178,8 +179,19 @@ export interface BoardColumn {
  */
 const BOARD_HECHO_LIMIT = 50;
 
-/** `hiddenCategories`: ver el mismo parámetro en `getCategoryGroups` — mismo criterio, preferencia personal. */
-export async function getBoardGroups(workspaceId: string, hiddenCategories: readonly string[] = []): Promise<BoardColumn[]> {
+/**
+ * `hiddenCategories`: ver el mismo parámetro en `getCategoryGroups` — mismo
+ * criterio, preferencia personal. `columnas`: las columnas efectivas del
+ * workspace (ver resolverColumnas en boardColumns.ts) — se reparten las
+ * tarjetas entre ellas con `columnaDeTarjeta`, que sabe caer en la columna
+ * por defecto de la fase cuando una tarjeta no tiene columna propia (o la
+ * tenía y se borró).
+ */
+export async function getBoardGroups(
+  workspaceId: string,
+  hiddenCategories: readonly string[] = [],
+  columnas: ColumnaTablero[] = resolverColumnas([]),
+): Promise<BoardColumn[]> {
   const visibleActionable = ACTIONABLE_CATEGORIES.filter((c) => !hiddenCategories.includes(c));
   // HECHO se acumula sin fin con el uso normal (tareas completadas de
   // siempre) — se trae aparte y limitada a las más recientes, mismo
@@ -197,8 +209,9 @@ export async function getBoardGroups(workspaceId: string, hiddenCategories: read
     }),
   ]);
 
-  return ESTADOS_TABLERO.map((estado) => ({
-    estado,
-    messages: estado === "HECHO" ? hechas : pendientes.filter((m) => m.estado === estado),
-  }));
+  const porColumna = new Map<string, Message[]>(columnas.map((c) => [c.id, []]));
+  for (const m of [...pendientes, ...hechas]) {
+    porColumna.get(columnaDeTarjeta(m, columnas))?.push(m);
+  }
+  return columnas.map((c) => ({ columnaId: c.id, messages: porColumna.get(c.id) ?? [] }));
 }

@@ -16,12 +16,17 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
-    // El valor por defecto (5s) se ha visto saltar de forma intermitente en
-    // máquinas de desarrollo cargadas (muchos test files en paralelo + otros
-    // procesos), en tests que no hacen nada lento de por sí (mocks
-    // síncronos). En un runner de CI limpio y dedicado no debería hacer
-    // falta, pero un margen mayor no cuesta nada y evita el ruido.
-    testTimeout: 15000,
+    // Margen para el patrón `await import(...)` DENTRO de un test, que
+    // todavía usan varios archivos: la primera vez, ese import compila el
+    // módulo entero y su coste se le carga al presupuesto de tiempo de ese
+    // test concreto, no al de la suite. Con muchos archivos compilando en
+    // paralelo se ha visto pasar de 15s en tests que no hacen nada lento.
+    //
+    // (El caso peor, assistantTools.ts — Prisma + pipeline + búsqueda
+    // vectorial — se arregló de raíz pasándolo a import estático: ver el
+    // comentario en tests/assistantTools.test.ts. Este margen se queda para
+    // los que siguen con import dinámico, no para tapar aquello.)
+    testTimeout: 30000,
     // Igual que en la raíz: los tests nunca deben depender del .env.local
     // real de quien los ejecuta. DATABASE_URL lleva un valor dummy (nunca
     // se conecta de verdad: las funciones bajo test reciben sus
@@ -32,6 +37,10 @@ export default defineConfig({
       DASHBOARD_PASSWORD: "",
       GROQ_API_KEY: "",
       GEMINI_API_KEY: "",
+      // `put` de Vercel Blob está mockeado en los tests que suben imágenes
+      // (uploadImage.test.ts) — necesitan que isBlobConfigured() diga que
+      // sí para probar ese camino; el mock nunca toca la red real.
+      BLOB_READ_WRITE_TOKEN: "test-token",
     },
   },
 });

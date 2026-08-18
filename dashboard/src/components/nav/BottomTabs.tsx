@@ -11,16 +11,32 @@ import { NAV_ITEMS } from "./navItems";
  * nativa que un menú hamburguesa (que tiene sentido con listas más largas).
  * Transición de color en CSS puro — no hace falta Framer Motion aquí.
  */
+/** Con más de 4 pestañas + "Más", las etiquetas dejan de caber en un móvil normal. */
+const MAX_TABS_MOVIL = 4;
+
 export function BottomTabs({ isPersonal, hasUnreadChat = false }: { isPersonal: boolean; hasUnreadChat?: boolean }) {
   const pathname = usePathname();
-  // Ahorros es siempre personal y Chat siempre de equipo (ver
-  // lib/workspace.ts) — cada uno desaparece del menú en el modo contrario.
-  const items = NAV_ITEMS.filter((item) => {
+  // Ahorros es siempre personal (ver lib/workspace.ts) — desaparece del
+  // menú en modo equipo. El chat ya no depende del workspace activo (ver
+  // el mismo comentario en Sidebar.tsx).
+  const candidatos = NAV_ITEMS.filter((item) => {
     if (!item.enMovil) return false;
     if (item.href === "/ahorros") return isPersonal;
-    if (item.href === "/chat") return !isPersonal;
     return true;
   });
+  // TOPE DURO de 4 + "Más". Al dejar de filtrar el chat por workspace, en
+  // modo personal pasaban a caber 6 pestañas más "Más": en una pantalla de
+  // teléfono eso son ~7 columnas de 50px, con las etiquetas partidas o
+  // recortadas. El corte se hace aquí y no quitando destinos de NAV_ITEMS
+  // porque en escritorio sí caben todos — y lo que se queda fuera no se
+  // pierde, sigue estando en "Más" (la paleta lista TODOS los destinos).
+  const items = candidatos.slice(0, MAX_TABS_MOVIL);
+  // Estar EN una pantalla que se ha quedado fuera del corte (p. ej. Ahorros
+  // en personal) sin que nada en la barra aparezca activo se siente roto:
+  // en ese caso entra en el hueco de la última pestaña, para que siempre se
+  // vea dónde estás.
+  const activoFuera = candidatos.find((item) => item.href === pathname && !items.includes(item));
+  const visibles = activoFuera ? [...items.slice(0, MAX_TABS_MOVIL - 1), activoFuera] : items;
   // Mismo indicador que en Sidebar.tsx (desktop) — ver ese comentario.
   const { isBusy: assistantBusy } = useAssistant();
 
@@ -29,7 +45,7 @@ export function BottomTabs({ isPersonal, hasUnreadChat = false }: { isPersonal: 
       aria-label="Navegación principal"
       className="fixed inset-x-0 bottom-0 z-10 flex border-t border-paper-line bg-paper-raised pb-[env(safe-area-inset-bottom)] sm:hidden"
     >
-      {items.map((item) => {
+      {visibles.map((item) => {
         const active = pathname === item.href;
         return (
           <Link

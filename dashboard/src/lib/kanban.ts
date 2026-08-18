@@ -18,6 +18,53 @@ export const ESTADO_PRESENTATION: Record<EstadoTarea, { label: string; Icon: Luc
   HECHO: { label: "Hecho", Icon: CircleCheckBig, color: "text-accent-ink", colorSoft: "bg-accent-strong" },
 };
 
+/**
+ * Vistas rápidas del tablero, seleccionables por URL (`/pendientes?vista=`).
+ * Existen para que las cifras de la pantalla de inicio sean un ACCESO y no
+ * solo un dato: antes "Vencidas 3" y "Pendientes 12" llevaban las dos al
+ * mismo tablero sin filtrar, y había que volver a buscar a ojo aquello que
+ * el número acababa de señalar.
+ */
+export const VISTAS_TABLERO = ["todas", "vencidas", "hoy", "mias"] as const;
+export type VistaTablero = (typeof VISTAS_TABLERO)[number];
+
+export const VISTA_LABEL: Record<VistaTablero, string> = {
+  todas: "Todo el tablero",
+  vencidas: "Solo vencidas",
+  hoy: "Vencen hoy",
+  mias: "Asignadas a mí",
+};
+
+/** Valida lo que venga por la URL — cualquier otra cosa cae en "todas" en vez de dejar el tablero vacío. */
+export function parseVista(value: string | undefined): VistaTablero {
+  return (VISTAS_TABLERO as readonly string[]).includes(value ?? "") ? (value as VistaTablero) : "todas";
+}
+
+/**
+ * ¿Entra esta tarjeta en la vista elegida? Pura, para poder probar los
+ * límites de día sin montar el tablero — que es donde está el riesgo real
+ * (una tarea que vence hoy no debe contar como vencida, y "hoy" es el día
+ * natural del usuario, no las próximas 24 horas).
+ */
+export function matchesVista(
+  message: { fechaLimite: Date | null; assigneeId: string | null },
+  vista: VistaTablero,
+  currentUserId: string,
+  now: Date = new Date(),
+): boolean {
+  if (vista === "todas") return true;
+  if (vista === "mias") return message.assigneeId === currentUserId;
+
+  if (!message.fechaLimite) return false;
+  const inicioHoy = new Date(now);
+  inicioHoy.setHours(0, 0, 0, 0);
+  if (vista === "vencidas") return message.fechaLimite < inicioHoy;
+
+  const finHoy = new Date(inicioHoy);
+  finHoy.setDate(finHoy.getDate() + 1);
+  return message.fechaLimite >= inicioHoy && message.fechaLimite < finHoy;
+}
+
 /** Siguiente estado en el ciclo Por hacer → En progreso → Hecho → Por hacer. */
 export function nextEstado(e: EstadoTarea): EstadoTarea {
   const i = ESTADOS_TABLERO.indexOf(e);

@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Send, CircleCheck, CalendarDays, CalendarClock, PiggyBank, Pencil, Trash2, UserRound, UserRoundX } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Send, CircleCheck, CalendarDays, CalendarClock, PiggyBank, Pencil, Trash2, UserRound, UserRoundX, Loader2 } from "lucide-react";
+import { Avatar } from "./ui/avatar";
 import { presentCategory } from "@/lib/categories";
 import { formatEventDate, shortEmailName } from "@/lib/format";
 import { dayLabel, dateKey } from "@/lib/calendar";
@@ -13,11 +15,18 @@ import { AssistantMarkdown } from "./AssistantMarkdown";
 import { ConversationSidebar } from "./ConversationSidebar";
 import { PageHeader } from "./PageHeader";
 
+/**
+ * Lo que se ofrece al abrir un chat vacío. No son ejemplos bonitos: son la
+ * única pista de qué sabe hacer el Asistente. Por eso cubren capacidades
+ * DISTINTAS (agenda, personas, equipos, notas) en vez de cuatro formas de
+ * preguntar lo mismo — antes las cuatro eran sobre notas guardadas, así que
+ * nadie llegaba a descubrir que también sabe de gente y de calendario.
+ */
 const SUGGESTED_QUESTIONS = [
+  "¿Qué tengo esta semana?",
+  "¿Quién va más cargado de trabajo?",
   "¿Qué tengo pendiente?",
   "¿Qué guardé esta semana?",
-  "Resúmeme mis ideas guardadas",
-  "¿Tengo algo pendiente sobre el curso?",
 ];
 
 function textOf(message: AssistantMessage): string {
@@ -367,6 +376,141 @@ function ConsultarAhorrosResultCard({ part }: { part: ConsultarAhorrosPart }) {
   );
 }
 
+type ConsultarPersonaPart = Extract<AssistantMessage["parts"][number], { type: "tool-consultarPersona" }>;
+
+function isConsultarPersonaPart(part: AssistantMessage["parts"][number]): part is ConsultarPersonaPart {
+  return part.type === "tool-consultarPersona";
+}
+
+/**
+ * Ficha de una persona. Con tarjeta y no solo narrada por el modelo porque
+ * es información de ESTRUCTURA (equipos, carga, vencidas, próximas citas):
+ * en un párrafo hay que leerla entera para encontrar el dato que buscabas,
+ * y además cada tarea se vuelve accionable desde aquí.
+ */
+function ConsultarPersonaResultCard({ part }: { part: ConsultarPersonaPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        {part.errorText || "No he podido consultar a esa persona."}
+      </div>
+    );
+  }
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Consultando…</div>;
+  }
+
+  const p = part.output;
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent-soft p-3 text-xs">
+      <div className="flex items-center gap-2">
+        <Avatar email={p.email} size="sm" />
+        <div className="min-w-0">
+          <p className="truncate font-medium text-ink">{shortEmailName(p.email)}</p>
+          <p className="text-muted">
+            {p.enLinea ? "en línea" : "desconectado"}
+            {p.equipos.length > 0 && ` · ${p.equipos.map((e) => e.nombre).join(", ")}`}
+          </p>
+        </div>
+      </div>
+
+      {p.trabajandoAhora && (
+        <p className="mt-2 flex items-start gap-1.5 text-ink">
+          <Loader2 aria-hidden size={12} className="mt-0.5 shrink-0 animate-spin text-accent-strong motion-reduce:animate-none" />
+          <span>Ahora: {p.trabajandoAhora}</span>
+        </p>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-muted">
+        <span>{p.totalTareasAbiertas} abierta{p.totalTareasAbiertas === 1 ? "" : "s"}</span>
+        {p.vencidas > 0 && <span className="font-medium text-danger">{p.vencidas} vencida{p.vencidas === 1 ? "" : "s"}</span>}
+        <span>{p.completadasUltimaSemana} hecha{p.completadasUltimaSemana === 1 ? "" : "s"} esta semana</span>
+      </div>
+
+      {p.tareas.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1 border-t border-accent/20 pt-2">
+          {p.tareas.slice(0, 5).map((t, i) => (
+            <li key={i} className="flex items-start gap-1.5">
+              <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${t.vencida ? "bg-danger" : "bg-accent"}`} />
+              <span className="min-w-0 flex-1 text-ink">
+                {t.resumen}
+                {t.fechaLimite && (
+                  <span className={t.vencida ? "text-danger" : "text-muted"}> · {t.fechaLimite}</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {p.eventosProximos.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1 border-t border-accent/20 pt-2">
+          {p.eventosProximos.map((e, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-muted">
+              <CalendarDays aria-hidden size={12} className="mt-0.5 shrink-0 text-accent-strong" />
+              <span className="text-ink">{e.titulo}</span> · {e.fecha}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type ConsultarAgendaPart = Extract<AssistantMessage["parts"][number], { type: "tool-consultarAgenda" }>;
+
+function isConsultarAgendaPart(part: AssistantMessage["parts"][number]): part is ConsultarAgendaPart {
+  return part.type === "tool-consultarAgenda";
+}
+
+/** Lo que hay en un tramo de fechas, en orden — citas y vencimientos mezclados, como se viven. */
+function ConsultarAgendaResultCard({ part }: { part: ConsultarAgendaPart }) {
+  if (part.state === "output-error") {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger-soft p-2.5 text-xs text-danger">
+        {part.errorText || "No he podido consultar la agenda."}
+      </div>
+    );
+  }
+  if (part.state !== "output-available" || !part.output) {
+    return <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">Consultando…</div>;
+  }
+
+  const { items } = part.output;
+  if (items.length === 0) {
+    return (
+      <div className="rounded-lg border border-paper-line bg-paper p-2.5 text-xs text-muted">
+        Nada con fecha en ese tramo.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent-soft p-3 text-xs">
+      <ul className="flex flex-col gap-1.5">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-start gap-1.5">
+            {item.tipo === "evento" ? (
+              <CalendarDays aria-hidden size={12} className="mt-0.5 shrink-0 text-accent-strong" />
+            ) : (
+              <CalendarClock aria-hidden size={12} className="mt-0.5 shrink-0 text-muted" />
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="text-ink">{item.titulo}</span>
+              <span className="text-muted">
+                {" · "}
+                {item.fecha}
+                {item.asignadoA && ` · ${shortEmailName(item.asignadoA)}`}
+                {item.equipo !== "Personal" && ` · ${item.equipo}`}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /**
  * Puramente presentacional: todo el estado (useChat, conversación activa,
  * lista de conversaciones) vive en `AssistantProvider`, montado en el
@@ -388,8 +532,23 @@ export function AssistantChat() {
     handleSelectConversation,
   } = useAssistant();
 
+  // Seguir la respuesta según se escribe, sin tener que arrastrar a mano.
+  // Depende de `messages` entero (no de `messages.length`): mientras el
+  // Asistente responde, el número de mensajes no cambia — lo que crece es
+  // el texto del último, que es justo cuando más falta hace seguirlo.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
   return (
-    <section aria-label="Asistente" className="flex flex-col gap-4">
+    // Altura acotada + scroll DENTRO de la zona de mensajes: antes la
+    // sección crecía con la conversación y estiraba la página entera, así
+    // que tras unos cuantos turnos había que bajar mucho para llegar al
+    // campo de escribir. `dvh` y no `vh` por el móvil: con `vh`, al abrir
+    // el teclado el campo quedaba tapado.
+    <section aria-label="Asistente" className="flex min-h-0 flex-col gap-4 h-[calc(100dvh-13rem)] sm:h-[calc(100dvh-9rem)]">
       <PageHeader
         title="Asistente"
         help={
@@ -410,6 +569,7 @@ export function AssistantChat() {
         onNew={handleNewConversation}
       />
 
+      <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
       {messages.length === 0 && (
         <div className="fade-in flex flex-col gap-3 rounded-2xl border border-dashed border-paper-line bg-paper-raised/60 p-6 text-center">
           <p className="font-display text-lg text-ink">Pregúntame sobre tus notas</p>
@@ -445,6 +605,8 @@ export function AssistantChat() {
             const editarEventoParts = message.parts.filter(isEditarEventoPart);
             const borrarEventoParts = message.parts.filter(isBorrarEventoPart);
             const consultarAhorrosParts = message.parts.filter(isConsultarAhorrosPart);
+            const consultarPersonaParts = message.parts.filter(isConsultarPersonaPart);
+            const consultarAgendaParts = message.parts.filter(isConsultarAgendaPart);
             const hasToolResults =
               crearNotaParts.length > 0 ||
               crearEventoParts.length > 0 ||
@@ -454,7 +616,9 @@ export function AssistantChat() {
               registrarAhorroParts.length > 0 ||
               editarEventoParts.length > 0 ||
               borrarEventoParts.length > 0 ||
-              consultarAhorrosParts.length > 0;
+              consultarAhorrosParts.length > 0 ||
+              consultarPersonaParts.length > 0 ||
+              consultarAgendaParts.length > 0;
 
             return (
               <li key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
@@ -490,6 +654,12 @@ export function AssistantChat() {
                     ))}
                     {consultarAhorrosParts.map((part) => (
                       <ConsultarAhorrosResultCard key={part.toolCallId} part={part} />
+                    ))}
+                    {consultarPersonaParts.map((part) => (
+                      <ConsultarPersonaResultCard key={part.toolCallId} part={part} />
+                    ))}
+                    {consultarAgendaParts.map((part) => (
+                      <ConsultarAgendaResultCard key={part.toolCallId} part={part} />
                     ))}
                     {(text || isBusy || !hasToolResults) && (
                       <div className="fade-in rounded-2xl rounded-bl-sm border border-paper-line bg-paper-raised px-4 py-2.5 text-sm text-ink">
@@ -528,6 +698,7 @@ export function AssistantChat() {
           })}
         </ul>
       )}
+      </div>
 
       {error && (
         <div role="alert" className="fade-in rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-danger">

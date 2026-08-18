@@ -13,7 +13,8 @@ import { FRECUENCIAS, fechaRepeticion } from "./calendar";
 import { canWrite, READONLY_ROLE_MESSAGE, listWorkspaceMembers, isOnline } from "./workspace";
 import { postChatMessage, ensureDefaultGroupConversation } from "@/app/(dashboard)/chat/actions";
 import { saveAssistantMemory, forgetAssistantMemory } from "./assistantMemory";
-import { normalizeForMatch } from "./textMatch";
+import { normalizeForMatch, matchPersonaPorEmail } from "./textMatch";
+import { resolvePersona, resolveAgenda, resolveMisEquipos } from "./assistantTeamContext";
 import { prisma } from "./prisma";
 import type { WorkspaceRole } from "@prisma/client";
 
@@ -26,15 +27,15 @@ import type { WorkspaceRole } from "@prisma/client";
 const TASK_MATCH_MAX_DISTANCE = 0.4;
 
 /**
- * Resuelve un nombre o email libre ("benitoelrey", "Benito", su email
- * completo) contra un miembro real del equipo — comparando contra la
- * parte local del email (antes de la @), que es lo que la gente suele
- * usar como "nombre" al hablar con el Asistente. Sin esto, "asígnaselo a
- * X" solo podía guardarse como texto suelto (`participantes` en
- * `Evento`), sin enlazar de verdad con la cuenta de esa persona — a quien
- * nunca le aparecería la tarjeta como asignada. Null si ningún miembro
- * encaja: nunca asigna "a lo que más se parezca" sin overlap real, mejor
- * que el Asistente diga que no encuentra a esa persona en el equipo.
+ * Resuelve un nombre o email libre contra un miembro real del equipo
+ * ACTIVO. Sin esto, "asígnaselo a X" solo podía guardarse como texto suelto
+ * (`participantes` en `Evento`), sin enlazar de verdad con la cuenta de esa
+ * persona — a quien nunca le aparecería la tarjeta como asignada.
+ *
+ * La lógica de coincidencia vive en `matchPersonaPorEmail` (textMatch.ts),
+ * compartida con las consultas que buscan a una persona en CUALQUIERA de
+ * los equipos del usuario (ver assistantTeamContext.ts) — un único criterio
+ * de "cómo se llama esta persona" para todo el Asistente.
  *
  * `members` llega ya resuelto desde route.ts (ver `AssistantWorkspaceMemberInfo`)
  * — antes cada tool volvía a consultar `membership.findMany` por su cuenta,
@@ -43,25 +44,7 @@ const TASK_MATCH_MAX_DISTANCE = 0.4;
  * presión real al pool de conexiones de Postgres).
  */
 export function resolverMiembro(nombre: string, members: AssistantWorkspaceMemberInfo[]): AssistantWorkspaceMemberInfo | null {
-  const normalizado = normalizeForMatch(nombre);
-  if (!normalizado) return null;
-  // Tres niveles de precisión, EN ORDEN: email completo, luego parte local
-  // exacta, y solo si ninguna de las dos encaja, una coincidencia parcial.
-  // Antes la parte local exacta y la parcial vivían en el mismo `.find()`
-  // — como `.find()` para en el primer elemento que cumple CUALQUIERA de
-  // las condiciones, un miembro con coincidencia solo parcial pero antes
-  // en la lista (p. ej. "ana.garcia@..." antes que "ana@...") podía ganar
-  // por delante de la coincidencia exacta "ana", asignando en silencio a
-  // la persona equivocada.
-  return (
-    members.find((m) => normalizeForMatch(m.email) === normalizado) ??
-    members.find((m) => normalizeForMatch(m.email.split("@")[0] ?? "") === normalizado) ??
-    members.find((m) => {
-      const local = normalizeForMatch(m.email.split("@")[0] ?? "");
-      return local.includes(normalizado) || normalizado.includes(local);
-    }) ??
-    null
-  );
+  return matchPersonaPorEmail(nombre, members);
 }
 
 export interface CrearEventoResult {
@@ -280,6 +263,14 @@ export function createAssistantTools(
   workspaceId: string,
   role: WorkspaceRole,
   members: AssistantWorkspaceMemberInfo[] = [],
+  /**
+   * El espacio personal del usuario, para las consultas que NO deben
+   * limitarse al workspace activo: `consultarAgenda` mezcla lo de todos sus
+   * equipos con lo suyo propio, porque al preguntar "¿qué tengo esta
+   * semana?" nadie está pensando en qué pestaña tiene abierta. Por defecto
+   * el activo, que es lo correcto cuando el activo YA es el personal.
+   */
+  personalWorkspaceId: string = workspaceId,
 ) {
   // Solo bloquea las 5 tools que escriben notas/eventos del workspace
   // activo — registrarAhorro/consultarAhorros ignoran el rol a propósito
@@ -966,6 +957,76 @@ export function createAssistantTools(
         }
       },
     }),
+    consultarPersona: tool({
+      description:
+        "Ficha completa de UNA persona por su nombre o email (\"¿qué hace Carlos?\", \"¿qué lleva María?\", \"¿quién es carlosgallardo?\", \"¿está ocupado Pedro?\"): en qué equipos está y con qué rol, si está en línea, qué tiene entre manos ahora mismo, sus tareas abiertas con fechas límite (marcando las vencidas), cuántas cerró la última semana y sus próximas citas. Busca en TODOS los equipos del usuario, no solo en el que tenga abierto. De solo lectura. Llámala siempre que pregunten por una persona concreta — nunca respondas que no tienes información sobre alguien sin haberla llamado antes.",
+      inputSchema: z.object({
+        nombre: z.string().min(1).describe("Nombre o email de la persona, tal como lo dijo el usuario (\"Carlos\", \"carlosgallardo\", \"ana@empresa.com\")."),
+      }),
+      execute: async ({ nombre }) => {
+        try {
+          const persona = await resolvePersona(userId, nombre);
+          if (!persona) {
+            throw new Error(`No encuentro a nadie llamado "${nombre}" en ninguno de tus equipos.`);
+          }
+          return persona;
+        } catch (err) {
+          if (err instanceof Error && err.message.startsWith("No encuentro")) throw err;
+          console.error("La tool consultarPersona no pudo leer la ficha:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido consultar a esa persona. Inténtalo de nuevo en un momento.");
+        }
+      },
+    }),
+    consultarMisEquipos: tool({
+      description:
+        "Lista TODOS los equipos a los que pertenece el usuario, con su rol en cada uno, cuánta gente hay y cuánto trabajo abierto tiene cada uno, marcando cuál es el que tiene seleccionado ahora (\"¿en qué equipos estoy?\", \"¿cuántos equipos tengo?\", \"¿en cuál hay más trabajo?\"). De solo lectura. Úsala para poder DIFERENCIAR entre equipos al responder, en vez de hablar de \"el equipo\" como si solo hubiera uno.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const equipos = await resolveMisEquipos(userId, workspaceId);
+          if (equipos.length === 0) {
+            throw new Error("Todavía no perteneces a ningún equipo — solo tienes tu espacio personal.");
+          }
+          return { equipos };
+        } catch (err) {
+          if (err instanceof Error && err.message.startsWith("Todavía no perteneces")) throw err;
+          console.error("La tool consultarMisEquipos no pudo leer los equipos:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido consultar tus equipos. Inténtalo de nuevo en un momento.");
+        }
+      },
+    }),
+    consultarAgenda: tool({
+      description:
+        "Qué hay entre dos fechas: citas del calendario Y tareas que vencen, mezcladas en orden cronológico (\"¿qué tengo esta semana?\", \"¿qué hay mañana?\", \"¿qué tiene Ana el jueves?\", \"¿qué se viene en agosto?\"). Cubre todos los equipos del usuario más su espacio personal, e indica de qué equipo es cada cosa y quién la lleva. De solo lectura. Calcula tú `desde`/`hasta` en ISO 8601 a partir de la fecha actual — `hasta` es exclusivo (para \"mañana\", pon el día siguiente como `hasta`).",
+      inputSchema: z.object({
+        desde: z.string().describe("Inicio del tramo, en ISO 8601 (p. ej. \"2026-08-18T00:00:00+02:00\")."),
+        hasta: z.string().describe("Fin del tramo, en ISO 8601, EXCLUSIVO — lo que caiga justo en esta fecha ya no entra."),
+        dePersona: z
+          .string()
+          .optional()
+          .describe("Nombre o email si preguntan por lo que lleva alguien en concreto; omítelo para ver todo lo que el usuario puede ver."),
+      }),
+      execute: async ({ desde, hasta, dePersona }) => {
+        const inicio = new Date(desde);
+        const fin = new Date(hasta);
+        if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) {
+          throw new Error("Las fechas del tramo no son válidas.");
+        }
+        if (fin <= inicio) {
+          throw new Error("El final del tramo tiene que ser posterior al principio.");
+        }
+        try {
+          const items = await resolveAgenda(userId, inicio, fin, personalWorkspaceId, dePersona);
+          return { items, total: items.length };
+        } catch (err) {
+          console.error("La tool consultarAgenda no pudo leer la agenda:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido consultar la agenda. Inténtalo de nuevo en un momento.");
+        }
+      },
+    }),
     enviarMensajeChat: tool({
       description:
         "Envía un mensaje al chat de equipo en nombre del usuario (\"dile al equipo que llego tarde\", \"escribe en el chat que ya está listo\"). Llámala directamente cuando pida avisar, decir o escribir algo al equipo — no preguntes primero si quiere que lo hagas. Solo en un workspace de equipo.",
@@ -974,7 +1035,14 @@ export function createAssistantTools(
       }),
       execute: async ({ texto }) => {
         if (members.length === 0) {
-          throw new Error("No hay chat de equipo en tu espacio personal.");
+          // El chat SÍ existe en el espacio personal desde que dejó de estar
+          // atado al workspace (conversaciones y grupos propios) — lo que no
+          // hay aquí es un grupo "de equipo" al que escribir. Decir "no hay
+          // chat" a secas sería mentira y confundiría a quien lo tiene
+          // delante en el menú.
+          throw new Error(
+            "Ahora mismo estás en tu espacio personal, así que no hay ningún equipo al que escribir. Cámbiate al equipo desde el selector y vuelve a pedírmelo (tus conversaciones personales siguen en el Chat).",
+          );
         }
         // "El equipo" en boca del usuario es el grupo por defecto, no una
         // conversación individual/otro grupo concreto — el Asistente no

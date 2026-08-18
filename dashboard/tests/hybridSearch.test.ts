@@ -22,6 +22,7 @@ function fakeMessage(id: string, overrides: Partial<Message> = {}): Message {
     checklist: [],
     fecha: new Date("2026-08-01T00:00:00.000Z"),
     fechaLimite: null,
+    boardStatusId: null,
     enProgresoPorId: null,
     enProgresoDesde: null,
     userId: "u1",

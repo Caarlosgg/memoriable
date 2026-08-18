@@ -5,15 +5,18 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Pencil, Check, X } from "lucide-react";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
-import { ESTADO_PRESENTATION } from "@/lib/kanban";
+import { ESTADO_PRESENTATION, matchesVista, type VistaTablero } from "@/lib/kanban";
+import type { ColumnaTablero } from "@/lib/boardColumns";
 import type { Category } from "@/lib/categories";
 import { MessageDetailDialog, type EditableFields } from "@/components/MessageDetailDialog";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { KanbanCard } from "./KanbanCard";
+import { AddCardInline } from "./AddCardInline";
 import type { KanbanDensity } from "./useKanbanDensity";
 
 interface KanbanColumnProps {
-  estado: EstadoTarea;
+  /** La columna que se pinta — propia del workspace o una de las tres de siempre (ver boardColumns.ts). */
+  columna: ColumnaTablero;
   /** Sin filtrar todavía — el filtrado ocurre aquí dentro (ver `useMemo` más abajo), no en KanbanBoard. */
   messages: Message[];
   density: KanbanDensity;
@@ -22,6 +25,8 @@ interface KanbanColumnProps {
   filtroCategoria: Category | "todas";
   filtroPrioridad: Prioridad | "todas";
   filtroAsignado: string;
+  /** Vista rápida (vencidas/hoy/mías) — ver matchesVista en lib/kanban.ts. */
+  vista: VistaTablero;
   hiddenIds: Set<string>;
   onCycleEstado: (messageId: string) => void;
   onCyclePrioridad: (messageId: string) => void;
@@ -33,11 +38,11 @@ interface KanbanColumnProps {
   onSaved: (id: string, patch: EditableFields) => void;
   onDeleted: (id: string) => void;
   onUndoDelete: (id: string) => void;
-  /** Nombre personalizado de esta columna (ver Workspace.boardLabels) — ausente = etiqueta por defecto. */
-  label?: string;
   /** VIEWER no puede renombrar — mismo permiso que crear/editar contenido. */
   canRename?: boolean;
   onRename?: (estado: EstadoTarea, nombre: string | null) => void;
+  /** Tarjeta creada desde esta columna — el tablero la coloca sin recargar. */
+  onCreated?: (message: Message) => void;
 }
 
 /**
@@ -52,7 +57,7 @@ interface KanbanColumnProps {
  * arrastre/edición de verdad no vuelve a renderizarse.
  */
 function KanbanColumnImpl({
-  estado,
+  columna,
   messages,
   density,
   members,
@@ -60,6 +65,7 @@ function KanbanColumnImpl({
   filtroCategoria,
   filtroPrioridad,
   filtroAsignado,
+  vista,
   hiddenIds,
   onCycleEstado,
   onCyclePrioridad,
@@ -71,13 +77,20 @@ function KanbanColumnImpl({
   onSaved,
   onDeleted,
   onUndoDelete,
-  label: customLabel,
   canRename = false,
   onRename,
+  onCreated,
 }: KanbanColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: estado });
-  const { label: defaultLabel, Icon, color } = ESTADO_PRESENTATION[estado];
-  const label = customLabel || defaultLabel;
+  const { setNodeRef, isOver } = useDroppable({ id: columna.id });
+  // El icono y el color salen de la FASE de la columna: dos columnas
+  // propias de la misma fase (p. ej. "En diseño" y "En revisión") se leen
+  // como lo que son, dos pasos de "en curso".
+  const { label: defaultLabel, Icon, color } = ESTADO_PRESENTATION[columna.fase];
+  const label = columna.nombre;
+  // Las columnas PROPIAS se renombran desde su propio diálogo de gestión
+  // (ver GestionColumnasDialog): aquí solo se renombran las tres de
+  // siempre, que es lo que este lápiz ha hecho desde el principio.
+  const puedeRenombrarAqui = canRename && !columna.esPersonalizada;
   const [editing, setEditing] = useState(false);
   const [nameInput, setNameInput] = useState(label);
 
@@ -87,7 +100,7 @@ function KanbanColumnImpl({
   }
   function handleSaveLabel() {
     const trimmed = nameInput.trim();
-    onRename?.(estado, trimmed === defaultLabel || trimmed === "" ? null : trimmed);
+    onRename?.(columna.fase, trimmed === defaultLabel || trimmed === "" ? null : trimmed);
     setEditing(false);
   }
 
@@ -101,14 +114,15 @@ function KanbanColumnImpl({
         if (filtroAsignado !== "todas" && filtroAsignado !== "sin-asignar" && message.assigneeId !== filtroAsignado) {
           return false;
         }
+        if (!matchesVista(message, vista, currentUserId)) return false;
         return true;
       }),
-    [messages, hiddenIds, filtroCategoria, filtroPrioridad, filtroAsignado],
+    [messages, hiddenIds, filtroCategoria, filtroPrioridad, filtroAsignado, vista, currentUserId],
   );
 
   return (
     <section
-      aria-labelledby={`columna-${estado}`}
+      aria-labelledby={`columna-${columna.id}`}
       className={`flex min-w-[260px] flex-1 flex-col gap-3 rounded-2xl border p-3 transition-colors ${
         isOver ? "border-accent bg-accent-soft/60" : "border-paper-line bg-paper-raised/60"
       }`}
@@ -147,12 +161,12 @@ function KanbanColumnImpl({
         </div>
       ) : (
         <h3
-          id={`columna-${estado}`}
+          id={`columna-${columna.id}`}
           className="flex items-center gap-2 text-sm font-semibold text-ink"
         >
           <Icon aria-hidden size={16} className={color} />
           {label}
-          {canRename && (
+          {puedeRenombrarAqui && (
             <button
               type="button"
               onClick={startEditing}
@@ -205,6 +219,11 @@ function KanbanColumnImpl({
           )}
         </ul>
       </SortableContext>
+
+      {/* Fuera del SortableContext: no es una tarjeta arrastrable, es el
+          hueco donde escribir la siguiente. Solo si se puede escribir de
+          verdad — VIEWER ve el tablero pero no lo llena. */}
+      {onCreated && <AddCardInline columnaId={columna.id} onCreated={onCreated} />}
     </section>
   );
 }

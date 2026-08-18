@@ -1,4 +1,4 @@
-import { User, CircleCheck, Send, Bell, Palette, Download } from "lucide-react";
+import { User, CircleCheck, Send, Bell, Palette, Download, ChevronDown } from "lucide-react";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { getActiveWorkspace, getHiddenCategories } from "@/lib/workspace";
@@ -30,7 +30,7 @@ export async function CuentaSection() {
           jerarquía, así que encontrar "silenciar avisos" o "exportar" era
           cuestión de recorrerlas todas. Las tarjetas no cambian; lo que
           cambia es que ahora hay dónde mirar. */}
-      <Grupo id="acceso" titulo="Cuenta y acceso" Icon={User}>
+      <Grupo id="acceso" titulo="Cuenta y acceso" Icon={User} abierto>
         <div className="rounded-2xl border border-paper-line bg-paper-raised p-5">
           <p className="text-sm text-muted">Email</p>
           <p className="font-display text-lg text-ink">{user.email}</p>
@@ -76,27 +76,42 @@ export async function CuentaSection() {
   );
 }
 
-/** Bloque con encabezado dentro de /cuenta — mismo estilo de rótulo que el resto de secciones de la app. */
+/**
+ * Bloque PLEGABLE dentro de /cuenta. Agrupar ya puso jerarquía, pero la
+ * pantalla seguía siendo larguísima: cinco grupos con sus tarjetas, más el
+ * resumen de actividad debajo — había que bajar mucho para llegar a
+ * cualquier cosa. Plegados, la página entera cabe de un vistazo y cada
+ * ajuste se abre solo cuando se va a tocar (que es casi nunca: son
+ * preferencias, no tareas del día).
+ *
+ * `<details>` nativo y no un acordeón en React a propósito: es plegable con
+ * teclado, lo anuncian los lectores de pantalla como tal y funciona sin
+ * JavaScript — nada de esto habría que reimplementarlo.
+ */
 function Grupo({
   id,
   titulo,
   Icon,
+  abierto = false,
   children,
 }: {
   id: string;
   titulo: string;
   Icon: typeof User;
+  /** Solo el primero viene abierto: es el que más se consulta (email, contraseña, sesiones). */
+  abierto?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section aria-labelledby={`cuenta-${id}`} className="flex flex-col gap-4">
-      <h2
+    <details open={abierto} className="group flex flex-col gap-4" aria-labelledby={`cuenta-${id}`}>
+      <summary
         id={`cuenta-${id}`}
-        className="flex items-center gap-2 font-mono text-xs font-bold tracking-[0.1em] text-accent uppercase"
+        className="flex cursor-pointer list-none items-center gap-2 rounded-lg py-1 font-mono text-xs font-bold tracking-[0.1em] text-accent uppercase transition-colors hover:text-accent-strong focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none [&::-webkit-details-marker]:hidden"
       >
         <Icon aria-hidden size={14} /> {titulo}
-      </h2>
-      {children}
-    </section>
+        <ChevronDown aria-hidden size={14} className="ml-auto transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-4 flex flex-col gap-4">{children}</div>
+    </details>
   );
 }

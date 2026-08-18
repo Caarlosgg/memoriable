@@ -38,7 +38,7 @@ const NAV_ENTRIES: PaletteItem[] = [
   { key: "nav-calendario", label: "Calendario", Icon: CalendarDays, onSelect: (r) => r.push("/calendario") },
   // Chat y Equipo faltaban: estaban en el menú lateral pero no se podía
   // llegar a ellos desde la paleta, que es justo la vía rápida de teclado.
-  { key: "nav-chat", label: "Chat", sublabel: "conversaciones del equipo", Icon: MessagesSquare, onSelect: (r) => r.push("/chat") },
+  { key: "nav-chat", label: "Chat", sublabel: "tus conversaciones y grupos", Icon: MessagesSquare, onSelect: (r) => r.push("/chat") },
   { key: "nav-equipo", label: "Equipo", sublabel: "miembros e invitaciones", Icon: Users, onSelect: (r) => r.push("/equipo") },
   { key: "nav-notificaciones", label: "Notificaciones", Icon: Bell, onSelect: (r) => r.push("/notificaciones") },
   { key: "nav-ahorros", label: "Ahorros", Icon: PiggyBank, onSelect: (r) => r.push("/ahorros") },

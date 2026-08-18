@@ -113,6 +113,7 @@ model Workspace {
   chatConversations ChatConversation[]
   assistantMemories AssistantMemory[]
   activityLogs   ActivityLog[]
+  boardStatuses  BoardStatus[]
   personalOf     User?    @relation("PersonalWorkspace")
 
   @@map("workspaces")
@@ -276,6 +277,8 @@ enum ChatConversationType {
 }
 
 /// Ver ../../prisma/schema.prisma: conversación de chat (Fase Mensajería).
+/// DIRECT y GROUP creados a mano son SIEMPRE personales (workspaceId null)
+/// — solo el grupo "Equipo" autocreado por workspace lleva workspaceId.
 model ChatConversation {
   id        String               @id @default(cuid())
   type      ChatConversationType
@@ -283,8 +286,8 @@ model ChatConversation {
   directKey String?
   createdAt DateTime             @default(now())
 
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   createdById String
   createdBy   User   @relation("ChatConversationCreator", fields: [createdById], references: [id])
@@ -292,7 +295,7 @@ model ChatConversation {
   participants ChatConversationParticipant[]
   messages     ChatMessage[]
 
-  @@unique([workspaceId, directKey])
+  @@unique([directKey])
   @@index([workspaceId])
   @@map("chat_conversations")
 }
@@ -325,8 +328,8 @@ model ChatMessage {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   conversationId String
   conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -350,6 +353,25 @@ enum Prioridad {
   ALTA
 }
 
+/// Ver ../../prisma/schema.prisma: columna propia del tablero de un
+/// workspace. NO sustituye a Message.estado: cada columna declara su fase,
+/// y el estado se sigue guardando, para que el resto de la app (cifras,
+/// Asistente, avisos) no tenga que saber nada de columnas propias.
+model BoardStatus {
+  id     String @id @default(cuid())
+  nombre String
+  orden  Int
+  fase   EstadoTarea
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+
+  @@index([workspaceId, orden])
+  @@map("board_statuses")
+}
+
 /// Un mensaje entrante ya categorizado y resumido.
 model Message {
   id        String   @id @default(cuid())
@@ -365,6 +387,10 @@ model Message {
   hecho     Boolean     @default(false)
   /// Estado en el tablero kanban (Fase 3). Nace en POR_HACER.
   estado    EstadoTarea @default(POR_HACER)
+  /// Ver ../../prisma/schema.prisma: columna propia en la que está, si el
+  /// workspace tiene las suyas. Null = columna por defecto de su fase.
+  boardStatusId String?
+  boardStatus   BoardStatus? @relation(fields: [boardStatusId], references: [id], onDelete: SetNull)
   /// Prioridad en el tablero kanban (Fase 3). Nace en MEDIA.
   prioridad Prioridad   @default(MEDIA)
   /// Fecha de recepción/procesamiento.

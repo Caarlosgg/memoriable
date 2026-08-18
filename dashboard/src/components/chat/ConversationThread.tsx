@@ -14,7 +14,6 @@ import {
 } from "@/app/(dashboard)/chat/actions";
 import { useChatRealtime } from "@/lib/useChatRealtime";
 import { useVisibilityAwarePolling } from "@/lib/useVisibilityAwarePolling";
-import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { isOnline } from "@/lib/presence";
 import { formatEventTime, shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
@@ -52,22 +51,22 @@ export function ConversationThread({
   conversation,
   currentUserId,
   initialMessages,
-  members,
   onBack,
   onConversationChanged,
   onLeft,
+  puedeAdjuntar,
 }: {
   conversation: ConversationView;
   currentUserId: string;
   initialMessages: ChatMessageView[];
-  /** Miembros del workspace activo — presencia/estado del otro (individual) o del grupo. */
-  members: WorkspaceMemberInfo[];
   /** Solo en móvil: volver a la lista de conversaciones sin perder el sitio. */
   onBack?: () => void;
   /** Han cambiado los participantes — la lista de conversaciones debe releerse. */
   onConversationChanged: () => void;
   /** Ha salido del grupo: ya no pertenece a esta conversación. */
   onLeft: () => void;
+  /** El servidor tiene configurado Vercel Blob — si no, no se ofrece adjuntar (ver isBlobConfigured). */
+  puedeAdjuntar: boolean;
 }) {
   const conversationId = conversation.id;
   const [messages, setMessages] = useState<PendingMessage[]>(initialMessages);
@@ -134,8 +133,9 @@ export function ConversationThread({
 
   useEffect(() => () => clearTimeout(typingExpiryRef.current), []);
 
-  const selfEmail = members.find((m) => m.userId === currentUserId)?.email ?? "";
-  const other = conversation.type === "DIRECT" ? members.find((m) => m.userId === conversation.otherUserId) : undefined;
+  const self = conversation.participants.find((p) => p.userId === currentUserId);
+  const selfEmail = self?.email ?? "";
+  const other = conversation.type === "DIRECT" ? conversation.participants.find((p) => p.userId === conversation.otherUserId) : undefined;
 
   function handleInputChange(value: string) {
     setInput(value);
@@ -247,10 +247,12 @@ export function ConversationThread({
   }
 
   const headerTitle = conversation.type === "GROUP" ? conversation.nombre : shortEmailName(conversation.nombre);
-  const participantCount = conversation.participantIds.length;
+  const participantCount = conversation.participants.length;
   const headerSubtitle =
     conversation.type === "GROUP"
-      ? `${participantCount} ${participantCount === 1 ? "persona" : "personas"}`
+      ? // Con el nombre del equipo delante cuando es su grupo automático:
+        // varios equipos tienen un grupo llamado igual ("Equipo").
+        `${conversation.equipo ? `${conversation.equipo} · ` : ""}${participantCount} ${participantCount === 1 ? "persona" : "personas"}`
       : other
         ? `${isOnline(other.lastSeenAt) ? "en línea" : "desconectado"} · ${PRESENCE_LABEL[other.presenceStatus ?? "DISPONIBLE"]}`
         : undefined;
@@ -274,8 +276,6 @@ export function ConversationThread({
               mensajería, sin un botón extra compitiendo por el sitio. */}
           <ConversationInfoDialog
             conversation={conversation}
-            participantIds={conversation.participantIds}
-            members={members}
             currentUserId={currentUserId}
             onChanged={onConversationChanged}
             onLeft={onLeft}
@@ -313,11 +313,14 @@ export function ConversationThread({
             {muted ? <BellOff aria-hidden size={13} /> : <Bell aria-hidden size={13} />}
             {muted ? "Silenciado" : "Avisos activos"}
           </button>
-          {conversation.type === "DIRECT" && <PresenceSelect current={members.find((m) => m.userId === currentUserId)?.presenceStatus ?? null} />}
+          {conversation.type === "DIRECT" && <PresenceSelect current={self?.presenceStatus ?? null} />}
         </div>
       </div>
 
-      <ul ref={listRef} className="flex min-h-[50vh] flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-paper-line bg-paper-raised p-4">
+      {/* `min-h-0` (y NO `min-h-[50vh]`): dentro de un contenedor flex, un
+          hijo con altura mínima grande se niega a encoger, así que la lista
+          desbordaba en vez de hacer scroll dentro de sí misma. */}
+      <ul ref={listRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-paper-line bg-paper-raised p-4">
         {messages.length === 0 && <li className="m-auto text-center text-sm text-muted">Todavía no hay mensajes — escribe el primero.</li>}
         {messages.map((message) => {
           const isSelf = message.userId === currentUserId;
@@ -400,23 +403,30 @@ export function ConversationThread({
           <label htmlFor="chat-input" className="sr-only">
             Escribe un mensaje
           </label>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={sending}
-            aria-label="Adjuntar imagen"
-          >
-            <ImagePlus aria-hidden size={16} />
-          </Button>
+          {/* Sin BLOB_READ_WRITE_TOKEN en el servidor, subir una imagen
+              falla siempre — mejor no ofrecer el botón que dejar que el
+              usuario lo intente una y otra vez (ver isBlobConfigured). */}
+          {puedeAdjuntar && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending}
+                aria-label="Adjuntar imagen"
+              >
+                <ImagePlus aria-hidden size={16} />
+              </Button>
+            </>
+          )}
           <Input
             id="chat-input"
             value={input}

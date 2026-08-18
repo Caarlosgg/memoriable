@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { TriangleAlert, CalendarDays, ListTodo, MessagesSquare, Clock, Loader2, PenLine, Sparkles } from "lucide-react";
+import { TriangleAlert, CalendarDays, ListTodo, Clock, Loader2, PenLine, Sparkles, CircleCheckBig } from "lucide-react";
 import { verifySession } from "@/lib/dal";
-import { getActiveWorkspace, listWorkspaceMembers } from "@/lib/workspace";
+import { getActiveWorkspace, listWorkspaceMembers, canWrite } from "@/lib/workspace";
 import { getTodayOverview } from "@/lib/todayOverview";
-import { presentCategory } from "@/lib/categories";
 import { formatEventTime, shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { StatTile } from "./StatTile";
+import { TareaAccionable } from "./TareaAccionable";
 
 const SALUDO_FORMATTER = new Intl.DateTimeFormat("es-ES", { weekday: "long", day: "numeric", month: "long" });
 
@@ -15,17 +15,6 @@ function saludoSegunHora(hora: number): string {
   if (hora < 14) return "Buenos días";
   if (hora < 21) return "Buenas tardes";
   return "Buenas noches";
-}
-
-/** Fila de una tarea: misma anatomía en "vencidas" y "hoy", con el color de su categoría. */
-function TareaRow({ resumen, categoria, urgente = false }: { resumen: string; categoria: string; urgente?: boolean }) {
-  const { Icon, color } = presentCategory(categoria);
-  return (
-    <li className="flex items-start gap-2 py-1 text-sm">
-      <Icon aria-hidden size={14} className={`mt-0.5 shrink-0 ${urgente ? "text-danger" : color}`} />
-      <span className={urgente ? "text-danger" : "text-ink"}>{resumen}</span>
-    </li>
-  );
 }
 
 /** Tarjeta de sección con título e (opcional) enlace a la pantalla completa. */
@@ -86,7 +75,8 @@ function Bloque({
  */
 export async function TodayView() {
   const userId = await verifySession();
-  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  const { workspaceId, isPersonal, role } = await getActiveWorkspace(userId);
+  const puedeEditar = canWrite(role);
   const [overview, members] = await Promise.all([
     getTodayOverview(workspaceId),
     isPersonal ? Promise.resolve([]) : listWorkspaceMembers(workspaceId, userId).catch(() => []),
@@ -108,8 +98,12 @@ export async function TodayView() {
       {/* Fila de cifras: cada una lleva a la pantalla que la explica, así
           que el número no es solo información, es también el acceso. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* Cada cifra lleva a SU vista, no al tablero entero: pulsar
+            "Vencidas 3" y tener que volver a buscarlas a ojo era el número
+            haciendo de dato pero no de acceso (ver ?vista= en
+            pendientes/page.tsx). */}
         <StatTile
-          href="/pendientes"
+          href="/pendientes?vista=vencidas"
           label="Vencidas"
           value={overview.vencidasTotal}
           Icon={TriangleAlert}
@@ -117,20 +111,35 @@ export async function TodayView() {
         />
         <StatTile href="/calendario" label="Hoy" value={overview.hoyTareasTotal + overview.hoyEventos.length} Icon={CalendarDays} />
         <StatTile href="/pendientes" label="Pendientes" value={overview.pendientesTotal} Icon={ListTodo} />
-        <StatTile
-          href={isPersonal ? "/equipo" : "/chat"}
-          label={isPersonal ? "Tu equipo" : "En curso"}
-          value={isPersonal ? 0 : overview.enCurso.length}
-          Icon={isPersonal ? MessagesSquare : Loader2}
-          tono={!isPersonal && overview.enCurso.length > 0 ? "bien" : "neutro"}
-        />
+        {/* En personal no hay "en curso" de nadie más, y la ficha enseñaba
+            un 0 fijo bajo "Tu equipo" — un número que no medía nada. Se
+            cambia por algo que sí es cierto en personal: lo cerrado esta
+            semana, que además es la única cifra de las cuatro que da una
+            buena noticia en vez de una pendiente. */}
+        {isPersonal ? (
+          <StatTile
+            href="/pendientes"
+            label="Hechas (7 días)"
+            value={overview.completadasSemana}
+            Icon={CircleCheckBig}
+            tono={overview.completadasSemana > 0 ? "bien" : "neutro"}
+          />
+        ) : (
+          <StatTile
+            href="/chat"
+            label="En curso"
+            value={overview.enCurso.length}
+            Icon={Loader2}
+            tono={overview.enCurso.length > 0 ? "bien" : "neutro"}
+          />
+        )}
       </div>
 
       {overview.vencidasTotal > 0 && (
-        <Bloque titulo="Se te ha pasado" Icon={TriangleAlert} tono="alerta" href="/pendientes" hrefLabel="Ir al tablero">
+        <Bloque titulo="Se te ha pasado" Icon={TriangleAlert} tono="alerta" href="/pendientes?vista=vencidas" hrefLabel="Ver las vencidas">
           <ul className="flex flex-col">
             {overview.vencidas.map((t) => (
-              <TareaRow key={t.id} resumen={t.resumen} categoria={t.categoria} urgente />
+              <TareaAccionable key={t.id} id={t.id} resumen={t.resumen} categoria={t.categoria} urgente puedeEditar={puedeEditar} />
             ))}
           </ul>
           {overview.vencidasTotal > overview.vencidas.length && (
@@ -152,7 +161,7 @@ export async function TodayView() {
               </li>
             ))}
             {overview.hoyTareas.map((t) => (
-              <TareaRow key={t.id} resumen={t.resumen} categoria={t.categoria} />
+              <TareaAccionable key={t.id} id={t.id} resumen={t.resumen} categoria={t.categoria} puedeEditar={puedeEditar} />
             ))}
           </ul>
         )}

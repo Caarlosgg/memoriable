@@ -174,6 +174,7 @@ model Workspace {
   chatConversations ChatConversation[]
   assistantMemories AssistantMemory[]
   activityLogs    ActivityLog[]
+  boardStatuses   BoardStatus[]
   /// Reverso de User.personalWorkspaceId — como máximo un usuario por
   /// workspace personal (impuesto por el @unique del otro lado).
   personalOf  User?    @relation("PersonalWorkspace")
@@ -399,9 +400,14 @@ enum ChatConversationType {
   GROUP
 }
 
-/// Conversación de chat dentro de un workspace de equipo (Fase Mensajería).
-/// Sin sentido en el workspace personal (no hay con quién hablar) — la UI
-/// no la monta ahí, igual que antes.
+/// Conversación de chat: DIRECT y GROUP creados a mano SIEMPRE son
+/// personales (`workspaceId` null) — pertenecen a las personas, no a un
+/// equipo, así que se ven igual en espacio personal o en cualquier
+/// workspace de equipo, y se puede invitar a cualquiera con cuenta en la
+/// app, sea o no compañero de equipo. La única conversación con
+/// `workspaceId` propio es el grupo "Equipo" autocreado por workspace (ver
+/// ensureDefaultGroupConversation en chat/actions.ts): ese sí depende de la
+/// pertenencia al equipo.
 model ChatConversation {
   id        String               @id @default(cuid())
   type      ChatConversationType
@@ -410,13 +416,16 @@ model ChatConversation {
   nombre    String?
   /// Solo DIRECT: los dos ids de participante, orden alfabético, unidos por
   /// "_" — permite encontrar (o evitar duplicar) el hilo 1-a-1 entre dos
-  /// personas concretas de un workspace sin tener que buscar por join.
-  /// Null en GROUP (sin este límite: puede haber varios grupos cualquiera).
+  /// personas concretas SIN pasar por ningún workspace (las DIRECT son
+  /// siempre personales). Null en GROUP (sin este límite: puede haber
+  /// varios grupos cualquiera).
   directKey String?
   createdAt DateTime             @default(now())
 
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Null = conversación personal (DIRECT, o GROUP creado a mano). Solo el
+  /// grupo "Equipo" autocreado por workspace lleva un valor aquí.
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   createdById String
   createdBy   User   @relation("ChatConversationCreator", fields: [createdById], references: [id])
@@ -424,7 +433,7 @@ model ChatConversation {
   participants ChatConversationParticipant[]
   messages     ChatMessage[]
 
-  @@unique([workspaceId, directKey])
+  @@unique([directKey])
   @@index([workspaceId])
   @@map("chat_conversations")
 }
@@ -478,9 +487,10 @@ model ChatMessage {
 
   /// Workspace del que cuelga (denormalizado desde `conversation.workspaceId`)
   /// — se mantiene para no tener que pasar por la conversación en consultas
-  /// que ya filtran por workspace.
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// que ya filtran por workspace. Null en conversaciones personales (ver
+  /// ChatConversation.workspaceId).
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   conversationId String
   conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -507,6 +517,38 @@ enum Prioridad {
   ALTA
 }
 
+/// Columna propia del tablero de un workspace ("En diseño", "En revisión",
+/// "Esperando al cliente"...). Un obrador, una asesoría y un estudio no
+/// llevan las tareas igual, y tres columnas fijas no dan para todos.
+///
+/// DISEÑO IMPORTANTE — esto NO sustituye a `Message.estado`, lo acompaña.
+/// Cada columna declara a qué `fase` del ciclo pertenece, y `Message.estado`
+/// se sigue guardando siempre con esa fase. Así todo lo que pregunta "¿está
+/// abierta?", "¿está hecha?", "¿está vencida?" (las cifras de Inicio, las
+/// tools del Asistente, los avisos, el resumen diario) sigue funcionando sin
+/// enterarse de que existen columnas propias: una tarea en "En revisión"
+/// es, a todos los efectos, una tarea EN_PROGRESO.
+///
+/// Un workspace sin ninguna fila aquí usa las tres columnas de siempre
+/// derivadas del enum — no hay que migrar nada ni "activar" la función.
+model BoardStatus {
+  id     String @id @default(cuid())
+  nombre String
+  /// Posición de izquierda a derecha en el tablero.
+  orden  Int
+  /// Fase del ciclo a la que equivale esta columna. Lo que mantiene
+  /// coherente al resto de la aplicación (ver el comentario de arriba).
+  fase   EstadoTarea
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+
+  @@index([workspaceId, orden])
+  @@map("board_statuses")
+}
+
 /// Un mensaje entrante ya categorizado y resumido.
 model Message {
   id        String   @id @default(cuid())
@@ -524,8 +566,16 @@ model Message {
   /// bot y el resumen diario lo siguen usando tal cual, sin saber nada del
   /// tablero kanban del dashboard.
   hecho     Boolean  @default(false)
-  /// Estado en el tablero kanban (Fase 3). Nace en POR_HACER.
+  /// Estado en el tablero kanban (Fase 3). Nace en POR_HACER. Sigue siendo
+  /// la verdad semántica (abierta/en curso/hecha) incluso con columnas
+  /// propias — ver `boardStatusId` y el comentario de `BoardStatus`.
   estado    EstadoTarea @default(POR_HACER)
+  /// En qué columna PROPIA del workspace está, si el workspace tiene las
+  /// suyas. Null = está en la columna por defecto que corresponda a su
+  /// `estado`. Al borrar una columna, sus tarjetas vuelven a null (no se
+  /// pierde ninguna, caen en la columna por defecto de su fase).
+  boardStatusId String?
+  boardStatus   BoardStatus? @relation(fields: [boardStatusId], references: [id], onDelete: SetNull)
   /// Prioridad en el tablero kanban (Fase 3). Nace en MEDIA.
   prioridad Prioridad   @default(MEDIA)
   /// Fecha de recepción/procesamiento.

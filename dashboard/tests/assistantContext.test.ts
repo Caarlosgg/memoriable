@@ -5,6 +5,7 @@ import {
   buildSystemPrompt,
   buildWorkspaceContextLine,
   buildAmbientBlock,
+  buildTeamsBlock,
   toAssistantSources,
 } from "../src/lib/assistantContext";
 
@@ -27,6 +28,7 @@ function fakeMessage(overrides: Partial<Message> = {}): Message {
     checklist: [],
     fecha: new Date("2026-07-28T21:24:00.000Z"),
     fechaLimite: null,
+    boardStatusId: null,
     enProgresoPorId: null,
     enProgresoDesde: null,
     userId: "u1",
@@ -287,5 +289,57 @@ describe("buildAmbientBlock", () => {
     });
     expect(block).toContain("5 eventos en los próximos 7 días");
     expect(block).toContain("y 2 más");
+  });
+});
+
+describe("buildTeamsBlock", () => {
+  const obrador = { nombre: "Obrador", role: "OWNER" as const, miembros: 3, esElActivo: true, tareasAbiertas: 7 };
+  const asesoria = { nombre: "Asesoría", role: "MEMBER" as const, miembros: 2, esElActivo: false, tareasAbiertas: 0 };
+
+  it("sin equipos no genera bloque, para no meter una sección vacía en el prompt", () => {
+    expect(buildTeamsBlock([])).toBe("");
+  });
+
+  it("distingue el equipo abierto de los demás — es lo que decide dónde se guarda lo que se cree", () => {
+    const block = buildTeamsBlock([obrador, asesoria]);
+    const lineas = block.split("\n");
+    expect(lineas[0]).toContain("ES EL QUE TIENE ABIERTO AHORA");
+    expect(lineas[1]).not.toContain("ES EL QUE TIENE ABIERTO AHORA");
+  });
+
+  it("lleva el rol del usuario en cada equipo, que no tiene por qué ser el mismo", () => {
+    const block = buildTeamsBlock([obrador, asesoria]);
+    expect(block).toContain("el usuario es propietario/a");
+    expect(block).toContain("el usuario es miembro");
+  });
+
+  it("da la carga de cada equipo, para poder compararlos al responder", () => {
+    const block = buildTeamsBlock([obrador, asesoria]);
+    expect(block).toContain("7 tareas abiertas");
+    // Sin trabajo pendiente es información útil, no algo que omitir: es la
+    // mitad de "en Obrador tienes 7 y en Asesoría ninguna".
+    expect(block).toContain("0 tareas abiertas");
+  });
+
+  it("concuerda el singular en la gente y en las tareas", () => {
+    const block = buildTeamsBlock([{ nombre: "Yo y alguien", role: "ADMIN", miembros: 1, esElActivo: false, tareasAbiertas: 1 }]);
+    expect(block).toContain("1 persona");
+    expect(block).toContain("1 tarea abierta");
+  });
+});
+
+describe("buildSystemPrompt con equipos", () => {
+  it("mete el bloque de equipos y sigue llevando el contexto de notas", () => {
+    const prompt = buildSystemPrompt("Nada relevante.", new Date("2026-08-18T10:00:00Z"), {
+      teamsBlock: '- "Obrador": 3 personas, el usuario es propietario/a, 7 tareas abiertas.',
+    });
+    expect(prompt).toContain("Equipos a los que pertenece el usuario");
+    expect(prompt).toContain('"Obrador"');
+    expect(prompt).toContain("Nada relevante.");
+  });
+
+  it("sin equipos no añade la sección", () => {
+    const prompt = buildSystemPrompt("Nada relevante.", new Date("2026-08-18T10:00:00Z"), { teamsBlock: "" });
+    expect(prompt).not.toContain("Equipos a los que pertenece el usuario");
   });
 });

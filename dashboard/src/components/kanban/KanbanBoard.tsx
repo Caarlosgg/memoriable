@@ -16,15 +16,16 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import type { BoardColumn } from "@/lib/data";
 import {
-  ESTADOS_TABLERO,
-  ESTADO_PRESENTATION,
-  nextEstado,
   nextPriority,
   PRIORIDADES,
   PRIORIDAD_PRESENTATION,
   shouldClearEnProgreso,
+  VISTAS_TABLERO,
+  VISTA_LABEL,
+  type VistaTablero,
 } from "@/lib/kanban";
 import { CATEGORIES, CATEGORY_PRESENTATION, presentCategory, type Category } from "@/lib/categories";
+import { columnaDeTarjeta, faseDeColumna, type ColumnaTablero } from "@/lib/boardColumns";
 import { notifyEnProgresoChanged, TASK_PATCHED_ELSEWHERE_EVENT, type TaskPatchedElsewhereDetail } from "@/lib/enProgresoEvents";
 import {
   updateTaskStatus,
@@ -43,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { KanbanColumn } from "./KanbanColumn";
 import { KanbanCardContent } from "./KanbanCard";
 import { useKanbanDensity } from "./useKanbanDensity";
+import { GestionColumnasDialog } from "./GestionColumnasDialog";
 
 /** Mismas clases en ambos selects del filtro — un único sitio para que se vean iguales. */
 const FILTER_CLASSNAME =
@@ -51,29 +53,60 @@ const FILTER_CLASSNAME =
 /** Separación entre dos vecinas al insertar una tarjeta en un extremo (indexado fraccionario). */
 const ORDEN_STEP = 1000;
 
-function isEstadoTarea(value: string): value is EstadoTarea {
-  return (ESTADOS_TABLERO as readonly string[]).includes(value);
-}
+/**
+ * Referencia estable para una columna sin tarjetas. Un `[]` nuevo en cada
+ * render rompería el `memo` de KanbanColumn (ver su comentario): la prop
+ * `messages` nunca sería `===` a la anterior.
+ */
+const EMPTY_LIST: Message[] = [];
 
-type ByEstado = Record<EstadoTarea, Message[]>;
+
+
+/**
+ * Tarjetas por COLUMNA (su id), no por valor del enum: con columnas
+ * propias puede haber varias columnas de la misma fase (p. ej. "En
+ * diseño" y "En revisión", las dos EN_PROGRESO), así que el enum ya no
+ * sirve de clave. Ver boardColumns.ts.
+ */
+type ByColumna = Record<string, Message[]>;
 
 export function KanbanBoard({
   initialColumns,
+  columnas,
   members = [],
   currentUserId,
   boardLabels: initialBoardLabels = {},
-  canRenameColumns = false,
+  puedeEditar = false,
+  vistaInicial = "todas",
+  asignadoInicial,
 }: {
   initialColumns: BoardColumn[];
+  /** Columnas efectivas del workspace (propias o las tres de siempre) — ver resolverColumnas. */
+  columnas: ColumnaTablero[];
   members?: WorkspaceMemberInfo[];
   currentUserId: string;
   /** Nombres personalizados de columna por workspace (ver Workspace.boardLabels) — ausente = etiqueta por defecto. */
   boardLabels?: Partial<Record<EstadoTarea, string>>;
-  /** VIEWER no puede renombrar columnas — mismo permiso que crear/editar contenido (`canWrite`). */
-  canRenameColumns?: boolean;
+  /** `canWrite(role)`: VIEWER ve el tablero pero no lo toca — ni crea tarjetas, ni renombra o gestiona columnas. */
+  puedeEditar?: boolean;
+  /** Vista rápida pedida por URL (`/pendientes?vista=`) — ver parseVista en lib/kanban.ts. */
+  vistaInicial?: VistaTablero;
+  /** Persona pedida por URL (`/pendientes?asignado=`), ya validada en BoardSection — la usa el reparto de trabajo de /equipo. */
+  asignadoInicial?: string;
 }) {
-  const [byEstado, setByEstado] = useState<ByEstado>(
-    () => Object.fromEntries(initialColumns.map((c) => [c.estado, c.messages])) as ByEstado,
+  const [byEstado, setByEstado] = useState<ByColumna>(
+    () => Object.fromEntries(initialColumns.map((c) => [c.columnaId, c.messages])),
+  );
+  /** ¿Es este id el de una columna (y no el de una tarjeta)? Lo usa el arrastre. */
+  const esColumna = useCallback((id: string) => columnas.some((c) => c.id === id), [columnas]);
+  /**
+   * ¿Es una columna PROPIA del workspace? Solo esas se guardan en
+   * `boardStatusId`; en las tres por defecto (cuyo id es el valor del enum)
+   * el campo va a null, que es como han estado siempre las tarjetas.
+   */
+  const esColumnaPropia = useCallback(
+    (id: string) => columnas.some((c) => c.id === id && c.esPersonalizada),
+    [columnas],
   );
   const [density, setDensity] = useKanbanDensity();
   const [boardLabels, setBoardLabels] = useState(initialBoardLabels);
@@ -98,8 +131,13 @@ export function KanbanBoard({
   const [filtroPrioridad, setFiltroPrioridad] = useState<Prioridad | "todas">("todas");
   // "todas" | "sin-asignar" | un userId — solo tiene sentido en modo equipo
   // (con `members`), ver el <select> condicional más abajo.
-  const [filtroAsignado, setFiltroAsignado] = useState<string>("todas");
-  const hasFilters = filtroCategoria !== "todas" || filtroPrioridad !== "todas" || filtroAsignado !== "todas";
+  const [filtroAsignado, setFiltroAsignado] = useState<string>(asignadoInicial ?? "todas");
+  // Vista rápida: llega por URL desde las cifras de Inicio, pero después es
+  // estado normal del tablero (se puede cambiar y quitar aquí mismo, sin
+  // volver a navegar).
+  const [vista, setVista] = useState<VistaTablero>(vistaInicial);
+  const hasFilters =
+    filtroCategoria !== "todas" || filtroPrioridad !== "todas" || filtroAsignado !== "todas" || vista !== "todas";
 
   // Borrado con margen de deshacer (Tier 1.3): igual que el filtro, no toca
   // `byEstado` — solo lo que se renderiza. Ver MessageDetailDialog.tsx.
@@ -107,6 +145,21 @@ export function KanbanBoard({
   const handleDeleted = useCallback((messageId: string) => {
     setHiddenIds((prev) => new Set(prev).add(messageId));
   }, []);
+  /**
+   * Tarjeta recién creada desde una columna: entra arriba del todo de esa
+   * columna, sin recargar. Va por `columnaDeTarjeta` y no por la columna
+   * donde se pulsó "+": si el pipeline la categorizó como algo que no es
+   * accionable, o el servidor la colocó en otro sitio, manda lo que de
+   * verdad se guardó.
+   */
+  const handleCreated = useCallback((message: Message) => {
+    setByEstado((prev) => {
+      const destino = columnaDeTarjeta(message, columnas);
+      if (!(destino in prev)) return prev;
+      return { ...prev, [destino]: [message, ...(prev[destino] ?? [])] };
+    });
+  }, [columnas]);
+
   const handleUndoDelete = useCallback((messageId: string) => {
     setHiddenIds((prev) => {
       const next = new Set(prev);
@@ -139,9 +192,9 @@ export function KanbanBoard({
     byEstadoRef.current = byEstado;
   }, [byEstado]);
 
-  function findInState(state: ByEstado, messageId: string): Message | undefined {
-    for (const estado of ESTADOS_TABLERO) {
-      const found = state[estado].find((m) => m.id === messageId);
+  function findInState(state: ByColumna, messageId: string): Message | undefined {
+    for (const lista of Object.values(state)) {
+      const found = lista.find((m) => m.id === messageId);
       if (found) return found;
     }
     return undefined;
@@ -160,9 +213,9 @@ export function KanbanBoard({
     return findInState(byEstadoRef.current, messageId);
   }, []);
 
-  function findContainer(id: string, state: ByEstado): EstadoTarea | undefined {
-    if (isEstadoTarea(id)) return id;
-    return (Object.keys(state) as EstadoTarea[]).find((estado) => state[estado].some((m) => m.id === id));
+  function findContainer(id: string, state: ByColumna): string | undefined {
+    if (esColumna(id)) return id;
+    return Object.keys(state).find((columnaId) => state[columnaId]?.some((m) => m.id === id));
   }
 
   /**
@@ -176,27 +229,28 @@ export function KanbanBoard({
    * handleDragOver/handleDragEnd) porque necesita posición exacta, no solo
    * "arriba del todo".
    */
-  function applyLocalUpdate(messageId: string, patch: Partial<Message>) {
+  const applyLocalUpdate = useCallback((messageId: string, patch: Partial<Message>) => {
     setByEstado((prev) => {
-      const sourceEstado = (Object.keys(prev) as EstadoTarea[]).find((estado) =>
-        prev[estado].some((m) => m.id === messageId),
-      );
-      if (!sourceEstado) return prev;
+      const origen = Object.keys(prev).find((columnaId) => prev[columnaId]?.some((m) => m.id === messageId));
+      if (!origen) return prev;
 
-      const current = prev[sourceEstado].find((m) => m.id === messageId)!;
+      const current = prev[origen]!.find((m) => m.id === messageId)!;
       const updated = { ...current, ...patch };
-      const targetEstado = patch.estado ?? sourceEstado;
+      // El destino se decide por COLUMNA si el patch la trae; si solo trae
+      // estado (p. ej. el modal de edición), se cae en la primera columna
+      // de esa fase — ver columnaDeTarjeta.
+      const destino = columnaDeTarjeta(updated, columnas);
 
-      if (targetEstado === sourceEstado) {
-        return { ...prev, [sourceEstado]: prev[sourceEstado].map((m) => (m.id === messageId ? updated : m)) };
+      if (destino === origen) {
+        return { ...prev, [origen]: prev[origen]!.map((m) => (m.id === messageId ? updated : m)) };
       }
       return {
         ...prev,
-        [sourceEstado]: prev[sourceEstado].filter((m) => m.id !== messageId),
-        [targetEstado]: [updated, ...prev[targetEstado]],
+        [origen]: prev[origen]!.filter((m) => m.id !== messageId),
+        [destino]: [updated, ...(prev[destino] ?? [])],
       };
     });
-  }
+  }, [columnas]);
 
   // `CurrentTaskBar` vive en el layout, fuera de este componente — cuando
   // marca hecha o suelta TU tarjeta activa desde ahí, esta es la única
@@ -209,14 +263,14 @@ export function KanbanBoard({
     }
     window.addEventListener(TASK_PATCHED_ELSEWHERE_EVENT, onPatchedElsewhere);
     return () => window.removeEventListener(TASK_PATCHED_ELSEWHERE_EVENT, onPatchedElsewhere);
-  }, []);
+  }, [applyLocalUpdate]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   // Foto del tablero justo antes de empezar a arrastrar: si el guardado en
   // el servidor falla, o el arrastre se cancela (Esc) a medio camino entre
   // columnas, se restaura tal cual estaba — sin esto, un fallo de red podía
   // dejar el tablero visualmente distinto de lo que de verdad hay guardado.
-  const dragSnapshot = useRef<ByEstado | null>(null);
+  const dragSnapshot = useRef<ByColumna | null>(null);
 
   function handleDragStart(event: DragStartEvent) {
     dragSnapshot.current = byEstado;
@@ -242,15 +296,23 @@ export function KanbanBoard({
       const overContainer = findContainer(overIdStr, prev);
       if (!activeContainer || !overContainer || activeContainer === overContainer) return prev;
 
-      const activeItems = prev[activeContainer];
-      const overItems = prev[overContainer];
+      const activeItems = prev[activeContainer] ?? [];
+      const overItems = prev[overContainer] ?? [];
       const activeIndex = activeItems.findIndex((m) => m.id === activeIdStr);
       const moving = activeItems[activeIndex];
       if (!moving) return prev;
 
       const overIndex = overItems.findIndex((m) => m.id === overIdStr);
       const newIndex = overIndex >= 0 ? overIndex : overItems.length;
-      const updatedMoving = { ...moving, estado: overContainer, hecho: overContainer === "HECHO" };
+      // La FASE de la columna destino es lo que se guarda en `estado`: con
+      // columnas propias, el id de la columna ya no es un valor del enum.
+      const faseDestino = faseDeColumna(overContainer, columnas) ?? moving.estado;
+      const updatedMoving = {
+        ...moving,
+        estado: faseDestino,
+        hecho: faseDestino === "HECHO",
+        boardStatusId: esColumnaPropia(overContainer) ? overContainer : null,
+      };
 
       return {
         ...prev,
@@ -296,9 +358,9 @@ export function KanbanBoard({
     const container = findContainer(activeIdStr, prevState);
     if (!container) return;
 
-    const items = prevState[container];
+    const items = prevState[container] ?? [];
     const activeIndex = items.findIndex((m) => m.id === activeIdStr);
-    const overIndex = isEstadoTarea(overIdStr) ? items.length - 1 : items.findIndex((m) => m.id === overIdStr);
+    const overIndex = esColumna(overIdStr) ? items.length - 1 : items.findIndex((m) => m.id === overIdStr);
 
     const reordered = overIndex >= 0 && activeIndex !== overIndex ? arrayMove(items, activeIndex, overIndex) : items;
 
@@ -311,24 +373,29 @@ export function KanbanBoard({
     else if (below) newOrden = below.orden + ORDEN_STEP;
     else newOrden = Date.now();
 
+    // La fase de la columna destino: con columnas propias, `container` es
+    // el id de la columna, no un valor del enum.
+    const faseDestino = faseDeColumna(container, columnas);
+    if (!faseDestino) return;
     // Igual que en el servidor (ver `shouldClearEnProgreso`): soltarla en
-    // HECHO también suelta "en curso ahora".
-    const clearsEnProgreso = shouldClearEnProgreso(container);
+    // una columna de fase HECHO también suelta "en curso ahora".
+    const clearsEnProgreso = shouldClearEnProgreso(faseDestino);
     const finalList = reordered.map((m) =>
       m.id === activeIdStr
         ? { ...m, orden: newOrden, ...(clearsEnProgreso ? { enProgresoPorId: null, enProgresoDesde: null } : {}) }
         : m,
     );
     const original = findContainer(activeIdStr, snapshot);
-    const originalMessage = original ? snapshot[original].find((m) => m.id === activeIdStr) : undefined;
+    const originalMessage = original ? snapshot[original]?.find((m) => m.id === activeIdStr) : undefined;
 
     setByEstado((current) => ({ ...current, [container]: finalList }));
 
-    if (originalMessage?.estado !== container) {
-      setAnnouncement(`«${originalMessage?.resumen ?? ""}» movida a ${ESTADO_PRESENTATION[container].label}.`);
+    if (original !== container) {
+      const nombreDestino = columnas.find((c) => c.id === container)?.nombre ?? "";
+      setAnnouncement(`«${originalMessage?.resumen ?? ""}» movida a ${nombreDestino}.`);
     }
 
-    moveTask(activeIdStr, container, newOrden)
+    moveTask(activeIdStr, faseDestino, newOrden, container)
       .then(() => {
         if (clearsEnProgreso) notifyEnProgresoChanged();
       })
@@ -346,16 +413,28 @@ export function KanbanBoard({
   const handleCycleEstado = useCallback((messageId: string) => {
     const current = findMessage(messageId);
     if (!current) return;
-    const target = nextEstado(current.estado);
+    // Avanza a la siguiente COLUMNA del tablero (circular), no al siguiente
+    // valor del enum: con columnas propias, "la siguiente" puede ser otra
+    // columna de la misma fase (p. ej. "En diseño" → "En revisión").
+    const actualId = columnaDeTarjeta(current, columnas);
+    const i = columnas.findIndex((c) => c.id === actualId);
+    const siguiente = columnas[(i + 1) % columnas.length];
+    if (!siguiente) return;
+    const target = siguiente.fase;
     // Igual que en el servidor (ver `shouldClearEnProgreso`): marcarla
     // HECHA suelta también "en curso ahora" — no tendría sentido que
     // siguiera apareciendo como que alguien la está haciendo.
     const clearsEnProgreso = shouldClearEnProgreso(target);
     const clearEnProgreso = clearsEnProgreso ? { enProgresoPorId: null, enProgresoDesde: null } : {};
 
-    applyLocalUpdate(messageId, { estado: target, hecho: target === "HECHO", ...clearEnProgreso });
-    setAnnouncement(`«${current.resumen}» ahora está ${ESTADO_PRESENTATION[target].label}.`);
-    updateTaskStatus(messageId, target)
+    applyLocalUpdate(messageId, {
+      estado: target,
+      hecho: target === "HECHO",
+      boardStatusId: siguiente.esPersonalizada ? siguiente.id : null,
+      ...clearEnProgreso,
+    });
+    setAnnouncement(`«${current.resumen}» ahora está en ${siguiente.nombre}.`);
+    updateTaskStatus(messageId, target, siguiente.id)
       .then(() => {
         // Se avisa DESPUÉS de que el servidor confirme, no antes: `CurrentTaskBar`
         // reacciona a este evento releyendo del servidor, y si avisara antes,
@@ -364,9 +443,13 @@ export function KanbanBoard({
       })
       .catch((err) => {
         console.error("No se pudo cambiar el estado:", err);
-        applyLocalUpdate(messageId, { estado: current.estado, hecho: current.hecho });
+        applyLocalUpdate(messageId, {
+          estado: current.estado,
+          hecho: current.hecho,
+          boardStatusId: current.boardStatusId,
+        });
       });
-  }, [findMessage]);
+  }, [findMessage, columnas, applyLocalUpdate]);
 
   const handleCyclePrioridad = useCallback((messageId: string) => {
     const current = findMessage(messageId);
@@ -379,7 +462,7 @@ export function KanbanBoard({
       console.error("No se pudo cambiar la prioridad:", err);
       applyLocalUpdate(messageId, { prioridad: current.prioridad });
     });
-  }, [findMessage]);
+  }, [findMessage, applyLocalUpdate]);
 
   // Guardar desde el modal de edición es la TERCERA vía por la que una
   // tarjeta puede llegar a HECHA (o a una categoría no accionable) —
@@ -394,7 +477,7 @@ export function KanbanBoard({
       ...(clearsEnProgreso ? { enProgresoPorId: null, enProgresoDesde: null } : {}),
     });
     if (clearsEnProgreso) notifyEnProgresoChanged();
-  }, []);
+  }, [applyLocalUpdate]);
 
   /**
    * Añadir una etiqueta directamente desde la tarjeta, sin abrir el modal
@@ -411,7 +494,7 @@ export function KanbanBoard({
       console.error("No se pudo añadir la etiqueta:", err);
       applyLocalUpdate(messageId, { etiquetas: current.etiquetas });
     });
-  }, [findMessage]);
+  }, [findMessage, applyLocalUpdate]);
 
   /**
    * Asignar/desasignar una tarjeta (Fase Equipo) — mismo patrón optimista
@@ -436,7 +519,7 @@ export function KanbanBoard({
         console.error("No se pudo asignar la tarea:", err);
         applyLocalUpdate(messageId, { assigneeId: previousAssigneeId });
       });
-  }, [findMessage]);
+  }, [findMessage, applyLocalUpdate]);
 
   /**
    * Aplazar (o quitar, con `fechaLimite: null`) la fecha límite — mismo
@@ -452,7 +535,7 @@ export function KanbanBoard({
       console.error("No se pudo aplazar la tarea:", err);
       applyLocalUpdate(messageId, { fechaLimite: previousFechaLimite });
     });
-  }, [findMessage]);
+  }, [findMessage, applyLocalUpdate]);
 
   /**
    * "Empezar"/"soltar" una tarjeta (Fase "en curso ahora"): empezarla
@@ -475,7 +558,7 @@ export function KanbanBoard({
         applyLocalUpdate(messageId, previous);
         notifyEnProgresoChanged();
       });
-  }, [findMessage, currentUserId]);
+  }, [findMessage, currentUserId, applyLocalUpdate]);
 
   const handleStopWorking = useCallback((messageId: string) => {
     const current = findMessage(messageId);
@@ -489,10 +572,10 @@ export function KanbanBoard({
         applyLocalUpdate(messageId, previous);
         notifyEnProgresoChanged();
       });
-  }, [findMessage]);
+  }, [findMessage, applyLocalUpdate]);
 
   const activeMessage = activeId ? findInState(byEstado, activeId) : undefined;
-  const hasAnyMessages = ESTADOS_TABLERO.some((estado) => byEstado[estado].length > 0);
+  const hasAnyMessages = Object.values(byEstado).some((lista) => lista.length > 0);
 
   return (
     <div className="flex flex-col gap-3">
@@ -500,6 +583,20 @@ export function KanbanBoard({
         {announcement}
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {/* Primero de la fila: es el filtro más "de intención" (qué vengo a
+            resolver), y el que llega puesto desde las cifras de Inicio. */}
+        <select
+          value={vista}
+          onChange={(e) => setVista(e.target.value as VistaTablero)}
+          aria-label="Vista rápida del tablero"
+          className={cn(FILTER_CLASSNAME, vista !== "todas" && "border-accent text-accent-strong")}
+        >
+          {VISTAS_TABLERO.filter((v) => v !== "mias" || members.length > 0).map((v) => (
+            <option key={v} value={v}>
+              {VISTA_LABEL[v]}
+            </option>
+          ))}
+        </select>
         <select
           value={filtroCategoria}
           onChange={(e) => setFiltroCategoria(e.target.value as Category | "todas")}
@@ -549,20 +646,28 @@ export function KanbanBoard({
               setFiltroCategoria("todas");
               setFiltroPrioridad("todas");
               setFiltroAsignado("todas");
+              setVista("todas");
             }}
             className="text-xs font-medium text-muted underline-offset-2 hover:text-accent-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Quitar filtros
           </button>
         )}
+        {/* Separado de los filtros y empujado a la derecha: filtrar es
+            "qué quiero ver ahora", esto es "cómo está montado mi tablero".
+            Mezclados en la misma fila, con siete controles seguidos, no se
+            distinguía una cosa de la otra. */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+        {puedeEditar && <GestionColumnasDialog columnas={columnas} />}
         <button
           type="button"
           onClick={() => setDensity(density === "compacta" ? "normal" : "compacta")}
           aria-pressed={density === "compacta"}
-          className="ml-auto rounded-full border border-paper-line bg-paper px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="rounded-full border border-paper-line bg-paper px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           {density === "compacta" ? "Vista normal" : "Vista compacta"}
         </button>
+        </div>
       </div>
 
       {!hasFilters && !hasAnyMessages ? (
@@ -582,17 +687,18 @@ export function KanbanBoard({
           onDragCancel={handleDragCancel}
         >
           <div className="flex flex-col gap-4 sm:flex-row sm:overflow-x-auto sm:pb-2">
-            {ESTADOS_TABLERO.map((estado) => (
+            {columnas.map((columna) => (
               <KanbanColumn
-                key={estado}
-                estado={estado}
-                messages={byEstado[estado]}
+                key={columna.id}
+                columna={columna}
+                messages={byEstado[columna.id] ?? EMPTY_LIST}
                 density={density}
                 members={members}
                 currentUserId={currentUserId}
                 filtroCategoria={filtroCategoria}
                 filtroPrioridad={filtroPrioridad}
                 filtroAsignado={filtroAsignado}
+                vista={vista}
                 hiddenIds={hiddenIds}
                 onCycleEstado={handleCycleEstado}
                 onCyclePrioridad={handleCyclePrioridad}
@@ -604,9 +710,9 @@ export function KanbanBoard({
                 onSaved={handleSaved}
                 onDeleted={handleDeleted}
                 onUndoDelete={handleUndoDelete}
-                label={boardLabels[estado]}
-                canRename={canRenameColumns}
+                canRename={puedeEditar}
                 onRename={handleRenameColumn}
+                onCreated={puedeEditar ? handleCreated : undefined}
               />
             ))}
           </div>

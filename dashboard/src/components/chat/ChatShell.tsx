@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { listChatMessages, listConversations, markConversationRead, type ChatMessageView, type ConversationView } from "@/app/(dashboard)/chat/actions";
-import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { MessageCircle } from "lucide-react";
 import { ConversationList } from "./ConversationList";
 import { ConversationThread } from "./ConversationThread";
@@ -19,14 +18,15 @@ export function ChatShell({
   initialConversations,
   initialSelectedId,
   initialMessages,
-  members,
   currentUserId,
+  puedeAdjuntar,
 }: {
   initialConversations: ConversationView[];
   initialSelectedId: string | null;
   initialMessages: ChatMessageView[];
-  members: WorkspaceMemberInfo[];
   currentUserId: string;
+  /** Ver isBlobConfigured — se resuelve en el servidor y baja como prop. */
+  puedeAdjuntar: boolean;
 }) {
   const [conversations, setConversations] = useState(initialConversations);
   const [selectedId, setSelectedId] = useState(initialSelectedId);
@@ -85,12 +85,17 @@ export function ChatShell({
     : conversations;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 md:h-[calc(100vh-14rem)] md:flex-row">
+    // Altura acotada TAMBIÉN en móvil (antes solo en `md:`): sin tope, la
+    // lista de mensajes crecía con el contenido y estiraba la página
+    // entera, así que había que bajar mucho para llegar al campo de
+    // escribir. `dvh` en vez de `vh` porque en móvil la barra del
+    // navegador aparece y desaparece — con `vh` el campo de escribir
+    // quedaba tapado justo cuando se abre el teclado.
+    <div className="flex min-h-0 flex-1 flex-col gap-4 h-[calc(100dvh-16rem)] md:h-[calc(100dvh-11rem)] md:flex-row">
       <div className={`min-h-0 flex-col rounded-2xl border border-paper-line bg-paper-raised/60 p-3 md:flex md:w-72 md:shrink-0 ${mobileView === "list" ? "flex" : "hidden"}`}>
         <ConversationList
           conversations={conversationsVisibles}
           activeId={selectedId}
-          members={members}
           currentUserId={currentUserId}
           onSelect={selectConversation}
           onCreated={handleCreated}
@@ -112,10 +117,10 @@ export function ChatShell({
             conversation={selectedConversation}
             currentUserId={currentUserId}
             initialMessages={messages}
-            members={members}
             onBack={() => setMobileView("list")}
             onConversationChanged={refreshConversations}
             onLeft={handleLeft}
+            puedeAdjuntar={puedeAdjuntar}
           />
         )}
       </div>

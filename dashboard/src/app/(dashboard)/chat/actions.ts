@@ -2,10 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
-import type { ChatConversationType } from "@prisma/client";
+import type { ChatConversationType, MemberPresence } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { getActiveWorkspace, isActiveMember } from "@/lib/workspace";
 import { uploadImageToBlob } from "@/lib/blobUpload";
 import { notifyChatParticipants } from "@/lib/chatNotifications";
 import {
@@ -25,24 +24,41 @@ export interface ChatMessageView {
   email: string;
 }
 
+export interface ConversationParticipantInfo {
+  userId: string;
+  email: string;
+  /** Estado manual ("Ocupado"/"Fuera") de la membresía de equipo más reciente de esta persona — null si no comparte ningún equipo contigo o no lo ha puesto nunca. */
+  presenceStatus: MemberPresence | null;
+  lastSeenAt: string | null;
+}
+
 export interface ConversationView {
   id: string;
   type: ChatConversationType;
   /** Nombre a mostrar: el propio del grupo, o el email del otro participante en una individual. */
   nombre: string;
-  /** Solo DIRECT — para pintar avatar/presencia del otro participante. */
+  /** Nombre del equipo, SOLO en el grupo automático de un workspace — null en todo lo personal (ver ChatConversation en el schema). */
+  equipo: string | null;
+  /** Solo DIRECT — para encontrar sus datos dentro de `participants`. */
   otherUserId: string | null;
   lastMessage: { texto: string; imagenUrl: string | null; createdAt: string; userId: string } | null;
   /** Cuántos mensajes sin leer (0 = ninguno) — un número, no un punto: saber si son 2 o 40 cambia si abres ahora o luego. */
   unreadCount: number;
   muted: boolean;
-  /** Quiénes están dentro — lo usa la ficha de la conversación (ver ConversationInfoDialog.tsx) para saber a quién queda por añadir. */
-  participantIds: string[];
+  /** Quiénes están dentro, con lo necesario para pintar avatar/presencia — ya no depende de la lista de miembros de un workspace concreto (el chat es del usuario, no de un equipo). */
+  participants: ConversationParticipantInfo[];
+}
+
+export interface UserSearchResult {
+  userId: string;
+  email: string;
 }
 
 const CHAT_MESSAGES_LIMIT = 50;
 const CHAT_TEXTO_MAX_LENGTH = 2000;
 const MAX_GROUP_NAME_LENGTH = 40;
+const SEARCH_USERS_LIMIT = 8;
+const SEARCH_USERS_MIN_LENGTH = 2;
 
 /**
  * Avisa por Realtime Broadcast de que hay un mensaje nuevo en una
@@ -70,11 +86,11 @@ async function broadcastNewChatMessage(conversationId: string): Promise<void> {
   }
 }
 
-/** Conversación + a qué workspace/tipo pertenece, SOLO si `userId` es de verdad participante — null si no, o si no existe. */
+/** Conversación + a qué workspace/tipo pertenece, SOLO si `userId` es de verdad participante — null si no, o si no existe. `workspaceId` es null en toda conversación personal (DIRECT, o GROUP creado a mano). */
 async function requireParticipant(
   conversationId: string,
   userId: string,
-): Promise<{ id: string; workspaceId: string; type: ChatConversationType } | null> {
+): Promise<{ id: string; workspaceId: string | null; type: ChatConversationType } | null> {
   const participant = await prisma.chatConversationParticipant.findUnique({
     where: { conversationId_userId: { conversationId, userId } },
     select: { conversation: { select: { id: true, workspaceId: true, type: true } } },
@@ -83,16 +99,43 @@ async function requireParticipant(
 }
 
 /**
+ * Presencia "global" de un conjunto de personas: como el estado manual
+ * (Disponible/Ocupado/Fuera) y el último latido viven en `Membership` —por
+ * workspace—, y el chat ya no está atado a uno solo, se toma la membresía
+ * ACTIVA con el `lastSeenAt` más reciente de cada persona como su estado
+ * "actual". Aproximación razonable (el sitio donde ha estado activa hace
+ * menos tiempo), no exacta si trabaja en dos equipos a la vez.
+ */
+async function getGlobalPresence(
+  userIds: string[],
+): Promise<Map<string, { presenceStatus: MemberPresence | null; lastSeenAt: Date | null }>> {
+  if (userIds.length === 0) return new Map();
+  const memberships = await prisma.membership.findMany({
+    where: { userId: { in: userIds }, status: "ACTIVE" },
+    select: { userId: true, presenceStatus: true, lastSeenAt: true },
+  });
+  const map = new Map<string, { presenceStatus: MemberPresence | null; lastSeenAt: Date | null }>();
+  for (const m of memberships) {
+    const existing = map.get(m.userId);
+    if (!existing || (m.lastSeenAt && (!existing.lastSeenAt || m.lastSeenAt > existing.lastSeenAt))) {
+      map.set(m.userId, { presenceStatus: m.presenceStatus, lastSeenAt: m.lastSeenAt });
+    }
+  }
+  return map;
+}
+
+/**
  * La conversación de grupo "Equipo" que siempre existe en un workspace de
  * equipo — autocreada al primer acceso (o heredada del antiguo canal único
- * vía migración, ver 20260817140000_chat_conversations). Sirve de destino
- * por defecto cuando hace falta escribir "al equipo" sin elegir
- * conversación (la tool del Asistente `enviarMensajeChat`), y garantiza
- * que `listConversations` siempre tenga algo que mostrar. Idempotente:
- * reutiliza la existente, y de paso afilia a `userId` si todavía no era
- * participante (alguien añadido al equipo después de que se creara el
- * grupo) — mismo criterio de siempre: cualquier miembro ACTIVO pertenece
- * al grupo del equipo, sin tener que unirse a mano.
+ * vía migración, ver 20260817140000_chat_conversations). Es la ÚNICA
+ * conversación que sigue atada a un workspace (el resto son personales, ver
+ * ChatConversation en el schema): sirve de destino por defecto cuando hace
+ * falta escribir "al equipo" sin elegir conversación (la tool del
+ * Asistente `enviarMensajeChat`), y garantiza que cada equipo tenga su
+ * grupo. Idempotente: reutiliza la existente, y de paso afilia a `userId`
+ * si todavía no era participante (alguien añadido al equipo después de que
+ * se creara el grupo) — cualquier miembro ACTIVO pertenece al grupo del
+ * equipo, sin tener que unirse a mano.
  */
 export async function ensureDefaultGroupConversation(workspaceId: string, userId: string): Promise<string> {
   const existing = await prisma.chatConversation.findFirst({
@@ -126,16 +169,27 @@ export async function ensureDefaultGroupConversation(workspaceId: string, userId
   return created.id;
 }
 
-/** Conversaciones del workspace activo en las que participa el usuario — incluida siempre "Equipo" (ver ensureDefaultGroupConversation). Vacío en modo personal. */
+/**
+ * Todas las conversaciones del usuario: sus DIRECT y GROUP personales (de
+ * cualquier equipo o de ninguno — el chat es suyo, no del workspace activo,
+ * ver ChatConversation en el schema) MÁS el grupo "Equipo" de cada equipo
+ * del que sea miembro ACTIVO ahora mismo. Ya no depende de qué workspace
+ * tenga seleccionado el selector de arriba, ni desaparece en el espacio
+ * personal.
+ */
 export async function listConversations(): Promise<ConversationView[]> {
   const userId = await verifySession();
-  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
-  if (isPersonal) return [];
 
-  await ensureDefaultGroupConversation(workspaceId, userId);
+  const teamWorkspaceIds = (
+    await prisma.membership.findMany({
+      where: { userId, status: "ACTIVE", workspace: { personal: false } },
+      select: { workspaceId: true },
+    })
+  ).map((m) => m.workspaceId);
+  await Promise.all(teamWorkspaceIds.map((wsId) => ensureDefaultGroupConversation(wsId, userId)));
 
   const participations = await prisma.chatConversationParticipant.findMany({
-    where: { userId, conversation: { workspaceId } },
+    where: { userId },
     select: {
       lastReadAt: true,
       muted: true,
@@ -144,6 +198,10 @@ export async function listConversations(): Promise<ConversationView[]> {
           id: true,
           type: true,
           nombre: true,
+          // De qué equipo es, si es el grupo automático de uno. Sin esto,
+          // los grupos "Equipo" de tres equipos distintos se veían los tres
+          // como "Equipo", sin forma de saber en cuál estabas escribiendo.
+          workspace: { select: { nombre: true } },
           participants: { select: { userId: true, user: { select: { email: true } } } },
           messages: { orderBy: { createdAt: "desc" }, take: 1, select: { texto: true, imagenUrl: true, createdAt: true, userId: true } },
         },
@@ -177,6 +235,9 @@ export async function listConversations(): Promise<ConversationView[]> {
     for (const g of grupos) unreadPorConversacion.set(g.conversationId, g._count._all);
   }
 
+  const allParticipantIds = [...new Set(participations.flatMap(({ conversation }) => conversation.participants.map((p) => p.userId)))];
+  const presenceMap = await getGlobalPresence(allParticipantIds);
+
   // `lastReadAt` ya no hace falta aquí: el conteo de sin leer se resolvió
   // arriba de una vez para todas las conversaciones.
   const views = participations.map(({ conversation, muted }): ConversationView => {
@@ -189,13 +250,19 @@ export async function listConversations(): Promise<ConversationView[]> {
       id: conversation.id,
       type: conversation.type,
       nombre,
+      equipo: conversation.workspace?.nombre ?? null,
       otherUserId: otherParticipant?.userId ?? null,
       lastMessage: lastMessage
         ? { texto: lastMessage.texto, imagenUrl: lastMessage.imagenUrl, createdAt: lastMessage.createdAt.toISOString(), userId: lastMessage.userId }
         : null,
       unreadCount: muted ? 0 : (unreadPorConversacion.get(conversation.id) ?? 0),
       muted,
-      participantIds: conversation.participants.map((p) => p.userId),
+      participants: conversation.participants.map((p) => ({
+        userId: p.userId,
+        email: p.user.email,
+        presenceStatus: presenceMap.get(p.userId)?.presenceStatus ?? null,
+        lastSeenAt: presenceMap.get(p.userId)?.lastSeenAt?.toISOString() ?? null,
+      })),
     };
   });
 
@@ -203,23 +270,43 @@ export async function listConversations(): Promise<ConversationView[]> {
   return views.sort((a, b) => (b.lastMessage?.createdAt ?? "").localeCompare(a.lastMessage?.createdAt ?? ""));
 }
 
-/** Abre (o reutiliza, si ya existía) el hilo individual con otro miembro ACTIVO del workspace activo. */
+/**
+ * Busca personas con cuenta en MemorIAble por email, para invitar a un chat
+ * — a propósito SIN filtrar por equipo: se puede hablar con cualquiera que
+ * tenga la app, sea o no compañero (ver el comentario de ChatConversation
+ * en el schema). Excluye al propio usuario y las cuentas corporativas aún
+ * pendientes de activar (no han entrado nunca, invitarlas a un chat no
+ * tendría con quién hablar todavía).
+ */
+export async function searchUsers(query: string): Promise<UserSearchResult[]> {
+  const userId = await verifySession();
+  const trimmed = query.trim();
+  if (trimmed.length < SEARCH_USERS_MIN_LENGTH) return [];
+
+  const users = await prisma.user.findMany({
+    where: { id: { not: userId }, accountPending: false, email: { contains: trimmed, mode: "insensitive" } },
+    select: { id: true, email: true },
+    orderBy: { email: "asc" },
+    take: SEARCH_USERS_LIMIT,
+  });
+  return users.map((u) => ({ userId: u.id, email: u.email }));
+}
+
+/** Abre (o reutiliza, si ya existía) el hilo individual con cualquier persona con cuenta en la app — no hace falta compartir equipo. */
 export async function createDirectConversation(otherUserId: string): Promise<{ conversationId?: string; error?: string }> {
   const userId = await verifySession();
-  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
-  if (isPersonal) return { error: "No disponible en tu espacio personal." };
   if (otherUserId === userId) return { error: "No puedes iniciar una conversación contigo mismo." };
-  if (!(await isActiveMember(otherUserId, workspaceId))) return { error: "Esa persona no es miembro de este equipo." };
+  const other = await prisma.user.findUnique({ where: { id: otherUserId }, select: { id: true } });
+  if (!other) return { error: "Esa persona no tiene cuenta en MemorIAble." };
 
   const directKey = [userId, otherUserId].sort().join("_");
   try {
     const conversation = await prisma.chatConversation.upsert({
-      where: { workspaceId_directKey: { workspaceId, directKey } },
+      where: { directKey },
       update: {},
       create: {
         type: "DIRECT",
         directKey,
-        workspaceId,
         createdById: userId,
         participants: { create: [{ userId }, { userId: otherUserId }] },
       },
@@ -234,11 +321,9 @@ export async function createDirectConversation(otherUserId: string): Promise<{ c
   }
 }
 
-/** Crea un grupo nuevo con nombre propio y los miembros elegidos (además de quien lo crea). */
+/** Crea un grupo personal nuevo con nombre propio y las personas elegidas (además de quien lo crea) — cualquiera con cuenta en la app, no solo del equipo. */
 export async function createGroupConversation(nombre: string, memberIds: string[]): Promise<{ conversationId?: string; error?: string }> {
   const userId = await verifySession();
-  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
-  if (isPersonal) return { error: "No disponible en tu espacio personal." };
 
   const trimmed = nombre.trim();
   if (!trimmed) return { error: "Ponle un nombre al grupo." };
@@ -247,15 +332,14 @@ export async function createGroupConversation(nombre: string, memberIds: string[
   const uniqueMemberIds = [...new Set(memberIds.filter((id) => id !== userId))];
   if (uniqueMemberIds.length === 0) return { error: "Elige al menos otra persona para el grupo." };
 
-  const activeCount = await prisma.membership.count({ where: { workspaceId, status: "ACTIVE", userId: { in: uniqueMemberIds } } });
-  if (activeCount !== uniqueMemberIds.length) return { error: "Alguno de los miembros elegidos ya no está en el equipo." };
+  const existingCount = await prisma.user.count({ where: { id: { in: uniqueMemberIds } } });
+  if (existingCount !== uniqueMemberIds.length) return { error: "Alguna de las personas elegidas ya no tiene cuenta." };
 
   try {
     const conversation = await prisma.chatConversation.create({
       data: {
         type: "GROUP",
         nombre: trimmed,
-        workspaceId,
         createdById: userId,
         participants: { create: [userId, ...uniqueMemberIds].map((id) => ({ userId: id })) },
       },
@@ -270,7 +354,7 @@ export async function createGroupConversation(nombre: string, memberIds: string[
   }
 }
 
-/** Añade más gente a un grupo ya existente — cualquier participante puede añadir (sin roles de admin dentro del chat, mismo espíritu informal que el resto del chat de equipo). */
+/** Añade más gente a un grupo ya existente — cualquiera con cuenta en la app, no solo del equipo (sin roles de admin dentro del chat: cualquier participante puede añadir, mismo espíritu informal de siempre). */
 export async function addParticipants(conversationId: string, memberIds: string[]): Promise<{ error?: string }> {
   const userId = await verifySession();
   const conversation = await requireParticipant(conversationId, userId);
@@ -278,10 +362,8 @@ export async function addParticipants(conversationId: string, memberIds: string[
   if (conversation.type !== "GROUP") return { error: "Solo se puede añadir gente a un grupo." };
 
   const uniqueMemberIds = [...new Set(memberIds)];
-  const activeCount = await prisma.membership.count({
-    where: { workspaceId: conversation.workspaceId, status: "ACTIVE", userId: { in: uniqueMemberIds } },
-  });
-  if (activeCount !== uniqueMemberIds.length) return { error: "Alguno de los miembros elegidos ya no está en el equipo." };
+  const existingCount = await prisma.user.count({ where: { id: { in: uniqueMemberIds } } });
+  if (existingCount !== uniqueMemberIds.length) return { error: "Alguna de las personas elegidas ya no tiene cuenta." };
 
   try {
     await prisma.chatConversationParticipant.createMany({
@@ -358,10 +440,12 @@ export interface SendChatMessageResult {
  * resueltos por la propia petición. Un único sitio para no duplicar el
  * guardado + aviso. Quien llama es responsable de comprobar que `userId`
  * puede escribir en `conversationId` (ver `requireParticipant`).
+ * `workspaceId` es null en una conversación personal (denormalizado desde
+ * `conversation.workspaceId`, ver el schema).
  */
 export async function postChatMessage(
   conversationId: string,
-  workspaceId: string,
+  workspaceId: string | null,
   userId: string,
   texto: string,
   imagenUrl?: string | null,
@@ -399,9 +483,9 @@ export async function postChatMessage(
 }
 
 /**
- * Cualquier participante puede escribir, INCLUIDO el rol VIEWER del
- * workspace — el chat es comunicación, no una mutación de contenido
- * (tareas/notas/eventos), así que no pasa por `canWrite`.
+ * Cualquier participante puede escribir — el chat es comunicación, no una
+ * mutación de contenido de workspace (tareas/notas/eventos), así que no
+ * pasa por `canWrite`/rol.
  */
 export async function sendChatMessage(conversationId: string, texto: string, imagenUrl?: string | null): Promise<SendChatMessageResult> {
   const userId = await verifySession();
@@ -469,14 +553,12 @@ export async function setConversationMuted(conversationId: string, muted: boolea
   }
 }
 
-/** Para el indicador de no leído del menú (Sidebar/BottomTabs, ver layout.tsx) — hay algo sin leer en CUALQUIER conversación no silenciada del workspace activo. Best-effort: no bloquea la navegación si falla. */
+/** Para el indicador de no leído del menú (Sidebar/BottomTabs, ver layout.tsx) — hay algo sin leer en CUALQUIER conversación no silenciada del usuario. Best-effort: no bloquea la navegación si falla. */
 export async function hasUnreadChat(): Promise<boolean> {
   const userId = await verifySession();
-  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
-  if (isPersonal) return false;
   try {
     const participations = await prisma.chatConversationParticipant.findMany({
-      where: { userId, muted: false, conversation: { workspaceId } },
+      where: { userId, muted: false },
       select: { lastReadAt: true, conversation: { select: { messages: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } } } } },
     });
     return participations.some(({ lastReadAt, conversation }) => {

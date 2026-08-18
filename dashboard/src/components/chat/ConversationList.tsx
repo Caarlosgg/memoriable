@@ -2,13 +2,12 @@
 
 import { Users, BellOff, Search } from "lucide-react";
 import type { ConversationView } from "@/app/(dashboard)/chat/actions";
-import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { formatEventTime, shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { isOnline } from "@/lib/presence";
 import { NewConversationDialog } from "./NewConversationDialog";
 
-function ConversationAvatar({ conversation, members }: { conversation: ConversationView; members: WorkspaceMemberInfo[] }) {
+function ConversationAvatar({ conversation }: { conversation: ConversationView }) {
   if (conversation.type === "GROUP") {
     return (
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-strong">
@@ -16,7 +15,7 @@ function ConversationAvatar({ conversation, members }: { conversation: Conversat
       </span>
     );
   }
-  const other = members.find((m) => m.userId === conversation.otherUserId);
+  const other = conversation.participants.find((p) => p.userId === conversation.otherUserId);
   return (
     <span className="relative shrink-0">
       <Avatar email={other?.email ?? conversation.nombre} size="md" />
@@ -48,7 +47,6 @@ function previewOf(lastMessage: ConversationView["lastMessage"]): string {
 export function ConversationList({
   conversations,
   activeId,
-  members,
   currentUserId,
   onSelect,
   onCreated,
@@ -60,7 +58,6 @@ export function ConversationList({
   onFiltroChange: (valor: string) => void;
   conversations: ConversationView[];
   activeId: string | null;
-  members: WorkspaceMemberInfo[];
   currentUserId: string;
   onSelect: (conversationId: string) => void;
   onCreated: (conversationId: string) => void;
@@ -69,7 +66,7 @@ export function ConversationList({
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-display text-sm font-semibold text-ink">Conversaciones</h2>
-        <NewConversationDialog members={members} currentUserId={currentUserId} onCreated={onCreated} />
+        <NewConversationDialog currentUserId={currentUserId} onCreated={onCreated} />
       </div>
 
       {/* Filtro por nombre: con unos cuantos grupos y personas, buscar a
@@ -108,7 +105,7 @@ export function ConversationList({
                   isActive ? "bg-accent-soft" : "hover:bg-paper"
                 }`}
               >
-                <ConversationAvatar conversation={c} members={members} />
+                <ConversationAvatar conversation={c} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-medium text-ink">{shortEmailName(c.nombre)}</span>
@@ -116,6 +113,14 @@ export function ConversationList({
                       <span className="shrink-0 text-[10px] text-muted">{formatEventTime(c.lastMessage.createdAt)}</span>
                     )}
                   </div>
+                  {/* De qué equipo es el grupo automático: con varios
+                      equipos, todos se llaman "Equipo" y sin esto no había
+                      forma de saber en cuál ibas a escribir. */}
+                  {c.equipo && (
+                    <span className="w-fit truncate rounded-full bg-accent-soft px-1.5 text-[10px] font-medium text-accent-strong">
+                      {c.equipo}
+                    </span>
+                  )}
                   <div className="flex items-center gap-1 text-xs text-muted">
                     {c.muted && <BellOff aria-hidden size={11} className="shrink-0" />}
                     <span className={`truncate ${isImageOnly ? "italic" : ""}`}>{previewOf(c.lastMessage)}</span>

@@ -31,6 +31,8 @@ export interface TodayOverview {
   pendientesTotal: number;
   /** Quién está trabajando en algo ahora mismo — vacío en el espacio personal. */
   enCurso: EnCursoAhora[];
+  /** Cerradas en los últimos 7 días — la única cifra de la pantalla que da una buena noticia. */
+  completadasSemana: number;
 }
 
 /**
@@ -56,7 +58,10 @@ export async function getTodayOverview(workspaceId: string): Promise<TodayOvervi
     estado: { not: "HECHO" as const },
   };
 
-  const [vencidas, vencidasTotal, hoyTareas, hoyTareasTotal, hoyEventos, pendientesTotal, enCursoRaw] =
+  const sieteDiasAtras = new Date(inicioHoy);
+  sieteDiasAtras.setDate(sieteDiasAtras.getDate() - 7);
+
+  const [vencidas, vencidasTotal, hoyTareas, hoyTareasTotal, hoyEventos, pendientesTotal, enCursoRaw, completadasSemana] =
     await Promise.all([
       prisma.message.findMany({
         where: { ...accionablesAbiertas, fechaLimite: { lt: inicioHoy } },
@@ -80,6 +85,14 @@ export async function getTodayOverview(workspaceId: string): Promise<TodayOvervi
         orderBy: { enProgresoDesde: "asc" },
         select: { id: true, resumen: true, categoria: true, enProgresoPorId: true, enProgresoDesde: true },
       }),
+      prisma.message.count({
+        where: {
+          workspaceId,
+          categoria: { in: [...ACTIONABLE_CATEGORIES] },
+          estado: "HECHO",
+          fecha: { gte: sieteDiasAtras },
+        },
+      }),
     ]);
 
   return {
@@ -89,6 +102,7 @@ export async function getTodayOverview(workspaceId: string): Promise<TodayOvervi
     hoyTareasTotal,
     hoyEventos,
     pendientesTotal,
+    completadasSemana,
     enCurso: enCursoRaw.map((t) => ({
       id: t.id,
       resumen: t.resumen,

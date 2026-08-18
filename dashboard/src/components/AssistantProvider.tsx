@@ -71,6 +71,26 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   // localmente en cuanto la respuesta termina, sin esperar a recargar.
   const pendingQuestionRef = useRef("");
 
+  /**
+   * `conversationId` SIEMPRE al día para el transporte y para `onFinish`.
+   *
+   * `useChat` se queda con la instancia de transporte de la PRIMERA
+   * renderización. Si el `body` se le pasa como objeto literal, dentro
+   * viaja el `conversationId` que hubiera en ese momento y no cambia
+   * nunca más: al abrir una conversación antigua y escribir en ella, la
+   * respuesta se guardaba bajo la conversación INICIAL en vez de bajo la
+   * que estabas leyendo — el "si escribo en conversaciones de antes me
+   * pierde los chats".
+   *
+   * `body` admite una función (`Resolvable`, ver @ai-sdk/provider-utils)
+   * que se resuelve en CADA envío, así que leyéndolo de un ref siempre
+   * sale el id correcto por muchas veces que se cambie de conversación.
+   */
+  const conversationIdRef = useRef(conversationId);
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
+
   useEffect(() => {
     listMyConversations()
       .then(setConversations)
@@ -78,9 +98,22 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const { messages, sendMessage, setMessages, status, error, clearError, stop } = useChat<AssistantMessage>({
-    transport: new DefaultChatTransport({ api: "/api/asistente", body: { conversationId } }),
+    // El linter de refs de React marca esto como lectura de un ref "durante
+    // el render" porque no puede ver dentro de `DefaultChatTransport`: en
+    // realidad el constructor solo guarda `body` (ver
+    // node_modules/ai/src/ui/default-chat-transport.ts, no llama a nada), y
+    // la función solo se INVOCA de verdad al enviar una petición — mucho
+    // después del render. Falso positivo verificado, no una lectura real.
+    // eslint-disable-next-line react-hooks/refs
+    transport: new DefaultChatTransport({
+      api: "/api/asistente",
+      body: () => ({ conversationId: conversationIdRef.current }),
+    }),
     onFinish: ({ message }) => {
-      const savedId = message.metadata?.conversationId ?? conversationId;
+      // También por ref: `onFinish` se registra una vez y, si leyera el
+      // estado, vería el valor de la primera renderización igual que el
+      // transporte.
+      const savedId = message.metadata?.conversationId ?? conversationIdRef.current;
       const question = pendingQuestionRef.current;
       if (!question) return;
 
@@ -136,15 +169,25 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     // conversación (mismo `messages`/`conversationId` del hook) — se aborta
     // primero para que no quede huérfana.
     stop();
-    setConversationId(crypto.randomUUID());
+    const nuevo = crypto.randomUUID();
+    // El ref se actualiza YA, no en el efecto: si el usuario escribe antes
+    // de que React vuelva a renderizar, el envío tiene que llevar el id
+    // nuevo, no el de la conversación que se acaba de abandonar.
+    conversationIdRef.current = nuevo;
+    setConversationId(nuevo);
     setMessages([]);
     clearError();
   }
 
   async function handleSelectConversation(id: string) {
     if (id === conversationId) return;
+    // Mismo motivo que en `handleNewConversation`: una respuesta en vuelo
+    // de la conversación anterior llegaría tarde y se mezclaría con los
+    // mensajes de la que se acaba de abrir.
+    stop();
     clearError();
     const exchanges = await loadConversation(id);
+    conversationIdRef.current = id;
     setConversationId(id);
     setMessages(exchangesToMessages(exchanges));
   }

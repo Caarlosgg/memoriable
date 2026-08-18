@@ -66,13 +66,20 @@ Bien (integra la información en frases, como se lo contarías a alguien):
 "Esta semana has andado con el tema de las contraseñas: el lunes apuntaste la de tu email, y el jueves preguntaste qué contraseñas tenías guardadas."
 
 Reglas estrictas:
-- SOLO puedes hablar de lo que hay en el contexto de abajo (las notas
-  guardadas de este usuario) o de la propia aplicación MemorIAble (qué es,
-  para qué sirve, qué puedes hacer tú como Asistente). Si preguntan algo de
-  cultura general o cualquier cosa que no tenga que ver con ninguna de las
-  dos cosas, no lo respondas — redirige con amabilidad, algo como "Eso no
-  lo tengo yo — solo puedo ayudarte con MemorIAble y lo que has guardado
-  aquí". Nunca actúes como un chatbot genérico que sabe de todo.
+- SOLO puedes hablar de lo que hay dentro de MemorIAble: las notas del
+  contexto de abajo, lo que te devuelvan tus herramientas (sus equipos, la
+  gente que hay en ellos y qué lleva cada uno, el calendario, las tareas,
+  los ahorros) y la propia aplicación (qué es, para qué sirve, qué puedes
+  hacer tú). Si preguntan algo de cultura general o del mundo exterior, no
+  lo respondas — redirige con amabilidad, algo como "Eso no lo tengo yo —
+  solo puedo ayudarte con MemorIAble y lo que has guardado aquí". Nunca
+  actúes como un chatbot genérico que sabe de todo.
+- Que algo no esté en el contexto de abajo NO significa que no lo sepas:
+  las personas, los equipos, el calendario y el reparto de tareas se
+  consultan con herramientas. Antes de decir que no tienes información
+  sobre algo de dentro de la app, LLAMA a la herramienta que corresponda.
+  Decir "no dispongo de información sobre esa persona" cuando existe
+  \`consultarPersona\` es un error, no una respuesta prudente.
 - Si preguntan qué es la app, para qué sirve o qué pueden hacer aquí
   ("¿qué hace esta aplicación?", "¿para qué puedo usarla?", "explícame qué
   puedo hacer aquí"), SÍ respondes — nunca es "cultura general", es sobre
@@ -180,6 +187,34 @@ Herramientas:
   "¿cuánto tengo en el fondo de emergencia?"). Llámala siempre que
   necesites ese dato para responder — nunca inventes ni calcules tú un
   importe de ahorro, esta herramienta te da el real.
+- Tienes la herramienta \`consultarPersona\`, de SOLO LECTURA, para cuando
+  pregunten por UNA persona concreta: quién es, qué hace, qué lleva, si
+  está ocupada ("¿qué hace Carlos?", "¿quién es carlosgallardo?", "¿qué
+  tiene María entre manos?", "¿está libre Pedro?"). Busca en TODOS los
+  equipos del usuario, no solo en el que tenga abierto, y te da sus
+  equipos y rol, si está en línea, en qué está trabajando ahora, sus
+  tareas abiertas con fechas límite (marcando vencidas), cuántas cerró la
+  última semana y sus próximas citas. REGLA IMPORTANTE: si te preguntan
+  por alguien, LLÁMALA antes de responder. Nunca digas "no dispongo de
+  información sobre esa persona" sin haberla llamado — esa respuesta solo
+  vale si la herramienta te ha dicho que no encuentra a nadie con ese
+  nombre, y entonces dilo así ("no encuentro a nadie con ese nombre en
+  tus equipos"), no como si no supieras nada de nadie.
+- Tienes la herramienta \`consultarMisEquipos\`, de SOLO LECTURA, para
+  cuando pregunten por sus equipos en general ("¿en qué equipos estoy?",
+  "¿cuántos equipos tengo?", "¿dónde hay más trabajo?"). Más arriba ya
+  tienes la lista resumida; llámala solo si necesitas el detalle o si
+  esa lista no estuviera.
+- Tienes la herramienta \`consultarAgenda\`, de SOLO LECTURA, para
+  cualquier pregunta sobre QUÉ HAY en un tramo de fechas ("¿qué tengo
+  esta semana?", "¿qué hay mañana?", "¿qué tiene Ana el jueves?", "¿cómo
+  tengo agosto?"). Mezcla las citas del calendario con las tareas que
+  vencen, en orden, de todos sus equipos y de su espacio personal, y te
+  dice de qué equipo es cada cosa y quién la lleva. Calcula tú \`desde\` y
+  \`hasta\` a partir de la fecha actual de más abajo (\`hasta\` es
+  exclusivo). Úsala en vez de responder de memoria con el resumen de
+  "estado actual": ese resumen es solo una foto de los próximos 7 días
+  del espacio activo, la herramienta es el dato completo y real.
 - Tienes la herramienta \`analizarEquipo\`, de SOLO LECTURA, para cuando
   pida un diagnóstico o consejo sobre CÓMO VA o CÓMO ORGANIZAR el equipo
   ("¿cómo va el equipo?", "¿quién está más cargado de trabajo?", "tengo
@@ -363,6 +398,35 @@ export function buildAmbientBlock(stats: AmbientStats): string {
   return partes.join(" ");
 }
 
+/** Un equipo del usuario, ya resumido (ver resolveMisEquipos en assistantTeamContext.ts). */
+export interface AssistantTeamLine {
+  nombre: string;
+  role: AssistantWorkspaceRole;
+  miembros: number;
+  esElActivo: boolean;
+  tareasAbiertas: number;
+}
+
+/**
+ * Bloque con TODOS los equipos del usuario, no solo el activo — para que el
+ * Asistente pueda diferenciarlos al hablar ("en Obrador tienes 3
+ * pendientes, en Asesoría ninguna") en vez de decir "el equipo" como si
+ * solo existiera uno. Se genera aunque el espacio activo sea el personal:
+ * seguir perteneciendo a equipos es cierto igualmente, y es justo cuando
+ * más falta hace aclararlo. Pura y testeable sin BD.
+ */
+export function buildTeamsBlock(equipos: AssistantTeamLine[]): string {
+  if (equipos.length === 0) return "";
+  return equipos
+    .map((e) => {
+      const rol = ROLE_LABELS[e.role];
+      const activo = e.esElActivo ? " — ES EL QUE TIENE ABIERTO AHORA" : "";
+      const trabajo = e.tareasAbiertas === 1 ? "1 tarea abierta" : `${e.tareasAbiertas} tareas abiertas`;
+      return `- "${e.nombre}": ${e.miembros} ${e.miembros === 1 ? "persona" : "personas"}, el usuario es ${rol}, ${trabajo}${activo}.`;
+    })
+    .join("\n");
+}
+
 /**
  * Bloque de memoria persistente (ver assistantMemory.ts) — hechos que se
  * recuerdan SIEMPRE, no solo dentro de esta conversación (a diferencia de
@@ -378,17 +442,20 @@ export function buildMemoryBlock(hechos: string[]): string {
 export function buildSystemPrompt(
   contextBlock: string,
   now: Date = new Date(),
-  extra?: { workspaceLine?: string; ambientBlock?: string; memoryBlock?: string },
+  extra?: { workspaceLine?: string; ambientBlock?: string; memoryBlock?: string; teamsBlock?: string },
 ): string {
   const offset = madridUtcOffset(now);
   const workspaceSection = extra?.workspaceLine ? `\n\n${extra.workspaceLine}` : "";
+  const teamsSection = extra?.teamsBlock
+    ? `\n\nEquipos a los que pertenece el usuario (para poder distinguirlos al hablar — no los enumeres salvo que venga a cuento):\n${extra.teamsBlock}`
+    : "";
   const ambientSection = extra?.ambientBlock ? `\n\nEstado actual (para responder con criterio a preguntas generales sobre cómo va la semana, sin que cuente como fuente citable): ${extra.ambientBlock}` : "";
   const memorySection = extra?.memoryBlock
     ? `\n\nCosas que el usuario te ha pedido recordar siempre (usa recordarPreferencia/olvidarPreferencia para actualizarlas, no las repitas en cada respuesta salvo que sean relevantes para lo que se está hablando):\n${extra.memoryBlock}`
     : "";
   return `${SYSTEM_PROMPT_BASE}
 
-Fecha y hora actuales en España: ${NOW_FORMATTER.format(now)} (desfase respecto a UTC: ${offset}) — usa esto para calcular cualquier fecha relativa ("mañana", "el jueves", "en dos semanas") y para el desfase que le corresponde a fechaInicio/fechaFin en crearEvento.${workspaceSection}${ambientSection}${memorySection}
+Fecha y hora actuales en España: ${NOW_FORMATTER.format(now)} (desfase respecto a UTC: ${offset}) — usa esto para calcular cualquier fecha relativa ("mañana", "el jueves", "en dos semanas") y para el desfase que le corresponde a fechaInicio/fechaFin en crearEvento.${workspaceSection}${teamsSection}${ambientSection}${memorySection}
 
 Contexto (notas guardadas relevantes para esta pregunta):
 ${contextBlock}`;

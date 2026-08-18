@@ -1,35 +1,31 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { UserPlus, LogOut } from "lucide-react";
-import { addParticipants, leaveConversation, type ConversationView } from "@/app/(dashboard)/chat/actions";
-import type { WorkspaceMemberInfo } from "@/lib/workspace";
+import { UserPlus, LogOut, X } from "lucide-react";
+import { addParticipants, leaveConversation, type ConversationView, type UserSearchResult } from "@/app/(dashboard)/chat/actions";
 import { shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { UserSearchPicker } from "./UserSearchPicker";
 
 /**
  * Ficha de la conversación: quién está dentro y, si es un grupo, añadir a
- * más gente o salirse. Sin esto, `addParticipants`/`leaveConversation`
- * existían en el servidor pero no había forma de llamarlas desde la app.
+ * más gente (cualquiera con cuenta en MemorIAble, no solo del equipo — ver
+ * UserSearchPicker) o salirse.
  *
- * `participantIds` llega desde el hilo (no se consulta aquí): la lista de
- * participantes ya viaja con la conversación, y volver a pedirla solo para
- * abrir esta ficha sería una consulta de más por cada clic.
+ * `conversation.participants` ya trae email/presencia de cada uno (ver
+ * listConversations en chat/actions.ts) — no hace falta volver a pedirlos
+ * ni depender de la lista de miembros de ningún workspace.
  */
 export function ConversationInfoDialog({
   conversation,
-  participantIds,
-  members,
   currentUserId,
   onChanged,
   onLeft,
   children,
 }: {
   conversation: ConversationView;
-  participantIds: string[];
-  members: WorkspaceMemberInfo[];
   currentUserId: string;
   onChanged: () => void;
   /** Salir de un grupo lo saca de la lista — quien llama decide a dónde ir después. */
@@ -37,34 +33,23 @@ export function ConversationInfoDialog({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [toAdd, setToAdd] = useState<UserSearchResult[]>([]);
   const [pending, setPending] = useState(false);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const dentro = members.filter((m) => participantIds.includes(m.userId));
-  const fuera = members.filter((m) => !participantIds.includes(m.userId) && m.status === "ACTIVE");
   const esGrupo = conversation.type === "GROUP";
-
-  function toggle(userId: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
-      return next;
-    });
-  }
 
   async function handleAdd() {
     setPending(true);
     setError(null);
-    const result = await addParticipants(conversation.id, [...selectedIds]);
+    const result = await addParticipants(conversation.id, toAdd.map((u) => u.userId));
     setPending(false);
     if (result.error) {
       setError(result.error);
       return;
     }
-    setSelectedIds(new Set());
+    setToAdd([]);
     setOpen(false);
     onChanged();
   }
@@ -82,13 +67,15 @@ export function ConversationInfoDialog({
     onLeft();
   }
 
+  const excludeIds = new Set([...conversation.participants.map((p) => p.userId), ...toAdd.map((u) => u.userId)]);
+
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) {
-          setSelectedIds(new Set());
+          setToAdd([]);
           setConfirmingLeave(false);
           setError(null);
         }
@@ -101,40 +88,44 @@ export function ConversationInfoDialog({
         </DialogHeader>
 
         <p className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">
-          {esGrupo ? `${dentro.length} ${dentro.length === 1 ? "persona" : "personas"}` : "Conversación individual"}
+          {esGrupo
+            ? `${conversation.participants.length} ${conversation.participants.length === 1 ? "persona" : "personas"}`
+            : "Conversación individual"}
         </p>
         <ul className="mb-4 flex flex-col gap-1">
-          {dentro.map((m) => (
-            <li key={m.userId} className="flex items-center gap-2.5 p-1.5 text-sm text-ink">
-              <Avatar email={m.email} size="sm" />
-              <span className="truncate">{shortEmailName(m.email)}</span>
-              {m.userId === currentUserId && <span className="text-xs text-muted">(tú)</span>}
+          {conversation.participants.map((p) => (
+            <li key={p.userId} className="flex items-center gap-2.5 p-1.5 text-sm text-ink">
+              <Avatar email={p.email} size="sm" />
+              <span className="truncate">{shortEmailName(p.email)}</span>
+              {p.userId === currentUserId && <span className="text-xs text-muted">(tú)</span>}
             </li>
           ))}
         </ul>
 
-        {esGrupo && fuera.length > 0 && (
+        {esGrupo && (
           <div className="mb-4 flex flex-col gap-2 border-t border-paper-line pt-4">
             <p className="flex items-center gap-1.5 text-sm font-medium text-ink">
               <UserPlus aria-hidden size={14} className="text-muted" /> Añadir al grupo
             </p>
-            <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto">
-              {fuera.map((m) => (
-                <li key={m.userId}>
-                  <label className="flex cursor-pointer items-center gap-2.5 rounded-lg p-1.5 text-sm text-ink transition-colors hover:bg-accent-soft">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(m.userId)}
-                      onChange={() => toggle(m.userId)}
-                      className="h-4 w-4 shrink-0 rounded border-paper-line accent-accent"
-                    />
-                    <Avatar email={m.email} size="sm" />
-                    <span className="truncate">{shortEmailName(m.email)}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <Button type="button" size="sm" onClick={handleAdd} disabled={pending || selectedIds.size === 0} className="w-fit">
+            {toAdd.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5">
+                {toAdd.map((u) => (
+                  <li key={u.userId} className="flex items-center gap-1 rounded-full bg-accent-soft py-1 pr-1 pl-2.5 text-xs text-accent-strong">
+                    {shortEmailName(u.email)}
+                    <button
+                      type="button"
+                      onClick={() => setToAdd((prev) => prev.filter((x) => x.userId !== u.userId))}
+                      aria-label={`Quitar a ${u.email}`}
+                      className="rounded-full p-0.5 hover:bg-accent/30"
+                    >
+                      <X aria-hidden size={11} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <UserSearchPicker excludeIds={excludeIds} onPick={(u) => setToAdd((prev) => [...prev, u])} />
+            <Button type="button" size="sm" onClick={handleAdd} disabled={pending || toAdd.length === 0} className="w-fit">
               {pending ? "Añadiendo…" : "Añadir"}
             </Button>
           </div>

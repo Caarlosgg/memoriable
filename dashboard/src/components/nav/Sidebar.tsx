@@ -72,11 +72,12 @@ export function Sidebar({
   // indicador, la única forma de saberlo era volver a /asistente y
   // comprobar. No se muestra estando ya ahí: el propio chat ya lo enseña.
   const { isBusy: assistantBusy } = useAssistant();
-  // Ahorros es siempre personal y Chat siempre de equipo (ver
-  // lib/workspace.ts) — cada uno desaparece del menú en el modo contrario.
+  // Ahorros es siempre personal (ver lib/workspace.ts) — desaparece del
+  // menú en modo equipo. El chat ya no depende del workspace activo (es
+  // del usuario, no del equipo — ver ChatConversation en el schema): se ve
+  // en los dos modos.
   const baseItems = NAV_ITEMS.filter((item) => {
     if (item.href === "/ahorros") return isPersonal;
-    if (item.href === "/chat") return !isPersonal;
     return true;
   });
   const items = isSuperAdmin

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { listMyWorkspaces, getWorkspaceMembers } from "./actions";
 import { PendingInvites } from "@/components/equipo/PendingInvites";
 import { CreateTeamForm } from "@/components/equipo/CreateTeamForm";
 import { TeamCard } from "@/components/equipo/TeamCard";
 import { ActivityFeed } from "@/components/equipo/ActivityFeed";
+import { TeamWorkload } from "@/components/equipo/TeamWorkload";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -35,7 +37,16 @@ async function EquipoSection() {
             members={team.members}
             canManage={team.role === "OWNER" || team.role === "ADMIN"}
           />
-          <ActivityFeed workspaceId={team.id} />
+          {/* Cada uno en su Suspense: el reparto y el feed son lo más lento
+              de la pantalla y lo menos urgente. Sin esto, la tarjeta del
+              equipo (con quién está dentro, que es a lo que se viene)
+              esperaba a que terminara el feed del ÚLTIMO equipo. */}
+          <Suspense fallback={<div className="skeleton h-40 rounded-2xl" aria-hidden />}>
+            <TeamWorkload workspaceId={team.id} />
+          </Suspense>
+          <Suspense fallback={<div className="skeleton h-24 rounded-2xl" aria-hidden />}>
+            <ActivityFeed workspaceId={team.id} />
+          </Suspense>
         </div>
       ))}
       {teamsWithMembers.length === 0 && (
@@ -64,7 +75,12 @@ export default function EquipoPage() {
         }
       />
       <SectionErrorBoundary title="Equipo">
-        <EquipoSection />
+        {/* La lista de equipos consulta los miembros de cada uno: sin
+            Suspense, toda la pantalla (cabecera incluida) se quedaba en
+            blanco hasta tenerlos todos. */}
+        <Suspense fallback={<div className="skeleton h-48 rounded-2xl" aria-hidden />}>
+          <EquipoSection />
+        </Suspense>
       </SectionErrorBoundary>
     </>
   );

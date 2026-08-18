@@ -349,12 +349,6 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
   // tendría forma de saber sobre qué tarjeta se soltó.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: message.id });
   const { borderAccent } = presentCategory(message.categoria);
-  // Fondo con un lavado de color por estado (además del badge, ya coloreado
-  // desde antes) — Por hacer se queda neutro a propósito, para no competir
-  // con el borde de categoría; En progreso/Hecho sí llevan su color porque
-  // son los dos estados que de verdad interesa distinguir de un vistazo en
-  // un tablero cargado.
-  const cardBg = message.estado === "POR_HACER" ? "bg-paper-raised" : ESTADO_PRESENTATION[message.estado].colorSoft;
 
   function setRefs(node: HTMLLIElement | null) {
     setNodeRef(node);
@@ -393,10 +387,20 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
       }}
       style={{ transform: CSS.Transform.toString(transform), transition: transition ?? undefined }}
       className={cn(
-        "fade-in touch-none rounded-xl border border-l-4 border-paper-line shadow-sm transition-shadow hover:shadow-md",
-        cardBg,
+        // Fondo SIEMPRE neutro, en los tres estados. Antes, "En progreso" y
+        // "Hecho" teñían la tarjeta entera (y "Hecho" además en el tono
+        // sólido, `bg-accent-strong`): saturaba tanto que tapaba el color
+        // de categoría del borde y costaba leer el texto encima. El estado
+        // ya se distingue por su pastilla (coloreada) y por la columna en
+        // la que está — el único color de fondo/borde que aporta algo aquí
+        // es el de CATEGORÍA, en la franja izquierda.
+        "fade-in touch-none rounded-xl border border-l-4 border-paper-line bg-paper-raised shadow-sm transition-shadow hover:shadow-md",
         density === "compacta" ? "p-2" : "p-3",
         borderAccent,
+        // Hecho: se apaga un poco entera, en vez de encenderse. Es lo que ya
+        // no reclama atención, así que debe pesar MENOS visualmente que lo
+        // que sigue abierto, no más.
+        message.estado === "HECHO" ? "opacity-70" : "",
         isDragging ? "z-10 opacity-50 shadow-lg" : "",
         className,
       )}

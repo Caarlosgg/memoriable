@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
-import type { EstadoTarea, Prioridad, Prisma } from "@prisma/client";
+import type { EstadoTarea, Prioridad, Prisma, Message } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/pipeline";
-import { isCategory } from "@/lib/categories";
-import { shouldClearEnProgreso } from "@/lib/kanban";
+import { isCategory, esAccionable } from "@/lib/categories";
+import { shouldClearEnProgreso, ESTADOS_TABLERO } from "@/lib/kanban";
+import { resolverColumnas } from "@/lib/boardColumns";
 import { searchAcrossAll, type QuickSearchResult } from "@/lib/quickSearch";
 import { getActiveWorkspace, isActiveMember, canWrite, READONLY_ROLE_MESSAGE } from "@/lib/workspace";
 import { createNotification } from "@/lib/notifications";
@@ -65,6 +66,89 @@ export async function setBoardLabel(estado: EstadoTarea, nombre: string | null):
   }
 }
 
+export interface CrearEnColumnaResult {
+  message?: Message;
+  error?: string;
+}
+
+/**
+ * Crea una tarea DIRECTAMENTE en una columna del tablero.
+ *
+ * Hasta ahora el tablero solo se podía llenar desde otra pantalla
+ * (`/categorias`) o desde el bot: un kanban en el que no se puede añadir
+ * una tarjeta obliga a irse justo cuando estás organizando. Pasa por el
+ * MISMO pipeline que la captura rápida (categorización + resumen), así que
+ * no es un atajo que cree notas de segunda: solo añade en qué columna cae.
+ *
+ * Si el pipeline la categoriza como algo NO accionable (una idea, una
+ * pregunta), la nota se guarda igual pero no aparecerá en el tablero — se
+ * avisa en vez de dejar al usuario mirando una columna donde no salió nada.
+ */
+export async function crearTareaEnColumna(contenido: string, columnaId: string): Promise<CrearEnColumnaResult> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  const trimmed = contenido.trim();
+  if (!trimmed) return { error: "Escribe algo antes de guardar." };
+
+  try {
+    const saved = await captureMessage(userId, trimmed, workspaceId);
+
+    // La fase se resuelve AQUÍ, no se acepta del cliente: `columnaId` es lo
+    // único que viaja, y de ahí se deduce el estado (mismo criterio que
+    // moveTask).
+    const statuses = await prisma.boardStatus.findMany({ where: { workspaceId }, orderBy: { orden: "asc" } });
+    const columnas = resolverColumnas(statuses);
+    const columna = columnas.find((c) => c.id === columnaId);
+    if (!columna) return { error: "Esa columna no existe en este tablero." };
+
+    const actualizado = await prisma.message.update({
+      where: { id: saved.id },
+      data: {
+        estado: columna.fase,
+        hecho: columna.fase === "HECHO",
+        boardStatusId: columna.esPersonalizada ? columna.id : null,
+      },
+    });
+
+    revalidatePath("/pendientes");
+    if (!esAccionable(actualizado.categoria)) {
+      return {
+        message: actualizado,
+        error: `Se ha guardado como «${actualizado.categoria}», que no aparece en el tablero — la tienes en Notas.`,
+      };
+    }
+    return { message: actualizado };
+  } catch (err) {
+    console.error("No se pudo crear la tarea en la columna:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido guardar. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Traduce la columna elegida a lo que se guarda en la fila.
+ *
+ * - Sin `columnaId` (o con uno que sea un valor del enum, que es el id de
+ *   las columnas POR DEFECTO): `boardStatusId` a null — la tarjeta vive en
+ *   la columna por defecto de su fase, como toda la vida.
+ * - Con el id de una columna propia: se comprueba que sea DE ESTE workspace
+ *   antes de guardarla. Un id de otro tablero no puede colarse por aquí.
+ *
+ * Devuelve `{}` (sin tocar `boardStatusId`) si el id no es válido: preferible
+ * a mover la tarjeta a una columna equivocada o a tirar la operación entera.
+ */
+async function columnaData(workspaceId: string, columnaId?: string): Promise<{ boardStatusId?: string | null }> {
+  if (!columnaId) return {};
+  if ((ESTADOS_TABLERO as readonly string[]).includes(columnaId)) return { boardStatusId: null };
+  const columna = await prisma.boardStatus.findFirst({
+    where: { id: columnaId, workspaceId },
+    select: { id: true },
+  });
+  return columna ? { boardStatusId: columna.id } : {};
+}
+
 /**
  * Mueve una tarjeta del tablero a otra columna. `hecho` se mantiene
  * sincronizado con `estado` (hecho = estado === HECHO): el bot y el resumen
@@ -77,13 +161,18 @@ export async function setBoardLabel(estado: EstadoTarea, nombre: string | null):
  * workspace de equipo, cualquier miembro puede mover una tarjeta que le
  * han asignado aunque no la haya creado él (ver getActiveWorkspace).
  */
-export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise<void> {
+export async function updateTaskStatus(id: string, estado: EstadoTarea, columnaId?: string): Promise<void> {
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   const updated = await prisma.message.updateMany({
     where: { id, workspaceId },
-    data: { estado, hecho: estado === "HECHO", ...clearEnProgresoIfDone(estado) },
+    data: {
+      estado,
+      hecho: estado === "HECHO",
+      ...clearEnProgresoIfDone(estado),
+      ...(await columnaData(workspaceId, columnaId)),
+    },
   });
   revalidatePath("/pendientes");
 
@@ -102,13 +191,19 @@ export async function updateTaskStatus(id: string, estado: EstadoTarea): Promise
  * persiste, junto con el cambio de columna si lo hay. Mismo criterio de
  * acceso que el resto: `updateMany` con workspaceId en el where.
  */
-export async function moveTask(id: string, estado: EstadoTarea, orden: number): Promise<void> {
+export async function moveTask(id: string, estado: EstadoTarea, orden: number, columnaId?: string): Promise<void> {
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   await prisma.message.updateMany({
     where: { id, workspaceId },
-    data: { estado, hecho: estado === "HECHO", orden, ...clearEnProgresoIfDone(estado) },
+    data: {
+      estado,
+      hecho: estado === "HECHO",
+      orden,
+      ...clearEnProgresoIfDone(estado),
+      ...(await columnaData(workspaceId, columnaId)),
+    },
   });
   revalidatePath("/pendientes");
 }

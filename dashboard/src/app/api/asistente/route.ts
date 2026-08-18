@@ -8,12 +8,13 @@ import { isSessionActive } from "@/lib/sessionRevocation";
 import { resolveEmbedder } from "@/lib/pipeline";
 import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
-import { toAssistantSources, buildContextBlock, buildSystemPrompt, buildWorkspaceContextLine, buildAmbientBlock, buildMemoryBlock, type AssistantSource, type AssistantWorkspaceMemberInfo } from "@/lib/assistantContext";
+import { toAssistantSources, buildContextBlock, buildSystemPrompt, buildWorkspaceContextLine, buildAmbientBlock, buildMemoryBlock, buildTeamsBlock, type AssistantSource, type AssistantWorkspaceMemberInfo } from "@/lib/assistantContext";
 import { resolveAmbientStats, resolveWorkspaceNombre, resolveWorkspaceMembers } from "@/lib/assistantAmbient";
+import { resolveMisEquipos } from "@/lib/assistantTeamContext";
 import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
 import { listAssistantMemories } from "@/lib/assistantMemory";
-import { getActiveWorkspace } from "@/lib/workspace";
+import { getActiveWorkspace, getPersonalWorkspaceId } from "@/lib/workspace";
 
 // Verificado en vivo: una petición con dos llamadas a herramienta con
 // `repetir` (crearEvento + registrarAhorro, 5 repeticiones cada una) tardó
@@ -193,6 +194,30 @@ export async function POST(req: Request) {
     }
   }
 
+  // TODOS los equipos del usuario (no solo el activo), para que el
+  // Asistente pueda diferenciarlos al hablar en vez de tratar "el equipo"
+  // como si solo hubiera uno. No crítico, como el resto del contexto.
+  async function resolveTeams(): Promise<string> {
+    try {
+      return buildTeamsBlock(await resolveMisEquipos(userId, workspaceId));
+    } catch (err) {
+      console.error("No se pudieron cargar los equipos del usuario (se responde sin ellos):", err);
+      return "";
+    }
+  }
+
+  // Para `consultarAgenda`, que mezcla lo de todos los equipos con lo
+  // personal (ver createAssistantTools). Si falla, se cae al workspace
+  // activo: la agenda saldrá sin la parte personal, pero nada se rompe.
+  async function resolvePersonalId(): Promise<string> {
+    try {
+      return await getPersonalWorkspaceId(userId);
+    } catch (err) {
+      console.error("No se pudo resolver el espacio personal (se usa el activo):", err);
+      return workspaceId;
+    }
+  }
+
   // Igual de no-crítico: sin memoria, el Asistente responde igual, solo
   // sin recordar hechos de conversaciones anteriores.
   async function resolveMemory(): Promise<string> {
@@ -209,21 +234,23 @@ export async function POST(req: Request) {
   // paralelo en vez de en secuencia recorta el tiempo hasta el primer
   // token de la respuesta. Cada una atrapa sus propios errores, así que
   // Promise.all nunca rechaza por un fallo aislado de una de ellas.
-  const [conversationId, sources, workspaceInfo, ambientBlock, memoryBlock] = await Promise.all([
+  const [conversationId, sources, workspaceInfo, ambientBlock, memoryBlock, teamsBlock, personalWorkspaceId] = await Promise.all([
     resolveConversationId(),
     resolveSources(),
     resolveWorkspaceInfo(),
     resolveAmbient(),
     resolveMemory(),
+    resolveTeams(),
+    resolvePersonalId(),
   ]);
   const { members } = workspaceInfo;
   const workspaceLine = buildWorkspaceContextLine({ isPersonal, nombre: workspaceInfo.nombre, role, members });
 
   const result = streamText({
     model: groq("openai/gpt-oss-120b"),
-    system: buildSystemPrompt(buildContextBlock(sources), new Date(), { workspaceLine, ambientBlock, memoryBlock }),
+    system: buildSystemPrompt(buildContextBlock(sources), new Date(), { workspaceLine, ambientBlock, memoryBlock, teamsBlock }),
     messages: await convertToModelMessages(messages),
-    tools: createAssistantTools(userId, workspaceId, role, members),
+    tools: createAssistantTools(userId, workspaceId, role, members, personalWorkspaceId),
     // Permite encadenar la llamada a `crearNota` con la respuesta de texto
     // que la confirma, en el mismo turno (si no, el SDK se pararía justo
     // después de ejecutar la tool sin generar el mensaje final).
