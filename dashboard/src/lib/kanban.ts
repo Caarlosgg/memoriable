@@ -12,10 +12,31 @@ export const ESTADOS_TABLERO: readonly EstadoTarea[] = ["POR_HACER", "EN_PROGRES
  * versión sólida (lectura clara de "completado"); POR_HACER se queda
  * neutro, como estaba.
  */
-export const ESTADO_PRESENTATION: Record<EstadoTarea, { label: string; Icon: LucideIcon; color: string; colorSoft: string }> = {
-  POR_HACER: { label: "Por hacer", Icon: Circle, color: "text-muted", colorSoft: "bg-paper-line/60" },
-  EN_PROGRESO: { label: "En progreso", Icon: CircleDot, color: "text-accent-strong", colorSoft: "bg-accent-soft" },
-  HECHO: { label: "Hecho", Icon: CircleCheckBig, color: "text-accent-ink", colorSoft: "bg-accent-strong" },
+export const ESTADO_PRESENTATION: Record<
+  EstadoTarea,
+  { label: string; Icon: LucideIcon; color: string; colorSoft: string; borde: string }
+> = {
+  POR_HACER: {
+    label: "Por hacer",
+    Icon: Circle,
+    color: "text-muted",
+    colorSoft: "bg-paper-line/60",
+    borde: "border-l-estado-por-hacer",
+  },
+  EN_PROGRESO: {
+    label: "En progreso",
+    Icon: CircleDot,
+    color: "text-highlight-strong",
+    colorSoft: "bg-highlight-soft",
+    borde: "border-l-estado-en-progreso",
+  },
+  HECHO: {
+    label: "Hecho",
+    Icon: CircleCheckBig,
+    color: "text-accent-strong",
+    colorSoft: "bg-accent-soft",
+    borde: "border-l-estado-hecho",
+  },
 };
 
 /**

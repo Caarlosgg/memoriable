@@ -348,7 +348,6 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
   // a la columna entera), y el reordenado dentro de la misma columna no
   // tendría forma de saber sobre qué tarjeta se soltó.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: message.id });
-  const { borderAccent } = presentCategory(message.categoria);
 
   function setRefs(node: HTMLLIElement | null) {
     setNodeRef(node);
@@ -387,16 +386,18 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
       }}
       style={{ transform: CSS.Transform.toString(transform), transition: transition ?? undefined }}
       className={cn(
-        // Fondo SIEMPRE neutro, en los tres estados. Antes, "En progreso" y
-        // "Hecho" teñían la tarjeta entera (y "Hecho" además en el tono
-        // sólido, `bg-accent-strong`): saturaba tanto que tapaba el color
-        // de categoría del borde y costaba leer el texto encima. El estado
-        // ya se distingue por su pastilla (coloreada) y por la columna en
-        // la que está — el único color de fondo/borde que aporta algo aquí
-        // es el de CATEGORÍA, en la franja izquierda.
+        // Fondo SIEMPRE neutro. Antes, "En progreso" y "Hecho" teñían la
+        // tarjeta entera (y "Hecho" en el tono sólido) — saturaba tanto que
+        // costaba leer el texto encima.
+        //
+        // La franja izquierda es el ESTADO, no la categoría: es el dato que
+        // se quiere leer de un vistazo en un tablero cargado ("qué está en
+        // curso"), y con columnas propias ya no basta con mirar en qué
+        // columna cae. La categoría no se pierde: sigue en el icono y en su
+        // color, dentro de la tarjeta.
         "fade-in touch-none rounded-xl border border-l-4 border-paper-line bg-paper-raised shadow-sm transition-shadow hover:shadow-md",
         density === "compacta" ? "p-2" : "p-3",
-        borderAccent,
+        ESTADO_PRESENTATION[message.estado].borde,
         // Hecho: se apaga un poco entera, en vez de encenderse. Es lo que ya
         // no reclama atención, así que debe pesar MENOS visualmente que lo
         // que sigue abierto, no más.

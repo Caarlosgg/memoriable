@@ -32,6 +32,16 @@
   --danger: #b3261e;
   --danger-soft: #fbeceb;
 
+  /* Color propio por ESTADO del tablero: el borde izquierdo de cada tarjeta
+     lo usa para que la fase se lea de un vistazo sin contar columnas (ver
+     KanbanCard.tsx). Ámbar para lo que está en curso porque es el estado que
+     de verdad hay que vigilar; neutro para lo que ni ha empezado; verde para
+     lo cerrado. Deliberadamente NO son colores nuevos: reutilizan los tokens
+     que ya existen, así que siguen cumpliendo contraste sin recomprobar. */
+  --estado-por-hacer: var(--paper-line);
+  --estado-en-progreso: var(--highlight);
+  --estado-hecho: var(--accent);
+
   /* Color propio por categoría (Fase 4): el icono lo hereda, nunca lleva
      color fijo en sí mismo — así una categoría se reconoce por color
      incluso sin leer la etiqueta. */
@@ -53,20 +63,28 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #17160f;
-    --paper-raised: #201f18;
-    --paper-line: #33312a;
-    --ink: #f3efe6;
-    --muted: #a99f8d;
-    --accent: #4fceac;
-    --accent-strong: #7fe0c4;
-    --accent-ink: #08211a;
-    --accent-soft: #1c3830;
-    --highlight: #f3b84e;
-    --highlight-strong: #f8cf85;
-    --highlight-soft: #3a2c17;
-    --danger: #e6857e;
-    --danger-soft: #3a1e1c;
+    /* Rediseñado con un medidor de contraste, no a ojo: el problema no era
+       que fuese "oscuro" (el texto ya pasaba WCAG AA de sobra) sino que
+       estaba PLANO — las tarjetas no se despegaban del fondo. Medido:
+       --paper-raised sobre --paper daba 1.10, prácticamente el mismo tono.
+       Ahora el fondo baja y la superficie sube hasta 1.36, y los bordes
+       pasan de 1.39 a 2.06: hay profundidad de verdad. Verde algo más vivo
+       para que la aplicación no parezca apagada, sin irse a un tono
+       infantil. Todos los pares de texto siguen por encima de 4.5:1. */
+    --paper: #080b09;
+    --paper-raised: #222b26;
+    --paper-line: #3a4841;
+    --ink: #eef3f0;
+    --muted: #9aa8a1;
+    --accent: #3ddba4;
+    --accent-strong: #7defc6;
+    --accent-ink: #042019;
+    --accent-soft: #153a2e;
+    --highlight: #f9c065;
+    --highlight-strong: #fcd694;
+    --highlight-soft: #3d2f17;
+    --danger: #f28a82;
+    --danger-soft: #40201e;
 
     --cat-tarea: #4fceac;
     --cat-tarea-soft: #1c3830;
@@ -94,20 +112,28 @@
  * no hace falta una tercera variante aparte.
  */
 :root[data-theme="dark"] {
-  --paper: #17160f;
-  --paper-raised: #201f18;
-  --paper-line: #33312a;
-  --ink: #f3efe6;
-  --muted: #a99f8d;
-  --accent: #4fceac;
-  --accent-strong: #7fe0c4;
-  --accent-ink: #08211a;
-  --accent-soft: #1c3830;
-  --highlight: #f3b84e;
-  --highlight-strong: #f8cf85;
-  --highlight-soft: #3a2c17;
-  --danger: #e6857e;
-  --danger-soft: #3a1e1c;
+  /* Rediseñado con un medidor de contraste, no a ojo: el problema no era
+     que fuese "oscuro" (el texto ya pasaba WCAG AA de sobra) sino que
+     estaba PLANO — las tarjetas no se despegaban del fondo. Medido:
+     --paper-raised sobre --paper daba 1.10, prácticamente el mismo tono.
+     Ahora el fondo baja y la superficie sube hasta 1.36, y los bordes
+     pasan de 1.39 a 2.06: hay profundidad de verdad. Verde algo más vivo
+     para que la aplicación no parezca apagada, sin irse a un tono
+     infantil. Todos los pares de texto siguen por encima de 4.5:1. */
+  --paper: #080b09;
+  --paper-raised: #222b26;
+  --paper-line: #3a4841;
+  --ink: #eef3f0;
+  --muted: #9aa8a1;
+  --accent: #3ddba4;
+  --accent-strong: #7defc6;
+  --accent-ink: #042019;
+  --accent-soft: #153a2e;
+  --highlight: #f9c065;
+  --highlight-strong: #fcd694;
+  --highlight-soft: #3d2f17;
+  --danger: #f28a82;
+  --danger-soft: #40201e;
 
   --cat-tarea: #4fceac;
   --cat-tarea-soft: #1c3830;
@@ -174,6 +200,9 @@
   --color-highlight-soft: var(--highlight-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-estado-por-hacer: var(--estado-por-hacer);
+  --color-estado-en-progreso: var(--estado-en-progreso);
+  --color-estado-hecho: var(--estado-hecho);
   --color-cat-tarea: var(--cat-tarea);
   --color-cat-tarea-soft: var(--cat-tarea-soft);
   --color-cat-idea: var(--cat-idea);
