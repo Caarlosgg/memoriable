@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Evento, Message } from "@prisma/client";
 import { ChevronLeft, ChevronRight, Plus, CalendarCheck2, ListTodo } from "lucide-react";
-import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, type WeekDay } from "@/lib/calendar";
+import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, rangoCalendario, type WeekDay } from "@/lib/calendar";
+import { loadCalendarRange } from "@/app/(dashboard)/calendario/actions";
 import { formatEventTime } from "@/lib/format";
 import { avatarColorClass } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
@@ -43,19 +44,19 @@ function weekRangeLabel(days: WeekDay[]): string {
 
 /**
  * Vista mensual propia (grid CSS de 7 columnas), sin librería de calendario
- * de terceros — coherente con el resto del dashboard. Sin fetch por mes: se
- * le pasan TODOS los eventos del usuario de una vez (uso personal, volumen
- * bajo, ver comentario en calendario/page.tsx) y navega entre meses en
- * memoria, sin ida y vuelta al servidor.
+ * de terceros — coherente con el resto del dashboard. La página trae solo
+ * los meses de alrededor (ver rangoCalendario en lib/eventos.ts) y, al
+ * navegar fuera de eso, esta vista pide el tramo que falte y lo fusiona:
+ * traerse el historial entero en cada carga no escala con el uso.
  */
 export function CalendarView({
-  eventos,
-  tareas = [],
+  eventos: eventosProp,
+  tareas: tareasProp = [],
   members = [],
   highlightEventoId,
 }: {
   eventos: Evento[];
-  /** Tareas/recordatorios con fecha límite (ver getTasksWithDeadline) — se pintan junto a los eventos, con otro aspecto. */
+  /** Tareas/recordatorios con fecha límite (ver getTasksEnRango en lib/eventos.ts) — se pintan junto a los eventos, con otro aspecto. */
   tareas?: Message[];
   /** Miembros del workspace activo, para mostrar quién tiene asignado cada evento — vacío en modo personal. */
   members?: WorkspaceMemberInfo[];
@@ -67,7 +68,7 @@ export function CalendarView({
   const [cursor, setCursor] = useState(() => {
     // Si venimos de la notificación de un evento, arrancar en el mes en el
     // que cae ese evento — si no, nunca se vería su chip para poder abrirlo.
-    const highlighted = highlightEventoId ? eventos.find((e) => e.id === highlightEventoId) : undefined;
+    const highlighted = highlightEventoId ? eventosProp.find((e) => e.id === highlightEventoId) : undefined;
     if (highlighted) {
       const d = highlighted.fechaInicio;
       return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -112,6 +113,53 @@ export function CalendarView({
     // pelearía con el scroll manual del usuario.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, cursor]);
+
+  // La página trae solo los meses de alrededor (ver rangoCalendario). Al
+  // navegar fuera de lo ya cargado se pide ese tramo y se fusiona por id
+  // — sin esto, moverse a un mes lejano lo mostraba vacío aunque tuviera
+  // cosas. Se recuerdan los tramos ya pedidos para no repetirlos al ir y
+  // volver entre los mismos meses.
+  const [eventosExtra, setEventosExtra] = useState<Evento[]>([]);
+  const [tareasExtra, setTareasExtra] = useState<Message[]>([]);
+  const tramosPedidos = useRef(new Set<string>());
+  const [cargandoTramo, setCargandoTramo] = useState(false);
+
+  useEffect(() => {
+    const { desde, hasta } = rangoCalendario(cursor, 1);
+    const clave = `${desde.toISOString()}|${hasta.toISOString()}`;
+    if (tramosPedidos.current.has(clave)) return;
+    tramosPedidos.current.add(clave);
+
+    let cancelado = false;
+    setCargandoTramo(true);
+    loadCalendarRange(desde.toISOString(), hasta.toISOString())
+      .then(({ eventos: nuevos, tareas: nuevasTareas }) => {
+        if (cancelado) return;
+        setEventosExtra((prev) => {
+          const conocidos = new Set(prev.map((e) => e.id));
+          return [...prev, ...nuevos.filter((e) => !conocidos.has(e.id))];
+        });
+        setTareasExtra((prev) => {
+          const conocidas = new Set(prev.map((t) => t.id));
+          return [...prev, ...nuevasTareas.filter((t) => !conocidas.has(t.id))];
+        });
+      })
+      .catch((err) => console.error("No se pudo cargar ese tramo del calendario:", err))
+      .finally(() => {
+        if (!cancelado) setCargandoTramo(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [cursor]);
+
+  // Lo que trajo la página + lo cargado después, sin duplicar: los `extra`
+  // pueden solapar con los iniciales si el tramo pedido los incluye.
+  const idsIniciales = new Set(eventosProp.map((e) => e.id));
+  const eventos = [...eventosProp, ...eventosExtra.filter((e) => !idsIniciales.has(e.id))];
+  const idsTareasIniciales = new Set(tareasProp.map((t) => t.id));
+  const tareas = [...tareasProp, ...tareasExtra.filter((t) => !idsTareasIniciales.has(t.id))];
 
   const monthGrid = buildMonthGrid(cursor.getUTCFullYear(), cursor.getUTCMonth());
   const weekGrid = buildWeekGrid(cursor);
@@ -192,8 +240,16 @@ export function CalendarView({
       className="flex flex-col gap-3 rounded-2xl border border-paper-line bg-paper-raised p-4 shadow-sm"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="mes-heading" className="font-display text-lg font-semibold text-ink capitalize">
+        <h2 id="mes-heading" className="flex items-center gap-2 font-display text-lg font-semibold text-ink capitalize">
           {view === "mes" ? MONTH_FORMATTER.format(cursor) : weekRangeLabel(weekGrid)}
+          {/* Señal de que ese tramo aún se está trayendo: sin esto, un mes
+              lejano parece vacío durante un instante y da la impresión de
+              que no hay nada, en vez de que falta por cargar. */}
+          {cargandoTramo && (
+            <span role="status" className="text-xs font-normal text-muted">
+              cargando…
+            </span>
+          )}
         </h2>
         <div className="flex items-center gap-1">
           <div className="mr-1 flex rounded-full border border-paper-line p-0.5 text-xs font-medium">

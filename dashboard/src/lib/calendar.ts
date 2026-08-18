@@ -236,3 +236,27 @@ export function fechaRepeticion(base: Date, frecuencia: Frecuencia, i: number): 
   }
   return d;
 }
+
+/**
+ * Meses que se cargan de golpe alrededor del mes que se está viendo, para
+ * el calendario (ver getEventosEnRango/getTasksEnRango en lib/eventos.ts).
+ * Cubre de sobra el uso normal (mirar atrás un par de meses, planificar el
+ * siguiente) sin traerse el historial entero — con un equipo llevando un
+ * año en la aplicación, "todos los eventos" son miles de filas en CADA
+ * carga y casi ninguna se llega a mirar.
+ *
+ * Pura (sin "server-only"): la usan tanto el servidor (la carga inicial de
+ * la página) como el cliente (CalendarView, al pedir el tramo que falte al
+ * navegar) — mismo criterio que el resto de este archivo.
+ */
+export const CALENDARIO_MESES_MARGEN = 2;
+
+/** Primer día del mes `margen` antes de `referencia`, y primer día del mes `margen` después — en UTC, igual que la rejilla. */
+export function rangoCalendario(referencia: Date, margen = CALENDARIO_MESES_MARGEN): { desde: Date; hasta: Date } {
+  const year = referencia.getUTCFullYear();
+  const month = referencia.getUTCMonth();
+  return {
+    desde: new Date(Date.UTC(year, month - margen, 1)),
+    hasta: new Date(Date.UTC(year, month + margen + 1, 1)),
+  };
+}

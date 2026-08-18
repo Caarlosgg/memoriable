@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { verifySession } from "@/lib/dal";
 import { getActiveWorkspace, listWorkspaceMembers } from "@/lib/workspace";
-import { getAllEventos, getImportantPending, getTasksWithDeadline } from "@/lib/eventos";
+import { getEventosEnRango, getTasksEnRango, getImportantPending } from "@/lib/eventos";
+import { rangoCalendario } from "@/lib/calendar";
 import { upcomingRange } from "@/lib/calendar";
 import { ResumenSection } from "@/components/calendar/ResumenSection";
 import { CalendarView } from "@/components/calendar/CalendarView";
@@ -14,18 +15,22 @@ import { ActiveWorkspaceBadge } from "@/components/ActiveWorkspaceBadge";
 export const metadata: Metadata = { title: "Calendario · MemorIAble" };
 
 /**
- * Sin fetch por mes al navegar: se traen TODOS los eventos del usuario de
- * una vez y `CalendarView` pagina entre meses en memoria. Proporcional al
- * uso real (app personal, no se esperan miles de eventos) — si algún día
- * hiciera falta, se pasa a traer por rango bajo demanda.
+ * Solo los meses de alrededor del actual (ver `rangoCalendario`), no el
+ * historial entero: con un año de uso, "todos los eventos" son miles de
+ * filas en cada carga y casi ninguna se llega a mirar. Al navegar fuera de
+ * ese tramo, `CalendarView` pide el que falte con `loadCalendarRange`.
  */
 async function CalendarSection({ highlightEventoId }: { highlightEventoId?: string }) {
   const userId = await verifySession();
   const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  // Solo los meses de alrededor, no el historial entero (ver
+  // rangoCalendario): al navegar fuera, el propio calendario pide el tramo
+  // que falte con `loadCalendarRange`.
+  const { desde: rangoDesde, hasta: rangoHasta } = rangoCalendario(new Date());
   const [importantPending, allEventos, tareas, members] = await Promise.all([
     getImportantPending(workspaceId),
-    getAllEventos(workspaceId),
-    getTasksWithDeadline(workspaceId),
+    getEventosEnRango(workspaceId, rangoDesde, rangoHasta),
+    getTasksEnRango(workspaceId, rangoDesde, rangoHasta),
     // Solo hace falta en modo equipo — en personal no hay a quién asignar.
     isPersonal ? Promise.resolve([]) : listWorkspaceMembers(workspaceId, userId).catch(() => []),
   ]);

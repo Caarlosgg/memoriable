@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { getActiveWorkspace, isActiveMember, canWrite, READONLY_ROLE_MESSAGE } from "@/lib/workspace";
 import { createNotification } from "@/lib/notifications";
 import { fechaRepeticion, type Frecuencia } from "@/lib/calendar";
+import { getEventosEnRango, getTasksEnRango } from "@/lib/eventos";
+import type { Evento, Message } from "@prisma/client";
 
 export interface RepetirInput {
   frecuencia: Frecuencia;
@@ -196,4 +198,42 @@ async function notifyEventoAssignment(assigneeId: string, eventoId: string): Pro
     body: evento.titulo,
     link: `/calendario?evento=${eventoId}`,
   });
+}
+
+/**
+ * Carga eventos y tareas de un rango concreto — la usa el calendario
+ * cuando navegas fuera de los meses que ya trajo la página (ver
+ * `rangoCalendario` en lib/eventos.ts). Antes se traían TODOS los eventos
+ * del workspace en cada carga; con un año de uso eso son miles de filas
+ * que casi nunca se miran.
+ *
+ * Las fechas viajan como ISO (una Server Action serializa `Date` sin
+ * problema, pero el cliente las tiene ya como cadena y así no hay que
+ * reconstruirlas dos veces).
+ */
+export async function loadCalendarRange(
+  desdeIso: string,
+  hastaIso: string,
+): Promise<{ eventos: Evento[]; tareas: Message[] }> {
+  const userId = await verifySession();
+  const { workspaceId } = await getActiveWorkspace(userId);
+  const desde = new Date(desdeIso);
+  const hasta = new Date(hastaIso);
+  if (Number.isNaN(desde.getTime()) || Number.isNaN(hasta.getTime())) {
+    return { eventos: [], tareas: [] };
+  }
+
+  try {
+    const [eventos, tareas] = await Promise.all([
+      getEventosEnRango(workspaceId, desde, hasta),
+      getTasksEnRango(workspaceId, desde, hasta),
+    ]);
+    return { eventos, tareas };
+  } catch (err) {
+    // No crítico: el calendario ya tiene pintado lo que trajo la página,
+    // así que se queda como está en vez de romperse.
+    console.error("No se pudo cargar ese tramo del calendario:", err);
+    Sentry.captureException(err);
+    return { eventos: [], tareas: [] };
+  }
 }

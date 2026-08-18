@@ -4,34 +4,30 @@ import { prisma } from "./prisma";
 import { ACTIONABLE_CATEGORIES } from "./categories";
 
 /**
- * Todos los eventos del workspace activo (sin límite: uso personal/de
- * equipo pequeño, volumen bajo — ver nota en calendario/page.tsx). Fase
- * Equipo: alcance por `workspaceId`, no por `userId`.
+ * Eventos que caen (o siguen abiertos) dentro de un rango. Un evento de
+ * varios días cuenta si SOLAPA el rango, no solo si empieza dentro — si
+ * no, una actividad que arranca en enero y acaba en marzo desaparecería
+ * al mirar febrero.
  */
-export async function getAllEventos(workspaceId: string): Promise<Evento[]> {
-  return prisma.evento.findMany({ where: { workspaceId }, orderBy: { fechaInicio: "asc" } });
+export async function getEventosEnRango(workspaceId: string, desde: Date, hasta: Date): Promise<Evento[]> {
+  return prisma.evento.findMany({
+    where: {
+      workspaceId,
+      fechaInicio: { lt: hasta },
+      OR: [{ fechaFin: null, fechaInicio: { gte: desde } }, { fechaFin: { gte: desde } }],
+    },
+    orderBy: { fechaInicio: "asc" },
+  });
 }
 
-/**
- * Tareas/recordatorios con fecha límite, para pintarlos EN el calendario
- * junto a los eventos.
- *
- * Antes el calendario solo mostraba `Evento`, así que una tarea con fecha
- * de entrega no aparecía por ninguna parte del calendario — había que
- * acordarse de mirar el tablero. Son las dos mitades de "qué me toca
- * cuándo", y verlas separadas obligaba a cruzarlas de cabeza.
- *
- * Solo las que siguen pendientes: una tarea ya terminada no es algo que
- * "toque" ese día, y llenaría el mes de ruido. Solo categorías accionables
- * (mismo criterio que el tablero) — una idea con fecha no es una entrega.
- */
-export async function getTasksWithDeadline(workspaceId: string): Promise<Message[]> {
+/** Como `getTasksWithDeadline`, pero acotado al rango que se está viendo. */
+export async function getTasksEnRango(workspaceId: string, desde: Date, hasta: Date): Promise<Message[]> {
   return prisma.message.findMany({
     where: {
       workspaceId,
       categoria: { in: [...ACTIONABLE_CATEGORIES] },
       estado: { not: "HECHO" },
-      fechaLimite: { not: null },
+      fechaLimite: { gte: desde, lt: hasta },
     },
     orderBy: { fechaLimite: "asc" },
   });

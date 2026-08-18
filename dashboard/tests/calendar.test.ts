@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, buildWeekGrid, upcomingRange, dayLabel, fechaRepeticion, layoutDayEvents, isOverdue } from "../src/lib/calendar";
+import { dateKey, groupByDay, groupByDayRange, buildMonthGrid, buildWeekGrid, upcomingRange, dayLabel, fechaRepeticion, layoutDayEvents, isOverdue, rangoCalendario } from "../src/lib/calendar";
 
 describe("dateKey", () => {
   it("da la fecha en formato YYYY-MM-DD en UTC", () => {
@@ -252,5 +252,22 @@ describe("fechaRepeticion", () => {
     const original = base.toISOString();
     fechaRepeticion(base, "SEMANAL", 3);
     expect(base.toISOString()).toBe(original);
+  });
+});
+
+describe("rangoCalendario", () => {
+  it("cubre los meses de alrededor, alineado al día 1 (mismo criterio que la rejilla)", () => {
+    const { desde, hasta } = rangoCalendario(new Date("2026-08-17T12:00:00.000Z"), 2);
+
+    expect(desde.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+    // Exclusivo: primer día del mes SIGUIENTE al último incluido (octubre).
+    expect(hasta.toISOString()).toBe("2026-11-01T00:00:00.000Z");
+  });
+
+  it("cruza bien el cambio de año hacia atrás y hacia delante", () => {
+    const { desde, hasta } = rangoCalendario(new Date("2026-01-10T00:00:00.000Z"), 2);
+
+    expect(desde.toISOString()).toBe("2025-11-01T00:00:00.000Z");
+    expect(hasta.toISOString()).toBe("2026-04-01T00:00:00.000Z");
   });
 });
