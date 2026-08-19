@@ -6,6 +6,7 @@ import { capture, type CaptureState } from "@/app/(dashboard)/actions";
 import { presentCategory } from "@/lib/categories";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { VoiceButton } from "./VoiceButton";
 
 const initialState: CaptureState = {};
 
@@ -14,9 +15,21 @@ const initialState: CaptureState = {};
  * Telegram (categorización + resumen + guardado), ver src/lib/pipeline.ts y
  * la server action `capture` en actions.ts.
  */
-export function CaptureForm() {
+export function CaptureForm({ puedeGrabar }: { puedeGrabar: boolean }) {
   const [state, formAction, pending] = useActionState(capture, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  // El campo es NO controlado (se lee por `name` al enviar el form, se
+  // vacía con `formRef.current?.reset()`), así que dictar no puede pasar
+  // por un `setState` — se escribe en el DOM directamente, igual que
+  // cualquier otro cambio manual del usuario.
+  const inputRef = useRef<HTMLInputElement>(null);
+  function handleTranscript(texto: string) {
+    const el = inputRef.current;
+    if (!el) return;
+    el.value = el.value ? `${el.value} ${texto}` : texto;
+    setDismissed(true);
+    el.focus();
+  }
 
   // "Guardado ✓" en el propio botón como confirmación inmediata (además del
   // texto de abajo). Se resuelve con estado derivado en render — el patrón
@@ -59,6 +72,7 @@ export function CaptureForm() {
           Escribe una idea, tarea, pregunta o recordatorio
         </label>
         <Input
+          ref={inputRef}
           id="contenido"
           name="contenido"
           type="text"
@@ -68,6 +82,7 @@ export function CaptureForm() {
           onChange={() => setDismissed(true)}
           className="flex-1"
         />
+        <VoiceButton puedeGrabar={puedeGrabar} onTranscript={handleTranscript} />
         <Button type="submit" disabled={pending} className={justSaved ? "bg-accent-strong" : ""}>
           {pending ? (
             "Guardando…"

@@ -14,6 +14,7 @@ import { Input } from "./ui/input";
 import { AssistantMarkdown } from "./AssistantMarkdown";
 import { ConversationSidebar } from "./ConversationSidebar";
 import { PageHeader } from "./PageHeader";
+import { VoiceButton } from "./VoiceButton";
 
 /**
  * Lo que se ofrece al abrir un chat vacío. No son ejemplos bonitos: son la
@@ -517,7 +518,7 @@ function ConsultarAgendaResultCard({ part }: { part: ConsultarAgendaPart }) {
  * layout del dashboard — así sobrevive a navegar a otra pantalla mientras
  * el Asistente sigue respondiendo (ver el comentario allí).
  */
-export function AssistantChat() {
+export function AssistantChat({ puedeGrabar }: { puedeGrabar: boolean }) {
   const {
     messages,
     isBusy,
@@ -732,6 +733,10 @@ export function AssistantChat() {
           placeholder="Escribe tu pregunta…"
           disabled={isBusy}
           className="flex-1"
+        />
+        <VoiceButton
+          puedeGrabar={puedeGrabar}
+          onTranscript={(texto) => setInput(input ? `${input} ${texto}` : texto)}
         />
         <Button type="submit" disabled={isBusy || input.trim() === ""}>
           {isBusy ? "…" : <Send aria-hidden size={16} />}

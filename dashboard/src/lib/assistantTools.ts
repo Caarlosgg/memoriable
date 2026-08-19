@@ -278,7 +278,7 @@ export function createAssistantTools(
   function requireWrite(): void {
     if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
   }
-  return {
+  const todas = {
     crearNota: tool({
       description:
         "Crea y guarda una nota, tarea o recordatorio nuevo SIN fecha/hora concreta, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas. NO la uses si lo que pide tiene fecha/hora concreta (una cita, quedar con alguien) o se repite periódicamente ('todos los jueves', 'cada semana') — para eso usa crearEvento (con su parámetro repetir si se repite), aunque suene a 'tarea'. Si pide ASIGNARLA a un compañero de equipo (\"apunta a María que revise esto\", \"que sea de Pedro\"), usa `asignadoA`.",
@@ -1094,6 +1094,29 @@ export function createAssistantTools(
       },
     }),
   } satisfies ToolSet;
+
+  /**
+   * Solo se le pasa al modelo el juego de herramientas que puede usar EN
+   * ESTE MODO. Antes se le mandaban las 17 en cada petición, incluidas las
+   * seis de equipo estando en personal (o las dos de ahorro estando en
+   * equipo) — más tokens y latencia de más en cada turno, y la posibilidad
+   * de que intentara algo que iba a fallar seguro. `members.length > 0` es
+   * la misma señal que ya usan estas tools por dentro para saber si están
+   * en un workspace de equipo (ver el "if (members.length === 0) throw"
+   * repetido en consultarEquipo/analizarEquipo/enviarMensajeChat) — no se
+   * inventa un criterio nuevo, solo se aplica también aquí fuera.
+   *
+   * El `as typeof todas` no le miente a quien consume `AssistantTools`
+   * (abajo): ese tipo describe TODOS los esquemas que el cliente podría
+   * necesitar pintar alguna vez (ver InferUITools en AssistantProvider.tsx),
+   * no los que de verdad viajan en esta petición concreta — el modelo,
+   * sencillamente, no puede llamar a lo que no está en el objeto real.
+   */
+  const enEquipo = members.length > 0;
+  const SOLO_EQUIPO = ["asignarTarea", "consultarEquipo", "analizarEquipo", "consultarPersona", "consultarMisEquipos", "enviarMensajeChat"] as const;
+  const SOLO_PERSONAL = ["registrarAhorro", "consultarAhorros"] as const;
+  const excluidas = new Set<string>(enEquipo ? SOLO_PERSONAL : SOLO_EQUIPO);
+  return Object.fromEntries(Object.entries(todas).filter(([nombre]) => !excluidas.has(nombre))) as typeof todas;
 }
 
 export type AssistantTools = ReturnType<typeof createAssistantTools>;

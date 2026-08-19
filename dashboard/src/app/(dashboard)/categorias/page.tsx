@@ -6,6 +6,7 @@ import { NotesSkeleton } from "@/components/NotesSkeleton";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { PageHeader } from "@/components/PageHeader";
 import { ActiveWorkspaceBadge } from "@/components/ActiveWorkspaceBadge";
+import { isVoiceConfigured } from "@/lib/transcriber";
 
 export const metadata: Metadata = { title: "Notas · MemorIAble" };
 
@@ -32,7 +33,7 @@ export default async function NotasPage({
       />
       <ActiveWorkspaceBadge />
       <SectionErrorBoundary title="Anotar">
-        <CaptureForm />
+        <CaptureForm puedeGrabar={isVoiceConfigured()} />
       </SectionErrorBoundary>
 
       <SectionErrorBoundary title="Notas">

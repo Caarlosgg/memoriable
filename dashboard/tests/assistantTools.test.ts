@@ -146,6 +146,33 @@ describe("resolverMiembro", () => {
   });
 });
 
+describe("createAssistantTools — poda por modo", () => {
+  const SOLO_EQUIPO = ["asignarTarea", "consultarEquipo", "analizarEquipo", "consultarPersona", "consultarMisEquipos", "enviarMensajeChat"];
+  const SOLO_PERSONAL = ["registrarAhorro", "consultarAhorros"];
+
+  it("en personal no incluye ninguna tool de equipo", () => {
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+    for (const nombre of SOLO_EQUIPO) expect(tools).not.toHaveProperty(nombre);
+    for (const nombre of SOLO_PERSONAL) expect(tools).toHaveProperty(nombre);
+  });
+
+  it("en equipo no incluye las tools de ahorro (Ahorros es siempre personal)", () => {
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+    for (const nombre of SOLO_PERSONAL) expect(tools).not.toHaveProperty(nombre);
+    for (const nombre of SOLO_EQUIPO) expect(tools).toHaveProperty(nombre);
+  });
+
+  it("las compartidas (crear/completar/aplazar/agenda/memoria) están en los dos modos", () => {
+    const compartidas = ["crearNota", "crearEvento", "completarTarea", "aplazarTarea", "editarEvento", "borrarEvento", "consultarAgenda", "recordarPreferencia", "olvidarPreferencia"];
+    const personal = createAssistantTools("u1", "w1", "MEMBER");
+    const equipo = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+    for (const nombre of compartidas) {
+      expect(personal).toHaveProperty(nombre);
+      expect(equipo).toHaveProperty(nombre);
+    }
+  });
+});
+
 describe("createAssistantTools", () => {
   beforeEach(() => {
     captureMessage.mockReset();
@@ -525,7 +552,7 @@ describe("createAssistantTools", () => {
 
   it("asignarTarea con quitarAsignacion quita la asignación sin buscar a nadie", async () => {
     findSimilarMessages.mockResolvedValue([fakePendiente({ id: "p1" })]);
-    const tools = createAssistantTools("u1", "w1", "MEMBER");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     const result = await tools.asignarTarea.execute!(
       { descripcion: "revisar la caldera", quitarAsignacion: true },
@@ -537,7 +564,7 @@ describe("createAssistantTools", () => {
   });
 
   it("asignarTarea lanza en español si no dice a quién asignarla ni pide quitar la asignación", async () => {
-    const tools = createAssistantTools("u1", "w1", "MEMBER");
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
 
     await expect(
       tools.asignarTarea.execute!({ descripcion: "algo" }, { toolCallId: "c", messages: [], context: undefined }),
@@ -945,12 +972,15 @@ describe("createAssistantTools", () => {
     });
   });
 
-  it("analizarEquipo lanza en español en el workspace personal (sin equipo que analizar)", async () => {
+  it("en el workspace personal, ni se ofrece analizarEquipo al modelo (no solo falla al usarla)", () => {
+    // Antes esto se defendía DENTRO de la tool ("if members.length === 0
+    // throw"): el modelo la veía igual y solo se enteraba de que no podía
+    // usarla al intentarlo. Ahora directamente no está en el juego de
+    // herramientas de este modo (ver el filtrado al final de
+    // createAssistantTools) — el guard interno se queda como red de
+    // seguridad, pero por este camino ya es inalcanzable.
     const tools = createAssistantTools("u1", "w1", "MEMBER");
-
-    await expect(
-      tools.analizarEquipo.execute!({}, { toolCallId: "c", messages: [], context: undefined }),
-    ).rejects.toThrow(/no hay equipo que analizar/);
+    expect(tools.analizarEquipo).toBeUndefined();
   });
 
   it("analizarEquipo: ante un fallo al leer, lanza un mensaje en español sin detalles internos", async () => {
@@ -1002,7 +1032,10 @@ describe("createAssistantTools", () => {
     });
 
     it("asignarTarea rechaza con rol VIEWER", async () => {
-      const tools = createAssistantTools("u1", "w1", "VIEWER");
+      // Con miembros de equipo: asignarTarea es una tool solo-de-equipo (ver
+      // el filtrado en createAssistantTools) — sin esto, en personal ni
+      // existiría en `tools` y el test fallaría por eso, no por el rol.
+      const tools = createAssistantTools("u1", "w1", "VIEWER", TEAM_MEMBERS);
       await expect(
         tools.asignarTarea.execute!(
           { descripcion: "algo", asignadoA: "benitoelrey" },

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AssistantChat } from "@/components/AssistantChat";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { isVoiceConfigured } from "@/lib/transcriber";
 
 export const metadata: Metadata = { title: "Asistente · MemorIAble" };
 
@@ -22,7 +23,7 @@ export default function AsistentePage() {
         </Suspense>
       </SectionErrorBoundary>
       <SectionErrorBoundary title="Asistente">
-        <AssistantChat />
+        <AssistantChat puedeGrabar={isVoiceConfigured()} />
       </SectionErrorBoundary>
     </div>
   );
