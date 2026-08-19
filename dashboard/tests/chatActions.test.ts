@@ -242,6 +242,53 @@ describe("sendChatMessage", () => {
   });
 });
 
+describe("searchChatMessages", () => {
+  it("devuelve vacío (sin lanzar) si no se es participante, sin llegar a consultar", async () => {
+    participantFindUnique.mockResolvedValue(null);
+    const { searchChatMessages } =
+      await import("../src/app/(dashboard)/chat/actions");
+
+    await expect(searchChatMessages("c-ajena", "hola")).resolves.toEqual([]);
+    expect(chatMessageFindMany).not.toHaveBeenCalled();
+  });
+
+  it("con menos de dos letras no busca: evita traerse media conversación por una tecla", async () => {
+    const { searchChatMessages } =
+      await import("../src/app/(dashboard)/chat/actions");
+
+    await expect(searchChatMessages("c1", "a")).resolves.toEqual([]);
+    expect(chatMessageFindMany).not.toHaveBeenCalled();
+  });
+
+  it("busca en TODA la conversación, no solo en lo cargado, y de la más reciente hacia atrás", async () => {
+    chatMessageFindMany.mockResolvedValue([
+      {
+        id: "m9",
+        texto: "hola qué tal",
+        imagenUrl: null,
+        createdAt: new Date("2026-08-19T10:00:00.000Z"),
+        userId: "u2",
+        user: { email: "ana@example.com" },
+      },
+    ]);
+    const { searchChatMessages } =
+      await import("../src/app/(dashboard)/chat/actions");
+
+    const result = await searchChatMessages("c1", "  hola  ");
+
+    expect(result).toHaveLength(1);
+    expect(chatMessageFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          conversationId: "c1",
+          texto: { contains: "hola", mode: "insensitive" },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+  });
+});
+
 describe("listChatMessages", () => {
   it("devuelve vacío (sin lanzar) si no se es participante — nunca filtra mensajes ajenos", async () => {
     participantFindUnique.mockResolvedValue(null);

@@ -18,6 +18,7 @@ import {
   BellOff,
   Users,
   Trash2,
+  Search,
 } from "lucide-react";
 import {
   listChatMessages,
@@ -26,6 +27,7 @@ import {
   uploadChatImage,
   setConversationMuted,
   deleteChatMessage,
+  searchChatMessages,
   type ChatMessageView,
   type ConversationView,
 } from "@/app/(dashboard)/chat/actions";
@@ -33,6 +35,7 @@ import { useChatRealtime } from "@/lib/useChatRealtime";
 import { useVisibilityAwarePolling } from "@/lib/useVisibilityAwarePolling";
 import { isOnline } from "@/lib/presence";
 import { formatEventTime, shortEmailName } from "@/lib/format";
+import { textoVisto } from "@/lib/chatReadReceipt";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +110,12 @@ export function ConversationThread({
   // separado y se veía duplicado.
   const pendingIdRef = useRef<string | null>(null);
   const [typingEmail, setTypingEmail] = useState<string | null>(null);
+  // Buscador dentro de la conversación. `null` = cerrado; "" = abierto y
+  // vacío. Se distingue para que abrirlo no dispare ya una búsqueda ni
+  // tape el hilo hasta que de verdad se escriba algo.
+  const [busqueda, setBusqueda] = useState<string | null>(null);
+  const [resultados, setResultados] = useState<ChatMessageView[] | null>(null);
+  const [buscando, setBuscando] = useState(false);
   const typingExpiryRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -339,6 +348,50 @@ export function ConversationThread({
         ? `${isOnline(other.lastSeenAt) ? "en línea" : "desconectado"} · ${PRESENCE_LABEL[other.presenceStatus ?? "DISPONIBLE"]}`
         : undefined;
 
+  // "Hay búsqueda en marcha" se DERIVA del texto, no se guarda: con menos
+  // de dos letras (o con el buscador cerrado) simplemente se vuelve a
+  // enseñar el hilo, sin tener que acordarse de limpiar nada por el camino.
+  const termino = busqueda?.trim() ?? "";
+  const busquedaActiva = termino.length >= 2;
+
+  // Busca en el servidor con un respiro entre teclas, para no lanzar una
+  // consulta por carácter. Mismo patrón (y mismo mínimo de 2 letras) que
+  // UserSearchPicker.
+  useEffect(() => {
+    if (!busquedaActiva) return;
+    // El aviso de "Buscando…" se enciende ANTES de lanzar la petición para
+    // que no se queden a la vista los resultados de la búsqueda anterior
+    // mientras llega la nueva. El linter marca esto por sistema, pero es el
+    // caso que él mismo describe como válido (avisar a la interfaz del
+    // último estado), no un cálculo derivable — ver el mismo comentario en
+    // UserSearchPicker.tsx.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBuscando(true);
+    const timer = setTimeout(() => {
+      searchChatMessages(conversationId, termino)
+        .then(setResultados)
+        .catch(() => setResultados([]))
+        .finally(() => setBuscando(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [termino, busquedaActiva, conversationId]);
+
+  // Lo que se pinta en la lista: los resultados si hay búsqueda en curso, y
+  // si no el hilo normal. Un único sitio decide, para que el resto del
+  // render no tenga que saber en qué modo está.
+  const mostrandoResultados = busquedaActiva && resultados !== null;
+  const visibles: PendingMessage[] =
+    mostrandoResultados && resultados ? resultados : messages;
+
+  // El acuse va SOLO bajo el último mensaje propio ya confirmado. Repetirlo
+  // en cada burbuja llenaría el hilo de "Visto" sin aportar nada: lo que se
+  // quiere saber es si la otra persona está al día, y eso lo responde el
+  // último. Los pendientes quedan fuera porque todavía no existen para
+  // nadie más.
+  const ultimoPropioId = messages.findLast(
+    (m) => m.userId === currentUserId && !m.pending,
+  )?.id;
+
   return (
     <section
       aria-label={`Conversación: ${headerTitle}`}
@@ -392,6 +445,32 @@ export function ConversationThread({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() =>
+              setBusqueda((prev) => {
+                // Al cerrar se tiran los resultados: si no, volver a abrir
+                // el buscador enseñaría la búsqueda anterior como si fuera
+                // el hilo.
+                if (prev !== null) setResultados(null);
+                return prev === null ? "" : null;
+              })
+            }
+            title={
+              busqueda === null
+                ? "Buscar en esta conversación"
+                : "Cerrar la búsqueda"
+            }
+            aria-label={
+              busqueda === null
+                ? "Buscar en esta conversación"
+                : "Cerrar la búsqueda"
+            }
+            aria-pressed={busqueda !== null}
+            className="flex items-center gap-1.5 rounded-full border border-paper-line bg-paper px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong"
+          >
+            <Search aria-hidden size={13} />
+          </button>
+          <button
+            type="button"
             onClick={() => {
               const next = !muted;
               setMuted(next);
@@ -420,6 +499,33 @@ export function ConversationThread({
         </div>
       </div>
 
+      {busqueda !== null && (
+        <div className="flex flex-col gap-1">
+          <div className="relative">
+            <Search
+              aria-hidden
+              size={14}
+              className="absolute top-1/2 left-2.5 -translate-y-1/2 text-muted"
+            />
+            <Input
+              autoFocus
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar en esta conversación…"
+              aria-label="Buscar en esta conversación"
+              className="pl-8"
+            />
+          </div>
+          {mostrandoResultados && (
+            <p className="px-1 text-xs text-muted">
+              {resultados.length === 0
+                ? "Ningún mensaje con ese texto."
+                : `${resultados.length} ${resultados.length === 1 ? "resultado" : "resultados"}, del más reciente al más antiguo.`}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* `min-h-0` (y NO `min-h-[50vh]`): dentro de un contenedor flex, un
           hijo con altura mínima grande se niega a encoger, así que la lista
           desbordaba en vez de hacer scroll dentro de sí misma. */}
@@ -427,75 +533,96 @@ export function ConversationThread({
         ref={listRef}
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-paper-line bg-paper-raised p-4"
       >
-        {messages.length === 0 && (
+        {buscando && (
+          <li className="m-auto text-center text-sm text-muted">Buscando…</li>
+        )}
+        {!buscando && visibles.length === 0 && (
           <li className="m-auto text-center text-sm text-muted">
-            Todavía no hay mensajes — escribe el primero.
+            {mostrandoResultados
+              ? "Ningún mensaje con ese texto."
+              : "Todavía no hay mensajes — escribe el primero."}
           </li>
         )}
-        {messages.map((message) => {
-          const isSelf = message.userId === currentUserId;
-          return (
-            // `group`: el botón de borrar solo aparece al pasar por encima
-            // (o al enfocarlo con teclado), para no llenar el hilo de
-            // iconos — pero SIEMPRE es alcanzable tabulando.
-            <li
-              key={message.id}
-              className={
-                isSelf
-                  ? "group flex items-center justify-end gap-1"
-                  : "group flex items-end gap-2"
-              }
-            >
-              {isSelf && !message.pending && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteMessage(message.id)}
-                  aria-label="Borrar este mensaje"
-                  title="Borrar este mensaje"
-                  // En móvil NO hay hover: dejarlo en `opacity-0` hasta
-                  // pasar el ratón hacía imposible borrar desde el teléfono.
-                  // Visible siempre en pantalla pequeña; en escritorio sí se
-                  // esconde hasta el hover, donde sí existe.
-                  className="shrink-0 rounded-full p-2 text-muted opacity-100 transition-opacity hover:text-danger focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none sm:p-1.5 sm:opacity-0 sm:group-hover:opacity-100"
-                >
-                  <Trash2 aria-hidden size={13} />
-                </button>
-              )}
-              {!isSelf && <Avatar email={message.email} size="sm" />}
-              <div className="flex max-w-[75%] flex-col gap-0.5">
-                {!isSelf && conversation.type === "GROUP" && (
-                  <span className="text-[11px] font-medium text-muted">
-                    {shortEmailName(message.email)}
-                  </span>
-                )}
-                {message.imagenUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element -- URL externa (Vercel Blob), no una ruta estática local
-                  <img
-                    src={message.imagenUrl}
-                    alt="Imagen adjunta"
-                    className={`max-h-64 rounded-2xl object-cover ${message.pending ? "opacity-60" : ""}`}
-                  />
-                )}
-                {message.texto && (
-                  <div
-                    className={
-                      isSelf
-                        ? `rounded-2xl rounded-br-sm bg-accent px-3.5 py-2 text-sm text-accent-ink ${message.pending ? "opacity-60" : ""}`
-                        : "rounded-2xl rounded-bl-sm border border-paper-line bg-paper px-3.5 py-2 text-sm text-ink"
-                    }
+        {!buscando &&
+          visibles.map((message) => {
+            const isSelf = message.userId === currentUserId;
+            return (
+              // `group`: el botón de borrar solo aparece al pasar por encima
+              // (o al enfocarlo con teclado), para no llenar el hilo de
+              // iconos — pero SIEMPRE es alcanzable tabulando.
+              <li
+                key={message.id}
+                className={
+                  isSelf
+                    ? "group flex items-center justify-end gap-1"
+                    : "group flex items-end gap-2"
+                }
+              >
+                {isSelf && !message.pending && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteMessage(message.id)}
+                    aria-label="Borrar este mensaje"
+                    title="Borrar este mensaje"
+                    // En móvil NO hay hover: dejarlo en `opacity-0` hasta
+                    // pasar el ratón hacía imposible borrar desde el teléfono.
+                    // Visible siempre en pantalla pequeña; en escritorio sí se
+                    // esconde hasta el hover, donde sí existe.
+                    className="shrink-0 rounded-full p-2 text-muted opacity-100 transition-opacity hover:text-danger focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none sm:p-1.5 sm:opacity-0 sm:group-hover:opacity-100"
                   >
-                    {message.texto}
-                  </div>
+                    <Trash2 aria-hidden size={13} />
+                  </button>
                 )}
-                <span
-                  className={`text-[10px] text-muted ${isSelf ? "text-right" : ""}`}
-                >
-                  {formatEventTime(message.createdAt)}
-                </span>
-              </div>
-            </li>
-          );
-        })}
+                {!isSelf && <Avatar email={message.email} size="sm" />}
+                <div className="flex max-w-[75%] flex-col gap-0.5">
+                  {!isSelf && conversation.type === "GROUP" && (
+                    <span className="text-[11px] font-medium text-muted">
+                      {shortEmailName(message.email)}
+                    </span>
+                  )}
+                  {message.imagenUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element -- URL externa (Vercel Blob), no una ruta estática local
+                    <img
+                      src={message.imagenUrl}
+                      alt="Imagen adjunta"
+                      className={`max-h-64 rounded-2xl object-cover ${message.pending ? "opacity-60" : ""}`}
+                    />
+                  )}
+                  {message.texto && (
+                    <div
+                      className={
+                        isSelf
+                          ? `rounded-2xl rounded-br-sm bg-accent px-3.5 py-2 text-sm text-accent-ink ${message.pending ? "opacity-60" : ""}`
+                          : "rounded-2xl rounded-bl-sm border border-paper-line bg-paper px-3.5 py-2 text-sm text-ink"
+                      }
+                    >
+                      {message.texto}
+                    </div>
+                  )}
+                  <span
+                    className={`text-[10px] text-muted ${isSelf ? "text-right" : ""}`}
+                  >
+                    {formatEventTime(message.createdAt)}
+                    {message.id === ultimoPropioId &&
+                      (() => {
+                        const visto = textoVisto(
+                          conversation.participants,
+                          currentUserId,
+                          message.createdAt,
+                          conversation.type === "GROUP",
+                        );
+                        return visto ? (
+                          <>
+                            {" · "}
+                            <span className="text-accent">{visto}</span>
+                          </>
+                        ) : null;
+                      })()}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
       </ul>
 
       {typingEmail && (

@@ -31,6 +31,8 @@ export interface ConversationParticipantInfo {
   /** Estado manual ("Ocupado"/"Fuera") de la membresía de equipo más reciente de esta persona — null si no comparte ningún equipo contigo o no lo ha puesto nunca. */
   presenceStatus: MemberPresence | null;
   lastSeenAt: string | null;
+  /** Hasta cuándo ha leído esta persona la conversación — para el "Visto" (null = no la ha abierto nunca). */
+  lastReadAt: string | null;
 }
 
 export interface ConversationView {
@@ -61,6 +63,9 @@ export interface UserSearchResult {
 }
 
 const CHAT_MESSAGES_LIMIT = 50;
+/** Buscador dentro de una conversación (ver searchChatMessages). */
+const SEARCH_MESSAGES_LIMIT = 30;
+const SEARCH_MESSAGES_MIN_LENGTH = 2;
 const CHAT_TEXTO_MAX_LENGTH = 2000;
 const MAX_GROUP_NAME_LENGTH = 40;
 const SEARCH_USERS_LIMIT = 8;
@@ -271,7 +276,16 @@ export async function listConversations(): Promise<ConversationView[]> {
           // decidido si entra.
           participants: {
             where: { status: "ACTIVE" },
-            select: { userId: true, user: { select: { email: true } } },
+            // `lastReadAt` de CADA participante (no solo el tuyo, que se
+            // selecciona arriba): es lo que permite decir "Visto" bajo tu
+            // último mensaje sin una consulta aparte ni ninguna columna
+            // nueva — el dato ya se guardaba, solo que nunca se leía más
+            // que para tu propio contador de no leídos.
+            select: {
+              userId: true,
+              lastReadAt: true,
+              user: { select: { email: true } },
+            },
           },
           messages: {
             orderBy: { createdAt: "desc" },
@@ -368,6 +382,7 @@ export async function listConversations(): Promise<ConversationView[]> {
           presenceStatus: presenceMap.get(p.userId)?.presenceStatus ?? null,
           lastSeenAt:
             presenceMap.get(p.userId)?.lastSeenAt?.toISOString() ?? null,
+          lastReadAt: p.lastReadAt?.toISOString() ?? null,
         })),
       };
     },
@@ -780,6 +795,49 @@ export async function listChatMessages(
 
   const ordered = cursor ? messages : messages.reverse();
   return ordered.map((m) => ({
+    id: m.id,
+    texto: m.texto,
+    imagenUrl: m.imagenUrl,
+    createdAt: m.createdAt.toISOString(),
+    userId: m.userId,
+    email: m.user.email,
+  }));
+}
+
+/**
+ * Busca texto dentro de UNA conversación, en toda ella y no solo en los
+ * mensajes que el cliente tenga cargados: el hilo abierto solo guarda los
+ * últimos CHAT_MESSAGES_LIMIT, así que filtrar en el navegador daría "no
+ * hay nada" para mensajes que sí existen, que es peor que no tener
+ * buscador. Devuelve los más recientes primero (buscar algo suele ser
+ * buscar algo de hace poco).
+ *
+ * Misma puerta de seguridad que el resto de lecturas: sin ser participante
+ * ACTIVO devuelve vacío, nunca lanza ni filtra de quién era la
+ * conversación.
+ */
+export async function searchChatMessages(
+  conversationId: string,
+  query: string,
+): Promise<ChatMessageView[]> {
+  const userId = await verifySession();
+  const conversation = await requireParticipant(conversationId, userId);
+  if (!conversation) return [];
+
+  const trimmed = query.trim();
+  if (trimmed.length < SEARCH_MESSAGES_MIN_LENGTH) return [];
+
+  const messages = await prisma.chatMessage.findMany({
+    where: {
+      conversationId,
+      texto: { contains: trimmed, mode: "insensitive" },
+    },
+    include: { user: { select: { email: true } } },
+    orderBy: { createdAt: "desc" },
+    take: SEARCH_MESSAGES_LIMIT,
+  });
+
+  return messages.map((m) => ({
     id: m.id,
     texto: m.texto,
     imagenUrl: m.imagenUrl,
