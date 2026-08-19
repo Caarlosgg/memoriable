@@ -66,7 +66,7 @@ describe("register", () => {
   });
 
   it("rechaza si las contraseñas no coinciden, sin tocar la base de datos", async () => {
-    const { register } = await import("../src/app/registro/actions");
+    const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
       formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8distinta" }),
@@ -76,7 +76,7 @@ describe("register", () => {
   });
 
   it("rechaza una contraseña que no cumple la política, sin tocar la base de datos", async () => {
-    const { register } = await import("../src/app/registro/actions");
+    const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
       formData({ email: "ana@example.com", password: "password1", passwordConfirm: "password1" }),
@@ -86,7 +86,7 @@ describe("register", () => {
   });
 
   it("rechaza una contraseña derivada del propio email (lo primero que probaría cualquiera)", async () => {
-    const { register } = await import("../src/app/registro/actions");
+    const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
       formData({ email: "benito@example.com", password: "benito12345", passwordConfirm: "benito12345" }),
@@ -96,7 +96,7 @@ describe("register", () => {
   });
 
   it("rechaza un email con formato inválido", async () => {
-    const { register } = await import("../src/app/registro/actions");
+    const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
       formData({ email: "no-es-un-email", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
@@ -105,7 +105,7 @@ describe("register", () => {
   });
 
   it("crea la cuenta sin verificar, manda el correo de verificación, y NO inicia sesión automáticamente", async () => {
-    const { register } = await import("../src/app/registro/actions");
+    const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
       formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
@@ -123,7 +123,7 @@ describe("register", () => {
 
   it("la cuenta queda creada aunque falle el envío del correo de verificación, y lo refleja en emailSent", async () => {
     sendVerificationEmail.mockRejectedValue(new Error("SMTP caído"));
-    const { register } = await import("../src/app/registro/actions");
+    const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
       formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
@@ -139,7 +139,7 @@ describe("register", () => {
         clientVersion: "6.19.3",
       }),
     );
-    const { register } = await import("../src/app/registro/actions");
+    const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
       formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
@@ -150,7 +150,7 @@ describe("register", () => {
 
   it("respeta el límite de intentos por IP", async () => {
     checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 });
-    const { register } = await import("../src/app/registro/actions");
+    const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
       formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),

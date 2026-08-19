@@ -72,7 +72,7 @@ describe("login", () => {
   it("bloquea una cuenta con email sin verificar, aunque la contraseña sea correcta", async () => {
     userFindUnique.mockResolvedValue({ id: "u1", passwordHash: "hash", emailVerified: false });
     verifyPasswordConstantTime.mockResolvedValue(true);
-    const { login } = await import("../src/app/login/actions");
+    const { login } = await import("../src/app/(auth)/login/actions");
     const result = await login({}, formData({ email: "ana@example.com", password: "correcta" }));
     expect(result).toEqual({ error: "Todavía no has confirmado tu email.", sinVerificar: true });
     expect(createSession).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe("login", () => {
   it("deja entrar a una cuenta verificada con la contraseña correcta", async () => {
     userFindUnique.mockResolvedValue({ id: "u1", passwordHash: "hash", emailVerified: true });
     verifyPasswordConstantTime.mockResolvedValue(true);
-    const { login } = await import("../src/app/login/actions");
+    const { login } = await import("../src/app/(auth)/login/actions");
     await expect(login({}, formData({ email: "ana@example.com", password: "correcta" }))).rejects.toThrow(
       `${REDIRECT_MARK}:/`,
     );
@@ -91,7 +91,7 @@ describe("login", () => {
   it("contraseña incorrecta no revela si la cuenta existe", async () => {
     userFindUnique.mockResolvedValue(null);
     verifyPasswordConstantTime.mockResolvedValue(false);
-    const { login } = await import("../src/app/login/actions");
+    const { login } = await import("../src/app/(auth)/login/actions");
     const result = await login({}, formData({ email: "nadie@example.com", password: "loquesea" }));
     expect(result).toEqual({ error: "Email o contraseña incorrectos." });
   });
@@ -112,7 +112,7 @@ describe("resendVerification", () => {
 
   it("reenvía el correo si la cuenta existe y no está verificada", async () => {
     userFindUnique.mockResolvedValue({ id: "u1", emailVerified: false });
-    const { resendVerification } = await import("../src/app/login/actions");
+    const { resendVerification } = await import("../src/app/(auth)/login/actions");
     const result = await resendVerification({}, formData({ email: "ana@example.com" }));
     expect(createVerificationToken).toHaveBeenCalledWith("u1");
     expect(sendVerificationEmail).toHaveBeenCalled();
@@ -121,7 +121,7 @@ describe("resendVerification", () => {
 
   it("responde 'sent: true' igual aunque la cuenta no exista (no revela nada)", async () => {
     userFindUnique.mockResolvedValue(null);
-    const { resendVerification } = await import("../src/app/login/actions");
+    const { resendVerification } = await import("../src/app/(auth)/login/actions");
     const result = await resendVerification({}, formData({ email: "nadie@example.com" }));
     expect(sendVerificationEmail).not.toHaveBeenCalled();
     expect(result).toEqual({ sent: true });
@@ -129,7 +129,7 @@ describe("resendVerification", () => {
 
   it("no reenvía si la cuenta ya está verificada", async () => {
     userFindUnique.mockResolvedValue({ id: "u1", emailVerified: true });
-    const { resendVerification } = await import("../src/app/login/actions");
+    const { resendVerification } = await import("../src/app/(auth)/login/actions");
     await resendVerification({}, formData({ email: "ana@example.com" }));
     expect(sendVerificationEmail).not.toHaveBeenCalled();
   });

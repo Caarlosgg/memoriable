@@ -49,21 +49,21 @@ describe("resetPassword", () => {
   });
 
   it("sin token, rechaza como enlace no válido", async () => {
-    const { resetPassword } = await import("../src/app/restablecer-password/actions");
+    const { resetPassword } = await import("../src/app/(auth)/restablecer-password/actions");
     const result = await resetPassword({}, formData({ password: "correcta1", passwordConfirm: "correcta1" }));
     expect(result).toEqual({ error: "Enlace no válido.", tokenInvalido: true });
     expect(resetPasswordWithToken).not.toHaveBeenCalled();
   });
 
   it("rechaza una contraseña demasiado corta sin tocar la base de datos", async () => {
-    const { resetPassword } = await import("../src/app/restablecer-password/actions");
+    const { resetPassword } = await import("../src/app/(auth)/restablecer-password/actions");
     const result = await resetPassword({}, formData({ token: "abc", password: "corta", passwordConfirm: "corta" }));
     expect(result.error).toMatch(/al menos/);
     expect(resetPasswordWithToken).not.toHaveBeenCalled();
   });
 
   it("rechaza si las contraseñas no coinciden", async () => {
-    const { resetPassword } = await import("../src/app/restablecer-password/actions");
+    const { resetPassword } = await import("../src/app/(auth)/restablecer-password/actions");
     const result = await resetPassword({}, formData({ token: "abc", password: "correcta1", passwordConfirm: "otra12345" }));
     expect(result).toEqual({ error: "Las contraseñas no coinciden." });
     expect(resetPasswordWithToken).not.toHaveBeenCalled();
@@ -71,7 +71,7 @@ describe("resetPassword", () => {
 
   it("token caducado se refleja como tokenInvalido, con el mensaje adecuado", async () => {
     resetPasswordWithToken.mockResolvedValue({ status: "caducado" });
-    const { resetPassword } = await import("../src/app/restablecer-password/actions");
+    const { resetPassword } = await import("../src/app/(auth)/restablecer-password/actions");
     const result = await resetPassword({}, formData({ token: "abc", password: "correcta1", passwordConfirm: "correcta1" }));
     expect(result.tokenInvalido).toBe(true);
     expect(result.error).toMatch(/caducado/);
@@ -80,7 +80,7 @@ describe("resetPassword", () => {
 
   it("token inválido/ya usado se refleja como tokenInvalido", async () => {
     resetPasswordWithToken.mockResolvedValue({ status: "invalido" });
-    const { resetPassword } = await import("../src/app/restablecer-password/actions");
+    const { resetPassword } = await import("../src/app/(auth)/restablecer-password/actions");
     const result = await resetPassword({}, formData({ token: "abc", password: "correcta1", passwordConfirm: "correcta1" }));
     expect(result.tokenInvalido).toBe(true);
     expect(createSession).not.toHaveBeenCalled();
@@ -88,7 +88,7 @@ describe("resetPassword", () => {
 
   it("token válido cambia la contraseña, inicia sesión, y redirige a /", async () => {
     resetPasswordWithToken.mockResolvedValue({ status: "ok", userId: "u1" });
-    const { resetPassword } = await import("../src/app/restablecer-password/actions");
+    const { resetPassword } = await import("../src/app/(auth)/restablecer-password/actions");
     await expect(
       resetPassword({}, formData({ token: "abc", password: "correcta1", passwordConfirm: "correcta1" })),
     ).rejects.toThrow(`${REDIRECT_MARK}:/`);
@@ -99,7 +99,7 @@ describe("resetPassword", () => {
 
   it("respeta el freno de intentos por IP", async () => {
     checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 });
-    const { resetPassword } = await import("../src/app/restablecer-password/actions");
+    const { resetPassword } = await import("../src/app/(auth)/restablecer-password/actions");
     const result = await resetPassword({}, formData({ token: "abc", password: "correcta1", passwordConfirm: "correcta1" }));
     expect(result.error).toMatch(/Demasiados intentos/);
     expect(resetPasswordWithToken).not.toHaveBeenCalled();

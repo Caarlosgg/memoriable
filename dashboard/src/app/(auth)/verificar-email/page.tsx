@@ -30,21 +30,21 @@ export default async function VerificarEmailPage({
   const { titulo, texto } = MESSAGES[resultado];
 
   return (
-    <main className="auth-background flex flex-1 items-center justify-center p-6">
-      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-paper-line bg-paper-raised p-8 text-center shadow-[0_20px_40px_-28px_rgba(28,27,24,0.35)]">
-        <p className="mb-2 font-mono text-xs font-bold uppercase tracking-[0.14em] text-accent">MemorIAble</p>
-        {resultado === "ok" ? (
-          <CircleCheck aria-hidden size={32} className="mx-auto mb-3 text-accent" />
-        ) : (
-          <CircleAlert aria-hidden size={32} className="mx-auto mb-3 text-danger" />
-        )}
-        <h1 className="mb-1 font-display text-xl font-semibold text-ink">{titulo}</h1>
-        <p className="mb-6 text-sm text-muted">{texto}</p>
-        {resultado === "ok" && <AutoRedirect />}
-        <Link href="/login" className="font-medium text-accent hover:text-accent-strong">
-          Ir a entrar ahora
-        </Link>
-      </div>
-    </main>
+    // La única de las cinco pantallas cuyo contenido va centrado entero
+    // (es un status, no un formulario) — a diferencia del shell compartido
+    // (ver (auth)/layout.tsx), esto es propio de esta página.
+    <div className="text-center">
+      {resultado === "ok" ? (
+        <CircleCheck aria-hidden size={32} className="mx-auto mb-3 text-accent" />
+      ) : (
+        <CircleAlert aria-hidden size={32} className="mx-auto mb-3 text-danger" />
+      )}
+      <h1 className="mb-1 font-display text-xl font-semibold text-ink">{titulo}</h1>
+      <p className="mb-6 text-sm text-muted">{texto}</p>
+      {resultado === "ok" && <AutoRedirect />}
+      <Link href="/login" className="font-medium text-accent hover:text-accent-strong">
+        Ir a entrar ahora
+      </Link>
+    </div>
   );
 }

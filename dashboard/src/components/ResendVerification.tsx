@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { resendVerification, type ResendVerificationState } from "@/app/login/actions";
+import { resendVerification, type ResendVerificationState } from "@/app/(auth)/login/actions";
 import { Button } from "./ui/button";
 
 const initialResendState: ResendVerificationState = {};
