@@ -32,6 +32,21 @@
   --danger: #b3261e;
   --danger-soft: #fbeceb;
 
+  /* Color propio del MODO EQUIPO (ver lib/modo.ts) — a propósito NO
+     reutiliza --highlight (ámbar): ese ya significa "prioridad media" e
+     "idea" en el resto de la app, así que usarlo también para "estás en un
+     equipo" era ambiguo Y quedaba mal — un ámbar cálido al lado del verde
+     vivo del acento leía como colores sueltos, no como una paleta pensada.
+     Índigo-violeta: de la misma familia "fría" que el verde (no complementa
+     en choque como el ámbar), y se distingue bien de --cat-pregunta (azul
+     más apagado, #3a66a6) para que no se confundan. Medido con el mismo
+     script de contraste que el resto de la paleta — todos los pares que se
+     pintan de verdad pasan 4.5:1. */
+  --modo-equipo: #5b45d1;
+  --modo-equipo-strong: #4633a8;
+  --modo-equipo-soft: #e9e5fb;
+  --modo-equipo-ink: #f5f3fd;
+
   /* Color propio por ESTADO del tablero: el borde izquierdo de cada tarjeta
      lo usa para que la fase se lea de un vistazo sin contar columnas (ver
      KanbanCard.tsx). Ámbar para lo que está en curso porque es el estado que
@@ -85,6 +100,10 @@
     --highlight-soft: #3d2f17;
     --danger: #f28a82;
     --danger-soft: #40201e;
+    --modo-equipo: #a394f5;
+    --modo-equipo-strong: #c3b8fa;
+    --modo-equipo-soft: #241c47;
+    --modo-equipo-ink: #150f2e;
 
     --cat-tarea: #4fceac;
     --cat-tarea-soft: #1c3830;
@@ -134,6 +153,10 @@
   --highlight-soft: #3d2f17;
   --danger: #f28a82;
   --danger-soft: #40201e;
+  --modo-equipo: #a394f5;
+  --modo-equipo-strong: #c3b8fa;
+  --modo-equipo-soft: #241c47;
+  --modo-equipo-ink: #150f2e;
 
   --cat-tarea: #4fceac;
   --cat-tarea-soft: #1c3830;
@@ -164,6 +187,10 @@
   --highlight-soft: #fbead0;
   --danger: #b3261e;
   --danger-soft: #fbeceb;
+  --modo-equipo: #5b45d1;
+  --modo-equipo-strong: #4633a8;
+  --modo-equipo-soft: #e9e5fb;
+  --modo-equipo-ink: #f5f3fd;
 
   --cat-tarea: #0a7b5d;
   --cat-tarea-soft: #dcece5;
@@ -200,6 +227,10 @@
   --color-highlight-soft: var(--highlight-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-modo-equipo: var(--modo-equipo);
+  --color-modo-equipo-strong: var(--modo-equipo-strong);
+  --color-modo-equipo-soft: var(--modo-equipo-soft);
+  --color-modo-equipo-ink: var(--modo-equipo-ink);
   --color-estado-por-hacer: var(--estado-por-hacer);
   --color-estado-en-progreso: var(--estado-en-progreso);
   --color-estado-hecho: var(--estado-hecho);

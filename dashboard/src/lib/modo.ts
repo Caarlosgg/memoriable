@@ -29,10 +29,13 @@ export interface ModoPresentation {
   descripcion: string;
   Icon: LucideIcon;
   /**
-   * Clase del token de acento del modo. Deliberadamente NO son colores
-   * nuevos: el personal usa el verde de siempre (la identidad del producto) y
-   * el de equipo el ámbar que ya existe para "resalte". Así el cambio se ve
-   * sin inventar paleta ni recomprobar contraste.
+   * Clase del token de acento del modo. Personal usa el verde de siempre —
+   * la identidad del producto, sin tocar. Equipo tiene su PROPIO color
+   * (`--modo-equipo`, ver globals.css): probamos primero a reutilizar el
+   * ámbar de "resalte" y quedaba mal — ese ámbar ya significa "prioridad
+   * media"/"idea" en el resto de la app, así que además de chocar con el
+   * verde vivo del acento, era ambiguo. Un índigo-violeta dedicado, medido
+   * con el mismo script de contraste que el resto de la paleta.
    */
   acento: string;
   acentoSoft: string;
@@ -52,8 +55,8 @@ export const MODO_PRESENTATION: Record<Modo, ModoPresentation> = {
     label: "Equipo",
     descripcion: "Compartido con tu equipo",
     Icon: Users,
-    acento: "text-highlight-strong",
-    acentoSoft: "bg-highlight-soft",
-    acentoBorde: "border-highlight",
+    acento: "text-modo-equipo",
+    acentoSoft: "bg-modo-equipo-soft",
+    acentoBorde: "border-modo-equipo",
   },
 };
