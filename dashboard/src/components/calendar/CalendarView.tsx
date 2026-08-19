@@ -6,6 +6,8 @@ import type { Evento, Message } from "@prisma/client";
 import { ChevronLeft, ChevronRight, Plus, CalendarCheck2, ListTodo } from "lucide-react";
 import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, rangoCalendario, type WeekDay } from "@/lib/calendar";
 import { loadCalendarRange } from "@/app/(dashboard)/calendario/actions";
+import { assignMessage } from "@/app/(dashboard)/actions";
+import type { EditableFields } from "../MessageDetailDialog";
 import { formatEventTime } from "@/lib/format";
 import { avatarColorClass } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
@@ -159,7 +161,36 @@ export function CalendarView({
   const idsIniciales = new Set(eventosProp.map((e) => e.id));
   const eventos = [...eventosProp, ...eventosExtra.filter((e) => !idsIniciales.has(e.id))];
   const idsTareasIniciales = new Set(tareasProp.map((t) => t.id));
-  const tareas = [...tareasProp, ...tareasExtra.filter((t) => !idsTareasIniciales.has(t.id))];
+  const tareasSinPatch = [...tareasProp, ...tareasExtra.filter((t) => !idsTareasIniciales.has(t.id))];
+
+  /**
+   * Asignar o editar una tarea desde el calendario (asignar/editar). Antes
+   * el diálogo de la tarea no recibía `onAssigneeChange` ni `onSaved`, así
+   * que el control "Asignar a…" ni se pintaba y una edición no se veía
+   * hasta recargar. Parche local por id, igual que el resto de la app
+   * (ver `applyLocalUpdate` en KanbanBoard.tsx) — nunca se reescribe la
+   * lista entera para no perder lo que ya se había fusionado con
+   * `loadCalendarRange`.
+   */
+  const [tareaPatches, setTareaPatches] = useState<Record<string, Partial<Message>>>({});
+  const tareas = tareasSinPatch.map((t) => (tareaPatches[t.id] ? { ...t, ...tareaPatches[t.id] } : t));
+
+  function handleTareaAssigneeChange(messageId: string, assigneeId: string | null) {
+    setTareaPatches((prev) => ({ ...prev, [messageId]: { ...prev[messageId], assigneeId } }));
+    assignMessage(messageId, assigneeId).then((result) => {
+      if (result.error) {
+        console.error("No se pudo asignar la tarea:", result.error);
+        setTareaPatches((prev) => {
+          const { [messageId]: _quitado, ...resto } = prev;
+          return resto;
+        });
+      }
+    });
+  }
+
+  function handleTareaSaved(messageId: string, patch: EditableFields) {
+    setTareaPatches((prev) => ({ ...prev, [messageId]: { ...prev[messageId], ...patch } }));
+  }
 
   const monthGrid = buildMonthGrid(cursor.getUTCFullYear(), cursor.getUTCMonth());
   const weekGrid = buildWeekGrid(cursor);
@@ -347,6 +378,8 @@ export function CalendarView({
                     members={members}
                     ahora={now}
                     onChanged={() => router.refresh()}
+                    onTareaAssigneeChange={handleTareaAssigneeChange}
+                    onTareaSaved={handleTareaSaved}
                     onDeleted={handleDeleted}
                     onUndoDelete={handleUndoDelete}
                   >
@@ -418,7 +451,15 @@ export function CalendarView({
                       const assignee = memberOf(tarea.assigneeId);
                       const vencida = tarea.fechaLimite != null && tarea.fechaLimite < now;
                       return (
-                        <MessageDetailDialog key={tarea.id} message={tarea} members={members} onDeleted={handleDeleted} onUndoDelete={handleUndoDelete}>
+                        <MessageDetailDialog
+                          key={tarea.id}
+                          message={tarea}
+                          members={members}
+                          onAssigneeChange={handleTareaAssigneeChange}
+                          onSaved={handleTareaSaved}
+                          onDeleted={handleDeleted}
+                          onUndoDelete={handleUndoDelete}
+                        >
                           <button
                             type="button"
                             title={`Tarea${vencida ? " vencida" : ""}: ${tarea.resumen}`}
@@ -441,6 +482,8 @@ export function CalendarView({
                         members={members}
                         ahora={now}
                         onChanged={() => router.refresh()}
+                        onTareaAssigneeChange={handleTareaAssigneeChange}
+                        onTareaSaved={handleTareaSaved}
                         onDeleted={handleDeleted}
                         onUndoDelete={handleUndoDelete}
                       >
@@ -507,6 +550,8 @@ export function CalendarView({
                             key={tarea.id}
                             message={tarea}
                             members={members}
+                            onAssigneeChange={handleTareaAssigneeChange}
+                            onSaved={handleTareaSaved}
                             onDeleted={handleDeleted}
                             onUndoDelete={handleUndoDelete}
                           >

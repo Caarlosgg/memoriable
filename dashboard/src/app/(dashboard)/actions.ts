@@ -324,7 +324,11 @@ export async function assignMessage(id: string, assigneeId: string | null): Prom
   try {
     const result = await prisma.message.updateMany({ where: { id, workspaceId }, data: { assigneeId } });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
+    // También /calendario e /inicio: una tarea con fecha límite se ve en
+    // los tres sitios, y asignarla desde uno debe reflejarse en los otros.
     revalidatePath("/pendientes");
+    revalidatePath("/calendario");
+    revalidatePath("/inicio");
 
     if (assigneeId) {
       logActivity({ workspaceId, userId, tipo: "tarea_asignada", entidad: "mensaje", entidadId: id, detalle: { assigneeId } }).catch(() => {});

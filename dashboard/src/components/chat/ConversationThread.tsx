@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ChangeEvent, type ClipboardEvent } from "react";
 import { ArrowLeft, Send, ImagePlus, X, Bell, BellOff, Users, Trash2 } from "lucide-react";
 import {
   listChatMessages,
@@ -180,6 +180,23 @@ export function ConversationThread({
   function clearPendingImage() {
     if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
     setPendingImage(null);
+  }
+
+  /**
+   * Pegar una captura de pantalla (Ctrl+V) adjunta la imagen igual que
+   * elegirla por el botón — mismo patrón que MessageDetailDialog.tsx.
+   * Silencioso si no hay imagen en el portapapeles: es lo normal al pegar
+   * texto en el campo, no un error.
+   */
+  function handlePaste(e: ClipboardEvent<HTMLFormElement>) {
+    if (!puedeAdjuntar) return;
+    const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith("image/"));
+    if (!item) return;
+    const file = item.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
+    setPendingImage({ file, previewUrl: URL.createObjectURL(file) });
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -383,7 +400,7 @@ export function ConversationThread({
         </p>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+      <form onSubmit={handleSubmit} onPaste={handlePaste} className="flex flex-col gap-2">
         {pendingImage && (
           <div className="flex items-center gap-2 rounded-lg border border-paper-line bg-paper p-2 text-xs text-muted">
             {/* eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob: URL), no cabe en next/image */}

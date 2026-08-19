@@ -10,7 +10,7 @@ import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { Avatar } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { EventDetailDialog } from "../EventDetailDialog";
-import { MessageDetailDialog } from "../MessageDetailDialog";
+import { MessageDetailDialog, type EditableFields } from "../MessageDetailDialog";
 
 /**
  * Todo lo de UN día, en una ficha.
@@ -30,6 +30,8 @@ export function DayDetailDialog({
   members,
   ahora,
   onChanged,
+  onTareaAssigneeChange,
+  onTareaSaved,
   onDeleted,
   onUndoDelete,
   children,
@@ -41,6 +43,9 @@ export function DayDetailDialog({
   /** "Ahora" lo decide quien llama, para que todas las casillas del mes comparen contra el mismo instante. */
   ahora: Date;
   onChanged: () => void;
+  /** Asignar una tarea desde su detalle — sin esto, el control "Asignar a…" ni se pintaba dentro del diálogo. */
+  onTareaAssigneeChange?: (id: string, assigneeId: string | null) => void;
+  onTareaSaved?: (id: string, patch: EditableFields) => void;
   onDeleted: (id: string) => void;
   onUndoDelete: (id: string) => void;
   children: ReactNode;
@@ -97,7 +102,14 @@ export function DayDetailDialog({
               const vencida = tarea.fechaLimite != null && tarea.fechaLimite < ahora;
               return (
                 <li key={tarea.id}>
-                  <MessageDetailDialog message={tarea} members={members} onDeleted={onDeleted} onUndoDelete={onUndoDelete}>
+                  <MessageDetailDialog
+                    message={tarea}
+                    members={members}
+                    onAssigneeChange={onTareaAssigneeChange}
+                    onSaved={onTareaSaved}
+                    onDeleted={onDeleted}
+                    onUndoDelete={onUndoDelete}
+                  >
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm transition-colors hover:bg-accent-soft"
