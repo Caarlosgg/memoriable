@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
-import { searchUsers, type UserSearchResult } from "@/app/(dashboard)/chat/actions";
+import {
+  listKnownPeople,
+  searchUsers,
+  type UserSearchResult,
+} from "@/app/(dashboard)/chat/actions";
 import { shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -29,9 +33,26 @@ export function UserSearchPicker({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [conocidos, setConocidos] = useState<UserSearchResult[]>([]);
 
   const trimmedQuery = query.trim();
   const buscando = trimmedQuery.length >= 2;
+
+  // Compañeros y contactos, una sola vez al montar: es lo que se enseña
+  // mientras el campo está vacío, para no obligar a saberse un email de
+  // memoria antes de poder invitar a nadie. No crítico — si falla, el
+  // buscador por email sigue funcionando igual.
+  useEffect(() => {
+    let vigente = true;
+    listKnownPeople()
+      .then((gente) => {
+        if (vigente) setConocidos(gente);
+      })
+      .catch(() => {});
+    return () => {
+      vigente = false;
+    };
+  }, []);
 
   useEffect(() => {
     // Menos de 2 caracteres: nada que buscar todavía — no hace falta
@@ -56,12 +77,21 @@ export function UserSearchPicker({
     return () => clearTimeout(timer);
   }, [trimmedQuery, buscando]);
 
-  const visibles = buscando ? results.filter((u) => !excludeIds.has(u.userId)) : [];
+  // Con texto manda el buscador; con el campo vacío, las sugerencias. En
+  // los dos casos se quita a quien ya está dentro o ya se ha elegido.
+  const visibles = (buscando ? results : conocidos).filter(
+    (u) => !excludeIds.has(u.userId),
+  );
+  const mostrandoSugerencias = !buscando && visibles.length > 0;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="relative">
-        <Search aria-hidden size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" />
+        <Search
+          aria-hidden
+          size={14}
+          className="absolute top-1/2 left-2.5 -translate-y-1/2 text-muted"
+        />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -70,13 +100,22 @@ export function UserSearchPicker({
           className="pl-8"
         />
       </div>
-      {buscando && (
+      {mostrandoSugerencias && (
+        <p className="px-1 text-xs font-medium tracking-wide text-muted uppercase">
+          Tus compañeros y contactos
+        </p>
+      )}
+      {(buscando || mostrandoSugerencias) && (
         <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto">
-          {searching && <li className="p-2 text-center text-xs text-muted">Buscando…</li>}
-          {!searching && visibles.length === 0 && (
-            <li className="p-2 text-center text-xs text-muted">Nadie con ese email en MemorIAble.</li>
+          {buscando && searching && (
+            <li className="p-2 text-center text-xs text-muted">Buscando…</li>
           )}
-          {!searching &&
+          {buscando && !searching && visibles.length === 0 && (
+            <li className="p-2 text-center text-xs text-muted">
+              Nadie con ese email en MemorIAble.
+            </li>
+          )}
+          {!(buscando && searching) &&
             visibles.map((u) => (
               <li key={u.userId}>
                 <button

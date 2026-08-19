@@ -57,6 +57,7 @@ const conversationCreate = vi.fn();
 const conversationFindUnique = vi.fn();
 const userFindUnique = vi.fn();
 const userCount = vi.fn();
+const membershipFindMany = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     chatConversationParticipant: {
@@ -86,7 +87,10 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => userFindUnique(...args),
       count: (...args: unknown[]) => userCount(...args),
     },
-    membership: { findMany: vi.fn(async () => []), count: vi.fn() },
+    membership: {
+      findMany: (...args: unknown[]) => membershipFindMany(...args),
+      count: vi.fn(),
+    },
   },
 }));
 
@@ -117,6 +121,8 @@ beforeEach(() => {
   userFindUnique.mockResolvedValue({ id: "u2" });
   userCount.mockReset();
   userCount.mockResolvedValue(1);
+  membershipFindMany.mockReset();
+  membershipFindMany.mockResolvedValue([]);
   createNotification.mockReset();
   createNotification.mockResolvedValue(undefined);
 });
@@ -506,6 +512,53 @@ describe("Invitaciones de chat (Fase 6)", () => {
       expect(result).toEqual([
         { conversationId: "c-grupo", nombre: "Trabajo", participantes: 3 },
       ]);
+    });
+  });
+
+  describe("listKnownPeople", () => {
+    it("junta compañeros y contactos de chat, sin repetir a quien es las dos cosas", async () => {
+      // u2 es compañero Y ya tiene hilo abierto: tiene que salir UNA vez.
+      membershipFindMany
+        .mockResolvedValueOnce([{ workspaceId: "w1" }])
+        .mockResolvedValueOnce([
+          { user: { id: "u2", email: "ana@example.com" } },
+          { user: { id: "u3", email: "carlos@example.com" } },
+        ]);
+      participantFindMany
+        .mockResolvedValueOnce([{ conversationId: "c1" }])
+        .mockResolvedValueOnce([
+          { user: { id: "u2", email: "ana@example.com" } },
+        ]);
+      const { listKnownPeople } =
+        await import("../src/app/(dashboard)/chat/actions");
+
+      const result = await listKnownPeople();
+
+      expect(result).toEqual([
+        { userId: "u2", email: "ana@example.com" },
+        { userId: "u3", email: "carlos@example.com" },
+      ]);
+    });
+
+    it("nunca se devuelve a uno mismo ni a cuentas sin activar", async () => {
+      membershipFindMany
+        .mockResolvedValueOnce([{ workspaceId: "w1" }])
+        .mockResolvedValueOnce([]);
+      participantFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      const { listKnownPeople } =
+        await import("../src/app/(dashboard)/chat/actions");
+
+      await expect(listKnownPeople()).resolves.toEqual([]);
+      // La exclusión va DENTRO de la consulta, no filtrando después: así no
+      // depende de que quien llame se acuerde de quitarse a sí mismo.
+      expect(membershipFindMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: { not: "u1" },
+            user: { accountPending: false },
+          }),
+        }),
+      );
     });
   });
 });

@@ -5,16 +5,32 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import type { Message, CuentaAhorro, Evento } from "@prisma/client";
 import { captureMessage, resolveEmbedder } from "./pipeline";
-import { toAssistantSource, type AssistantSource, type AssistantWorkspaceMemberInfo } from "./assistantContext";
+import {
+  toAssistantSource,
+  type AssistantSource,
+  type AssistantWorkspaceMemberInfo,
+} from "./assistantContext";
 import { ACTIONABLE_CATEGORIES } from "./categories";
 import { findSimilarMessages } from "./vectorSearch";
 import { getCuentasConSaldo } from "./ahorros";
 import { FRECUENCIAS, fechaRepeticion } from "./calendar";
-import { canWrite, READONLY_ROLE_MESSAGE, listWorkspaceMembers, isOnline } from "./workspace";
-import { postChatMessage, ensureDefaultGroupConversation } from "@/app/(dashboard)/chat/actions";
+import {
+  canWrite,
+  READONLY_ROLE_MESSAGE,
+  listWorkspaceMembers,
+  isOnline,
+} from "./workspace";
+import {
+  postChatMessage,
+  ensureDefaultGroupConversation,
+} from "@/app/(dashboard)/chat/actions";
 import { saveAssistantMemory, forgetAssistantMemory } from "./assistantMemory";
 import { normalizeForMatch, matchPersonaPorEmail } from "./textMatch";
-import { resolvePersona, resolveAgenda, resolveMisEquipos } from "./assistantTeamContext";
+import {
+  resolvePersona,
+  resolveAgenda,
+  resolveMisEquipos,
+} from "./assistantTeamContext";
 import { prisma } from "./prisma";
 import type { WorkspaceRole } from "@prisma/client";
 
@@ -43,7 +59,10 @@ const TASK_MATCH_MAX_DISTANCE = 0.4;
  * llamadas a herramienta, ya son las más lentas (verificado en vivo: sumaba
  * presión real al pool de conexiones de Postgres).
  */
-export function resolverMiembro(nombre: string, members: AssistantWorkspaceMemberInfo[]): AssistantWorkspaceMemberInfo | null {
+export function resolverMiembro(
+  nombre: string,
+  members: AssistantWorkspaceMemberInfo[],
+): AssistantWorkspaceMemberInfo | null {
   return matchPersonaPorEmail(nombre, members);
 }
 
@@ -125,17 +144,24 @@ export interface ConsultarAhorrosResult {
  * sola llamada crea toda la serie de una vez, en el propio servidor.
  */
 const RepetirSchema = z.object({
-  frecuencia: z.enum(FRECUENCIAS).describe("Cada cuánto se repite: diaria, semanal, quincenal o mensual."),
+  frecuencia: z
+    .enum(FRECUENCIAS)
+    .describe("Cada cuánto se repite: diaria, semanal, quincenal o mensual."),
   veces: z
     .number()
     .int()
     .min(2)
     .max(20)
-    .describe("Número total de repeticiones, incluyendo la primera (p. ej. 5 para \"durante 5 semanas\")."),
+    .describe(
+      'Número total de repeticiones, incluyendo la primera (p. ej. 5 para "durante 5 semanas").',
+    ),
 });
 
 function isPendienteAccionable(m: Message): boolean {
-  return (ACTIONABLE_CATEGORIES as readonly string[]).includes(m.categoria) && m.estado !== "HECHO";
+  return (
+    (ACTIONABLE_CATEGORIES as readonly string[]).includes(m.categoria) &&
+    m.estado !== "HECHO"
+  );
 }
 
 /**
@@ -152,7 +178,10 @@ function isPendienteAccionable(m: Message): boolean {
  * todos modos, pero una detrás de la otra — el doble de lento que
  * lanzarlas a la vez y quedarse con la semántica si la hay.
  */
-async function encontrarTareaPendiente(workspaceId: string, descripcion: string): Promise<Message | null> {
+async function encontrarTareaPendiente(
+  workspaceId: string,
+  descripcion: string,
+): Promise<Message | null> {
   const semantica = (async (): Promise<Message | null> => {
     try {
       const embedding = await resolveEmbedder().embedQuery(descripcion);
@@ -163,7 +192,10 @@ async function encontrarTareaPendiente(workspaceId: string, descripcion: string)
       });
       return similares.find(isPendienteAccionable) ?? null;
     } catch (err) {
-      console.error("No se pudo buscar la tarea semánticamente (se usa el resultado por texto):", err);
+      console.error(
+        "No se pudo buscar la tarea semánticamente (se usa el resultado por texto):",
+        err,
+      );
       return null;
     }
   })();
@@ -181,7 +213,10 @@ async function encontrarTareaPendiente(workspaceId: string, descripcion: string)
     orderBy: { fecha: "desc" },
   });
 
-  const [matchSemantico, matchPorTexto] = await Promise.all([semantica, porTexto]);
+  const [matchSemantico, matchPorTexto] = await Promise.all([
+    semantica,
+    porTexto,
+  ]);
   return matchSemantico ?? matchPorTexto;
 }
 
@@ -208,7 +243,9 @@ async function encontrarOCrearCuenta(
   });
   if (match) return { cuenta: match, creada: false };
 
-  const creada = await prisma.cuentaAhorro.create({ data: { userId, nombre: nombreBuscado.trim() } });
+  const creada = await prisma.cuentaAhorro.create({
+    data: { userId, nombre: nombreBuscado.trim() },
+  });
   return { cuenta: creada, creada: true };
 }
 
@@ -222,10 +259,16 @@ async function encontrarOCrearCuenta(
  * texto bidireccional que `encontrarOCrearCuenta` (títulos de evento son
  * etiquetas cortas, no hace falta búsqueda semántica).
  */
-async function encontrarEvento(workspaceId: string, descripcion: string): Promise<Evento | null> {
+async function encontrarEvento(
+  workspaceId: string,
+  descripcion: string,
+): Promise<Evento | null> {
   const normalizado = normalizeForMatch(descripcion);
   const eventos = await prisma.evento.findMany({
-    where: { workspaceId, fechaInicio: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+    where: {
+      workspaceId,
+      fechaInicio: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+    },
     orderBy: { fechaInicio: "asc" },
   });
   return (
@@ -286,11 +329,15 @@ export function createAssistantTools(
         contenido: z
           .string()
           .min(1)
-          .describe("El texto de la nota/tarea/recordatorio tal como lo diría el usuario, listo para guardar y categorizar."),
+          .describe(
+            "El texto de la nota/tarea/recordatorio tal como lo diría el usuario, listo para guardar y categorizar.",
+          ),
         asignadoA: z
           .string()
           .optional()
-          .describe("Nombre o email de la persona del EQUIPO a la que se asigna, solo en un workspace de equipo."),
+          .describe(
+            "Nombre o email de la persona del EQUIPO a la que se asigna, solo en un workspace de equipo.",
+          ),
       }),
       execute: async ({ contenido, asignadoA }) => {
         requireWrite();
@@ -303,7 +350,9 @@ export function createAssistantTools(
           // Mensaje ya en español y sin detalles internos: el AI SDK lo
           // expone como `errorText` del part, que la UI muestra tal cual
           // (ver CrearNotaResult en AssistantChat.tsx).
-          throw new Error("No se ha podido guardar la nota. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No se ha podido guardar la nota. Inténtalo de nuevo en un momento.",
+          );
         }
 
         const asignado = asignadoA ? resolverMiembro(asignadoA, members) : null;
@@ -313,9 +362,15 @@ export function createAssistantTools(
         let asignacionGuardada = asignado;
         if (asignado) {
           try {
-            await prisma.message.update({ where: { id: saved.id }, data: { assigneeId: asignado.userId } });
+            await prisma.message.update({
+              where: { id: saved.id },
+              data: { assigneeId: asignado.userId },
+            });
           } catch (err) {
-            console.error("La tool crearNota no pudo asignarla (se guarda sin asignar):", err);
+            console.error(
+              "La tool crearNota no pudo asignarla (se guarda sin asignar):",
+              err,
+            );
             asignacionGuardada = null;
           }
         }
@@ -328,45 +383,74 @@ export function createAssistantTools(
           revalidatePath("/pendientes");
           revalidatePath("/categorias");
         } catch (err) {
-          console.error("No se pudo invalidar la caché tras crear la nota (no crítico):", err);
+          console.error(
+            "No se pudo invalidar la caché tras crear la nota (no crítico):",
+            err,
+          );
         }
 
-        const result: AssistantSource & { asignadoA: string | null; asignacionNoEncontrada?: string } = {
+        const result: AssistantSource & {
+          asignadoA: string | null;
+          asignacionNoEncontrada?: string;
+        } = {
           ...toAssistantSource(saved),
           asignadoA: asignacionGuardada?.email ?? null,
-          asignacionNoEncontrada: asignadoA && !asignado ? asignadoA : undefined,
+          asignacionNoEncontrada:
+            asignadoA && !asignado ? asignadoA : undefined,
         };
         return result;
       },
     }),
     crearEvento: tool({
       description:
-        "Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara (\"quedar el jueves a las 5\", \"cita con el médico el 12 a las 10\"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado. Si es algo que se repite en el tiempo (\"todos los jueves durante 5 semanas\", \"cada día esta semana\"), usa el parámetro `repetir` en ESTA MISMA llamada para crear toda la serie de una vez — no llames a la tool varias veces seguidas para eso. Si pide ASIGNARLO a un compañero de equipo (\"asígnaselo a María\", \"que sea de Pedro\"), usa `asignadoA` — NO `participantes` (eso es solo para gente mencionada sin más, no una asignación real).",
+        'Crea una cita o evento con fecha y hora concreta en el calendario del usuario. Llámala cuando describa algo con fecha/hora clara ("quedar el jueves a las 5", "cita con el médico el 12 a las 10"). Si falta la hora o la fecha es ambigua, pregunta antes de llamarla — nunca inventes una hora que no te han dado. Si es algo que se repite en el tiempo ("todos los jueves durante 5 semanas", "cada día esta semana"), usa el parámetro `repetir` en ESTA MISMA llamada para crear toda la serie de una vez — no llames a la tool varias veces seguidas para eso. Si pide ASIGNARLO a un compañero de equipo ("asígnaselo a María", "que sea de Pedro"), usa `asignadoA` — NO `participantes` (eso es solo para gente mencionada sin más, no una asignación real).',
       inputSchema: z.object({
         titulo: z.string().min(1).describe("Título corto del evento."),
         fechaInicio: z
           .string()
-          .describe("Fecha y hora de inicio de la PRIMERA ocurrencia, en formato ISO 8601 (con zona horaria si se conoce)."),
-        fechaFin: z.string().optional().describe("Fecha y hora de fin de la primera ocurrencia, solo si el usuario la menciona."),
+          .describe(
+            "Fecha y hora de inicio de la PRIMERA ocurrencia, en formato ISO 8601 (con zona horaria si se conoce).",
+          ),
+        fechaFin: z
+          .string()
+          .optional()
+          .describe(
+            "Fecha y hora de fin de la primera ocurrencia, solo si el usuario la menciona.",
+          ),
         descripcion: z.string().optional(),
         ubicacion: z.string().optional(),
         participantes: z
           .array(z.string())
           .optional()
-          .describe("Nombres de las personas mencionadas, si las hay, SIN que sea una asignación real (ver `asignadoA`)."),
+          .describe(
+            "Nombres de las personas mencionadas, si las hay, SIN que sea una asignación real (ver `asignadoA`).",
+          ),
         asignadoA: z
           .string()
           .optional()
-          .describe("Nombre o email de la persona del EQUIPO a la que se asigna el evento, solo en un workspace de equipo (\"asígnaselo a X\", \"que sea de X\")."),
+          .describe(
+            'Nombre o email de la persona del EQUIPO a la que se asigna el evento, solo en un workspace de equipo ("asígnaselo a X", "que sea de X").',
+          ),
         repetir: RepetirSchema.optional().describe(
           "Solo si el evento se repite periódicamente. Crea `veces` eventos en total, uno por cada `frecuencia` a partir de fechaInicio/fechaFin.",
         ),
       }),
-      execute: async ({ titulo, fechaInicio, fechaFin, descripcion, ubicacion, participantes, asignadoA, repetir }) => {
+      execute: async ({
+        titulo,
+        fechaInicio,
+        fechaFin,
+        descripcion,
+        ubicacion,
+        participantes,
+        asignadoA,
+        repetir,
+      }) => {
         requireWrite();
         const fecha = new Date(fechaInicio);
         if (Number.isNaN(fecha.getTime())) {
-          throw new Error("No he entendido bien la fecha. ¿Puedes decírmela de otra forma (día y hora)?");
+          throw new Error(
+            "No he entendido bien la fecha. ¿Puedes decírmela de otra forma (día y hora)?",
+          );
         }
         const fin = fechaFin ? new Date(fechaFin) : null;
         if (fin && Number.isNaN(fin.getTime())) {
@@ -390,8 +474,14 @@ export function createAssistantTools(
                 userId,
                 workspaceId,
                 titulo,
-                fechaInicio: repetir ? fechaRepeticion(fecha, repetir.frecuencia, i) : fecha,
-                fechaFin: fin ? (repetir ? fechaRepeticion(fin, repetir.frecuencia, i) : fin) : null,
+                fechaInicio: repetir
+                  ? fechaRepeticion(fecha, repetir.frecuencia, i)
+                  : fecha,
+                fechaFin: fin
+                  ? repetir
+                    ? fechaRepeticion(fin, repetir.frecuencia, i)
+                    : fin
+                  : null,
                 descripcion: descripcion ?? null,
                 ubicacion: ubicacion ?? null,
                 participantes: participantes ?? [],
@@ -419,24 +509,30 @@ export function createAssistantTools(
         try {
           revalidatePath("/calendario");
         } catch (err) {
-          console.error("No se pudo invalidar la caché tras crear el evento (no crítico):", err);
+          console.error(
+            "No se pudo invalidar la caché tras crear el evento (no crítico):",
+            err,
+          );
         }
 
         const result: CrearEventoToolResult = {
           eventos,
-          asignacionNoEncontrada: asignadoA && !asignado ? asignadoA : undefined,
+          asignacionNoEncontrada:
+            asignadoA && !asignado ? asignadoA : undefined,
         };
         return result;
       },
     }),
     completarTarea: tool({
       description:
-        "Marca como hecha una tarea o recordatorio pendiente que el usuario dice haber terminado (\"ya he llamado al fontanero\", \"acabé lo del informe\", \"hecho lo de comprar el regalo\"). Busca entre sus pendientes la que mejor coincide con la descripción. Si no hay ninguna coincidencia razonable, dilo con naturalidad — no la llames de nuevo adivinando otra cosa.",
+        'Marca como hecha una tarea o recordatorio pendiente que el usuario dice haber terminado ("ya he llamado al fontanero", "acabé lo del informe", "hecho lo de comprar el regalo"). Busca entre sus pendientes la que mejor coincide con la descripción. Si no hay ninguna coincidencia razonable, dilo con naturalidad — no la llames de nuevo adivinando otra cosa.',
       inputSchema: z.object({
         descripcion: z
           .string()
           .min(1)
-          .describe("Descripción de la tarea tal como la menciona el usuario, para buscarla entre sus pendientes."),
+          .describe(
+            "Descripción de la tarea tal como la menciona el usuario, para buscarla entre sus pendientes.",
+          ),
       }),
       execute: async ({ descripcion }) => {
         requireWrite();
@@ -446,10 +542,14 @@ export function createAssistantTools(
         } catch (err) {
           console.error("La tool completarTarea no pudo buscar la tarea:", err);
           Sentry.captureException(err);
-          throw new Error("No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.",
+          );
         }
         if (!tarea) {
-          throw new Error("No he encontrado ninguna tarea pendiente que coincida con eso.");
+          throw new Error(
+            "No he encontrado ninguna tarea pendiente que coincida con eso.",
+          );
         }
 
         try {
@@ -460,38 +560,62 @@ export function createAssistantTools(
           // comprobarlo.
           const { count } = await prisma.message.updateMany({
             where: { id: tarea.id, workspaceId },
-            data: { estado: "HECHO", hecho: true, enProgresoPorId: null, enProgresoDesde: null },
+            data: {
+              estado: "HECHO",
+              hecho: true,
+              enProgresoPorId: null,
+              enProgresoDesde: null,
+            },
           });
-          if (count === 0) throw new Error("La tarea encontrada ya no está en este workspace.");
+          if (count === 0)
+            throw new Error(
+              "La tarea encontrada ya no está en este workspace.",
+            );
         } catch (err) {
-          console.error("La tool completarTarea no pudo marcarla como hecha:", err);
+          console.error(
+            "La tool completarTarea no pudo marcarla como hecha:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No se ha podido marcar como hecha. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No se ha podido marcar como hecha. Inténtalo de nuevo en un momento.",
+          );
         }
 
         try {
           revalidatePath("/pendientes");
           revalidatePath("/categorias");
         } catch (err) {
-          console.error("No se pudo invalidar la caché tras completar la tarea (no crítico):", err);
+          console.error(
+            "No se pudo invalidar la caché tras completar la tarea (no crítico):",
+            err,
+          );
         }
 
-        const result: CompletarTareaResult = { id: tarea.id, resumen: tarea.resumen, categoria: tarea.categoria };
+        const result: CompletarTareaResult = {
+          id: tarea.id,
+          resumen: tarea.resumen,
+          categoria: tarea.categoria,
+        };
         return result;
       },
     }),
     aplazarTarea: tool({
       description:
-        "Cambia la fecha límite de una tarea o recordatorio pendiente (\"aplaza lo del informe a mañana\", \"pospón la llamada al fontanero a la semana que viene\", \"quita la fecha de la revisión del coche\"). Busca entre sus pendientes la que mejor coincide con la descripción. Resuelve tú la fecha relativa (\"mañana\", \"el viernes\", \"la semana que viene\") a una fecha ISO concreta antes de llamar — no le pases al usuario la carga de dar una fecha exacta. Para quitar la fecha límite sin poner otra, no pases `fecha`.",
+        'Cambia la fecha límite de una tarea o recordatorio pendiente ("aplaza lo del informe a mañana", "pospón la llamada al fontanero a la semana que viene", "quita la fecha de la revisión del coche"). Busca entre sus pendientes la que mejor coincide con la descripción. Resuelve tú la fecha relativa ("mañana", "el viernes", "la semana que viene") a una fecha ISO concreta antes de llamar — no le pases al usuario la carga de dar una fecha exacta. Para quitar la fecha límite sin poner otra, no pases `fecha`.',
       inputSchema: z.object({
         descripcion: z
           .string()
           .min(1)
-          .describe("Descripción de la tarea tal como la menciona el usuario, para buscarla entre sus pendientes."),
+          .describe(
+            "Descripción de la tarea tal como la menciona el usuario, para buscarla entre sus pendientes.",
+          ),
         fecha: z
           .string()
           .optional()
-          .describe("Nueva fecha límite, en formato ISO 8601 (solo la fecha basta). Omite este campo para QUITAR la fecha límite."),
+          .describe(
+            "Nueva fecha límite, en formato ISO 8601 (solo la fecha basta). Omite este campo para QUITAR la fecha límite.",
+          ),
       }),
       execute: async ({ descripcion, fecha }) => {
         requireWrite();
@@ -499,7 +623,9 @@ export function createAssistantTools(
         if (fecha) {
           nuevaFecha = new Date(fecha);
           if (Number.isNaN(nuevaFecha.getTime())) {
-            throw new Error("No he entendido bien la fecha. ¿Puedes decírmela de otra forma?");
+            throw new Error(
+              "No he entendido bien la fecha. ¿Puedes decírmela de otra forma?",
+            );
           }
         }
 
@@ -509,10 +635,14 @@ export function createAssistantTools(
         } catch (err) {
           console.error("La tool aplazarTarea no pudo buscar la tarea:", err);
           Sentry.captureException(err);
-          throw new Error("No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.",
+          );
         }
         if (!tarea) {
-          throw new Error("No he encontrado ninguna tarea pendiente que coincida con eso.");
+          throw new Error(
+            "No he encontrado ninguna tarea pendiente que coincida con eso.",
+          );
         }
 
         try {
@@ -520,17 +650,25 @@ export function createAssistantTools(
             where: { id: tarea.id, workspaceId },
             data: { fechaLimite: nuevaFecha },
           });
-          if (count === 0) throw new Error("La tarea encontrada ya no está en este workspace.");
+          if (count === 0)
+            throw new Error(
+              "La tarea encontrada ya no está en este workspace.",
+            );
         } catch (err) {
           console.error("La tool aplazarTarea no pudo cambiar la fecha:", err);
           Sentry.captureException(err);
-          throw new Error("No se ha podido aplazar. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No se ha podido aplazar. Inténtalo de nuevo en un momento.",
+          );
         }
 
         try {
           revalidatePath("/pendientes");
         } catch (err) {
-          console.error("No se pudo invalidar la caché tras aplazar la tarea (no crítico):", err);
+          console.error(
+            "No se pudo invalidar la caché tras aplazar la tarea (no crítico):",
+            err,
+          );
         }
 
         const result: AplazarTareaResult = {
@@ -544,14 +682,26 @@ export function createAssistantTools(
     }),
     asignarTarea: tool({
       description:
-        "Asigna (o quita la asignación de) una tarea o recordatorio pendiente a un compañero de EQUIPO (\"asígnale a María lo de revisar la caldera\", \"que Pedro se encargue de la propuesta\", \"quítale la asignación a lo del informe\"). Busca entre los pendientes del workspace la que mejor coincide con la descripción, igual que `completarTarea`/`aplazarTarea`. Solo tiene sentido en un workspace de equipo — en el personal no hay a quién asignar. Para quitar la asignación sin poner a otra persona, usa `quitarAsignacion` en vez de `asignadoA`.",
+        'Asigna (o quita la asignación de) una tarea o recordatorio pendiente a un compañero de EQUIPO ("asígnale a María lo de revisar la caldera", "que Pedro se encargue de la propuesta", "quítale la asignación a lo del informe"). Busca entre los pendientes del workspace la que mejor coincide con la descripción, igual que `completarTarea`/`aplazarTarea`. Solo tiene sentido en un workspace de equipo — en el personal no hay a quién asignar. Para quitar la asignación sin poner a otra persona, usa `quitarAsignacion` en vez de `asignadoA`.',
       inputSchema: z.object({
         descripcion: z
           .string()
           .min(1)
-          .describe("Descripción de la tarea tal como la menciona el usuario, para buscarla entre los pendientes del equipo."),
-        asignadoA: z.string().optional().describe("Nombre o email de la persona del equipo a la que asignar."),
-        quitarAsignacion: z.boolean().optional().describe("true si pide quitar la asignación sin poner a otra persona."),
+          .describe(
+            "Descripción de la tarea tal como la menciona el usuario, para buscarla entre los pendientes del equipo.",
+          ),
+        asignadoA: z
+          .string()
+          .optional()
+          .describe(
+            "Nombre o email de la persona del equipo a la que asignar.",
+          ),
+        quitarAsignacion: z
+          .boolean()
+          .optional()
+          .describe(
+            "true si pide quitar la asignación sin poner a otra persona.",
+          ),
       }),
       execute: async ({ descripcion, asignadoA, quitarAsignacion }) => {
         requireWrite();
@@ -563,7 +713,9 @@ export function createAssistantTools(
         if (asignadoA) {
           asignado = resolverMiembro(asignadoA, members);
           if (!asignado) {
-            throw new Error(`No he encontrado a nadie del equipo llamado «${asignadoA}».`);
+            throw new Error(
+              `No he encontrado a nadie del equipo llamado «${asignadoA}».`,
+            );
           }
         }
 
@@ -573,10 +725,14 @@ export function createAssistantTools(
         } catch (err) {
           console.error("La tool asignarTarea no pudo buscar la tarea:", err);
           Sentry.captureException(err);
-          throw new Error("No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido buscar entre tus pendientes. Inténtalo de nuevo en un momento.",
+          );
         }
         if (!tarea) {
-          throw new Error("No he encontrado ninguna tarea pendiente que coincida con eso.");
+          throw new Error(
+            "No he encontrado ninguna tarea pendiente que coincida con eso.",
+          );
         }
 
         try {
@@ -584,17 +740,28 @@ export function createAssistantTools(
             where: { id: tarea.id, workspaceId },
             data: { assigneeId: asignado?.userId ?? null },
           });
-          if (count === 0) throw new Error("La tarea encontrada ya no está en este workspace.");
+          if (count === 0)
+            throw new Error(
+              "La tarea encontrada ya no está en este workspace.",
+            );
         } catch (err) {
-          console.error("La tool asignarTarea no pudo guardar la asignación:", err);
+          console.error(
+            "La tool asignarTarea no pudo guardar la asignación:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No se ha podido asignar. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No se ha podido asignar. Inténtalo de nuevo en un momento.",
+          );
         }
 
         try {
           revalidatePath("/pendientes");
         } catch (err) {
-          console.error("No se pudo invalidar la caché tras asignar la tarea (no crítico):", err);
+          console.error(
+            "No se pudo invalidar la caché tras asignar la tarea (no crítico):",
+            err,
+          );
         }
 
         const result: AsignarTareaResult = {
@@ -608,16 +775,23 @@ export function createAssistantTools(
     }),
     registrarAhorro: tool({
       description:
-        "Apunta un ingreso o retirada en una cuenta de ahorro del usuario (\"he ahorrado 50€ en el fondo de emergencia\", \"he sacado 20€ del viaje\"). Si no existe ninguna cuenta con ese nombre, se crea sobre la marcha — no hace falta preguntar primero. Importe positivo para ingresos, negativo para retiradas. Si el usuario pide que se repita periódicamente (\"que se me añadan 400€ todos los jueves durante 5 semanas\"), usa el parámetro `repetir` en ESTA MISMA llamada para registrar toda la serie de una vez — no llames a la tool varias veces seguidas para eso.",
+        'Apunta un ingreso o retirada en una cuenta de ahorro del usuario ("he ahorrado 50€ en el fondo de emergencia", "he sacado 20€ del viaje"). Si no existe ninguna cuenta con ese nombre, se crea sobre la marcha — no hace falta preguntar primero. Importe positivo para ingresos, negativo para retiradas. Si el usuario pide que se repita periódicamente ("que se me añadan 400€ todos los jueves durante 5 semanas"), usa el parámetro `repetir` en ESTA MISMA llamada para registrar toda la serie de una vez — no llames a la tool varias veces seguidas para eso.',
       inputSchema: z.object({
         cuenta: z
           .string()
           .min(1)
-          .describe("Nombre de la cuenta de ahorro tal como la menciona el usuario (p. ej. \"fondo de emergencia\", \"viaje\")."),
+          .describe(
+            'Nombre de la cuenta de ahorro tal como la menciona el usuario (p. ej. "fondo de emergencia", "viaje").',
+          ),
         importe: z
           .number()
-          .describe("Cantidad en euros. Positiva si es un ingreso/ahorro, negativa si es una retirada/gasto."),
-        concepto: z.string().optional().describe("Breve descripción del movimiento, si se menciona."),
+          .describe(
+            "Cantidad en euros. Positiva si es un ingreso/ahorro, negativa si es una retirada/gasto.",
+          ),
+        concepto: z
+          .string()
+          .optional()
+          .describe("Breve descripción del movimiento, si se menciona."),
         repetir: RepetirSchema.optional().describe(
           "Solo si el movimiento se repite periódicamente. Registra `veces` movimientos idénticos en total, uno por cada `frecuencia` a partir de hoy.",
         ),
@@ -635,9 +809,14 @@ export function createAssistantTools(
           cuenta = encontrada.cuenta;
           cuentaCreada = encontrada.creada;
         } catch (err) {
-          console.error("La tool registrarAhorro no pudo buscar/crear la cuenta:", err);
+          console.error(
+            "La tool registrarAhorro no pudo buscar/crear la cuenta:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No he podido buscar tus cuentas de ahorro. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido buscar tus cuentas de ahorro. Inténtalo de nuevo en un momento.",
+          );
         }
 
         const repeticiones = repetir?.veces ?? 1;
@@ -647,9 +826,16 @@ export function createAssistantTools(
           // Secuencial por el mismo motivo que en crearEvento: pocas filas,
           // sin ráfaga simultánea contra el pool de PgBouncer.
           for (let i = 0; i < repeticiones; i++) {
-            const fecha = repetir ? fechaRepeticion(ahora, repetir.frecuencia, i) : ahora;
+            const fecha = repetir
+              ? fechaRepeticion(ahora, repetir.frecuencia, i)
+              : ahora;
             const movimiento = await prisma.movimientoAhorro.create({
-              data: { cuentaId: cuenta.id, centimos, concepto: concepto?.trim() || null, fecha },
+              data: {
+                cuentaId: cuenta.id,
+                centimos,
+                concepto: concepto?.trim() || null,
+                fecha,
+              },
             });
             movimientos.push({
               cuentaId: cuenta.id,
@@ -660,7 +846,10 @@ export function createAssistantTools(
             });
           }
         } catch (err) {
-          console.error("La tool registrarAhorro no pudo guardar el movimiento:", err);
+          console.error(
+            "La tool registrarAhorro no pudo guardar el movimiento:",
+            err,
+          );
           Sentry.captureException(err);
           throw new Error(
             movimientos.length > 0
@@ -672,7 +861,10 @@ export function createAssistantTools(
         try {
           revalidatePath("/ahorros");
         } catch (err) {
-          console.error("No se pudo invalidar la caché tras registrar el ahorro (no crítico):", err);
+          console.error(
+            "No se pudo invalidar la caché tras registrar el ahorro (no crítico):",
+            err,
+          );
         }
 
         const result: RegistrarAhorroToolResult = { movimientos };
@@ -681,26 +873,54 @@ export function createAssistantTools(
     }),
     editarEvento: tool({
       description:
-        "Modifica un evento/cita ya existente del calendario del usuario (cambiar la hora, el título, la ubicación o A QUIÉN está asignado — \"cambia la cita del médico al jueves a las 5\", \"la reunión es en la sala 2, no en mi despacho\", \"asígnasela a María\", \"añade a Pedro como responsable\", \"quítale la asignación\"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad — no la llames de nuevo adivinando otro.",
+        'Modifica un evento/cita ya existente del calendario del usuario (cambiar la hora, el título, la ubicación o A QUIÉN está asignado — "cambia la cita del médico al jueves a las 5", "la reunión es en la sala 2, no en mi despacho", "asígnasela a María", "añade a Pedro como responsable", "quítale la asignación"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad — no la llames de nuevo adivinando otro.',
       inputSchema: z.object({
         descripcion: z
           .string()
           .min(1)
-          .describe("Cómo describe el usuario el evento a cambiar, para buscarlo entre los suyos (p. ej. \"la cita del médico\", \"la reunión del jueves\")."),
-        tituloNuevo: z.string().optional().describe("Nuevo título, solo si cambia."),
+          .describe(
+            'Cómo describe el usuario el evento a cambiar, para buscarlo entre los suyos (p. ej. "la cita del médico", "la reunión del jueves").',
+          ),
+        tituloNuevo: z
+          .string()
+          .optional()
+          .describe("Nuevo título, solo si cambia."),
         fechaInicioNueva: z
           .string()
           .optional()
-          .describe("Nueva fecha/hora de inicio en ISO 8601 (con el desfase de España), solo si cambia."),
-        fechaFinNueva: z.string().optional().describe("Nueva fecha/hora de fin en ISO 8601, solo si cambia."),
-        ubicacionNueva: z.string().optional().describe("Nueva ubicación, solo si cambia."),
+          .describe(
+            "Nueva fecha/hora de inicio en ISO 8601 (con el desfase de España), solo si cambia.",
+          ),
+        fechaFinNueva: z
+          .string()
+          .optional()
+          .describe("Nueva fecha/hora de fin en ISO 8601, solo si cambia."),
+        ubicacionNueva: z
+          .string()
+          .optional()
+          .describe("Nueva ubicación, solo si cambia."),
         asignadoA: z
           .string()
           .optional()
-          .describe("Nombre o email de la persona del EQUIPO a la que asignar el evento, solo si pide asignarlo o cambiar a quién está asignado."),
-        quitarAsignacion: z.boolean().optional().describe("true si pide quitar la asignación sin poner a otra persona."),
+          .describe(
+            "Nombre o email de la persona del EQUIPO a la que asignar el evento, solo si pide asignarlo o cambiar a quién está asignado.",
+          ),
+        quitarAsignacion: z
+          .boolean()
+          .optional()
+          .describe(
+            "true si pide quitar la asignación sin poner a otra persona.",
+          ),
       }),
-      execute: async ({ descripcion, tituloNuevo, fechaInicioNueva, fechaFinNueva, ubicacionNueva, asignadoA, quitarAsignacion }) => {
+      execute: async ({
+        descripcion,
+        tituloNuevo,
+        fechaInicioNueva,
+        fechaFinNueva,
+        ubicacionNueva,
+        asignadoA,
+        quitarAsignacion,
+      }) => {
         requireWrite();
         let evento: Evento | null;
         try {
@@ -708,10 +928,14 @@ export function createAssistantTools(
         } catch (err) {
           console.error("La tool editarEvento no pudo buscar el evento:", err);
           Sentry.captureException(err);
-          throw new Error("No he podido buscar tus eventos. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido buscar tus eventos. Inténtalo de nuevo en un momento.",
+          );
         }
         if (!evento) {
-          throw new Error("No he encontrado ningún evento próximo que coincida con eso.");
+          throw new Error(
+            "No he encontrado ningún evento próximo que coincida con eso.",
+          );
         }
 
         const asignado = asignadoA ? resolverMiembro(asignadoA, members) : null;
@@ -721,17 +945,27 @@ export function createAssistantTools(
         // ha guardado sin asignar.
         const asignadoEfectivo = quitarAsignacion ? null : asignado;
 
-        const data: { titulo?: string; fechaInicio?: Date; fechaFin?: Date; ubicacion?: string; assigneeId?: string | null } = {};
+        const data: {
+          titulo?: string;
+          fechaInicio?: Date;
+          fechaFin?: Date;
+          ubicacion?: string;
+          assigneeId?: string | null;
+        } = {};
         if (tituloNuevo) data.titulo = tituloNuevo;
         if (ubicacionNueva) data.ubicacion = ubicacionNueva;
         if (fechaInicioNueva) {
           const fecha = new Date(fechaInicioNueva);
-          if (Number.isNaN(fecha.getTime())) throw new Error("No he entendido bien la nueva fecha. ¿Puedes decírmela de otra forma?");
+          if (Number.isNaN(fecha.getTime()))
+            throw new Error(
+              "No he entendido bien la nueva fecha. ¿Puedes decírmela de otra forma?",
+            );
           data.fechaInicio = fecha;
         }
         if (fechaFinNueva) {
           const fin = new Date(fechaFinNueva);
-          if (Number.isNaN(fin.getTime())) throw new Error("No he entendido bien la nueva fecha de fin.");
+          if (Number.isNaN(fin.getTime()))
+            throw new Error("No he entendido bien la nueva fecha de fin.");
           data.fechaFin = fin;
         }
         if (quitarAsignacion) data.assigneeId = null;
@@ -749,19 +983,33 @@ export function createAssistantTools(
           // `updateMany` con workspaceId — mismo motivo que en
           // completarTarea: la escritura vuelve a comprobar el acceso,
           // no confía solo en la búsqueda previa.
-          const { count } = await prisma.evento.updateMany({ where: { id: evento.id, workspaceId }, data });
-          if (count === 0) throw new Error("El evento encontrado ya no está en este workspace.");
+          const { count } = await prisma.evento.updateMany({
+            where: { id: evento.id, workspaceId },
+            data,
+          });
+          if (count === 0)
+            throw new Error(
+              "El evento encontrado ya no está en este workspace.",
+            );
           actualizado = { ...evento, ...data };
         } catch (err) {
-          console.error("La tool editarEvento no pudo guardar los cambios:", err);
+          console.error(
+            "La tool editarEvento no pudo guardar los cambios:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No se han podido guardar los cambios. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No se han podido guardar los cambios. Inténtalo de nuevo en un momento.",
+          );
         }
 
         try {
           revalidatePath("/calendario");
         } catch (err) {
-          console.error("No se pudo invalidar la caché tras editar el evento (no crítico):", err);
+          console.error(
+            "No se pudo invalidar la caché tras editar el evento (no crítico):",
+            err,
+          );
         }
 
         const result: EditarEventoResult = {
@@ -770,19 +1018,22 @@ export function createAssistantTools(
           fechaInicio: actualizado.fechaInicio.toISOString(),
           ubicacion: actualizado.ubicacion,
           asignadoA: asignadoEfectivo?.email ?? null,
-          asignacionNoEncontrada: asignadoA && !asignado ? asignadoA : undefined,
+          asignacionNoEncontrada:
+            asignadoA && !asignado ? asignadoA : undefined,
         };
         return result;
       },
     }),
     borrarEvento: tool({
       description:
-        "Borra un evento/cita del calendario del usuario (\"cancela la cita del médico\", \"quita la reunión del jueves\"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad.",
+        'Borra un evento/cita del calendario del usuario ("cancela la cita del médico", "quita la reunión del jueves"). Búscalo por descripción entre sus eventos futuros (hoy incluido). Si no encuentra ninguno que coincida, dilo con naturalidad.',
       inputSchema: z.object({
         descripcion: z
           .string()
           .min(1)
-          .describe("Cómo describe el usuario el evento a borrar, para buscarlo entre los suyos."),
+          .describe(
+            "Cómo describe el usuario el evento a borrar, para buscarlo entre los suyos.",
+          ),
       }),
       execute: async ({ descripcion }) => {
         requireWrite();
@@ -792,50 +1043,74 @@ export function createAssistantTools(
         } catch (err) {
           console.error("La tool borrarEvento no pudo buscar el evento:", err);
           Sentry.captureException(err);
-          throw new Error("No he podido buscar tus eventos. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido buscar tus eventos. Inténtalo de nuevo en un momento.",
+          );
         }
         if (!evento) {
-          throw new Error("No he encontrado ningún evento próximo que coincida con eso.");
+          throw new Error(
+            "No he encontrado ningún evento próximo que coincida con eso.",
+          );
         }
 
         try {
           // `deleteMany` con workspaceId — mismo motivo que en
           // completarTarea/editarEvento.
-          const { count } = await prisma.evento.deleteMany({ where: { id: evento.id, workspaceId } });
-          if (count === 0) throw new Error("El evento encontrado ya no está en este workspace.");
+          const { count } = await prisma.evento.deleteMany({
+            where: { id: evento.id, workspaceId },
+          });
+          if (count === 0)
+            throw new Error(
+              "El evento encontrado ya no está en este workspace.",
+            );
         } catch (err) {
           console.error("La tool borrarEvento no pudo borrar el evento:", err);
           Sentry.captureException(err);
-          throw new Error("No se ha podido borrar el evento. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No se ha podido borrar el evento. Inténtalo de nuevo en un momento.",
+          );
         }
 
         try {
           revalidatePath("/calendario");
         } catch (err) {
-          console.error("No se pudo invalidar la caché tras borrar el evento (no crítico):", err);
+          console.error(
+            "No se pudo invalidar la caché tras borrar el evento (no crítico):",
+            err,
+          );
         }
 
-        const result: BorrarEventoResult = { id: evento.id, titulo: evento.titulo };
+        const result: BorrarEventoResult = {
+          id: evento.id,
+          titulo: evento.titulo,
+        };
         return result;
       },
     }),
     consultarAhorros: tool({
       description:
-        "Consulta cuánto tiene ahorrado el usuario, en una cuenta concreta o en todas (\"¿cuánto llevo ahorrado?\", \"¿cuánto tengo en el fondo de emergencia?\"). De solo lectura — nunca modifica nada, úsala para poder responder con el dato real en vez de inventarlo.",
+        'Consulta cuánto tiene ahorrado el usuario, en una cuenta concreta o en todas ("¿cuánto llevo ahorrado?", "¿cuánto tengo en el fondo de emergencia?"). De solo lectura — nunca modifica nada, úsala para poder responder con el dato real en vez de inventarlo.',
       inputSchema: z.object({
         cuenta: z
           .string()
           .optional()
-          .describe("Nombre de la cuenta si pregunta por una en concreto; omite si pregunta por el total o por todas sus cuentas."),
+          .describe(
+            "Nombre de la cuenta si pregunta por una en concreto; omite si pregunta por el total o por todas sus cuentas.",
+          ),
       }),
       execute: async ({ cuenta: nombreCuenta }) => {
         let cuentas;
         try {
           cuentas = await getCuentasConSaldo(userId);
         } catch (err) {
-          console.error("La tool consultarAhorros no pudo leer las cuentas:", err);
+          console.error(
+            "La tool consultarAhorros no pudo leer las cuentas:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No he podido consultar tus ahorros. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido consultar tus ahorros. Inténtalo de nuevo en un momento.",
+          );
         }
 
         if (nombreCuenta) {
@@ -845,17 +1120,24 @@ export function createAssistantTools(
             return n.includes(normalizado) || normalizado.includes(n);
           });
           if (!match) {
-            throw new Error(`No encuentro ninguna cuenta de ahorro parecida a "${nombreCuenta}".`);
+            throw new Error(
+              `No encuentro ninguna cuenta de ahorro parecida a "${nombreCuenta}".`,
+            );
           }
           const result: ConsultarAhorrosResult = {
-            cuentas: [{ nombre: match.nombre, saldoCentimos: match.saldoCentimos }],
+            cuentas: [
+              { nombre: match.nombre, saldoCentimos: match.saldoCentimos },
+            ],
             totalCentimos: match.saldoCentimos,
           };
           return result;
         }
 
         const result: ConsultarAhorrosResult = {
-          cuentas: cuentas.map((c) => ({ nombre: c.nombre, saldoCentimos: c.saldoCentimos })),
+          cuentas: cuentas.map((c) => ({
+            nombre: c.nombre,
+            saldoCentimos: c.saldoCentimos,
+          })),
           totalCentimos: cuentas.reduce((sum, c) => sum + c.saldoCentimos, 0),
         };
         return result;
@@ -867,7 +1149,9 @@ export function createAssistantTools(
       inputSchema: z.object({}),
       execute: async () => {
         if (members.length === 0) {
-          throw new Error("Estás en tu espacio personal — no hay equipo que consultar aquí.");
+          throw new Error(
+            "Estás en tu espacio personal — no hay equipo que consultar aquí.",
+          );
         }
         try {
           const [info, enCurso] = await Promise.all([
@@ -877,7 +1161,9 @@ export function createAssistantTools(
               select: { resumen: true, enProgresoPorId: true },
             }),
           ]);
-          const tareaPorUsuario = new Map(enCurso.map((m) => [m.enProgresoPorId!, m.resumen]));
+          const tareaPorUsuario = new Map(
+            enCurso.map((m) => [m.enProgresoPorId!, m.resumen]),
+          );
           return {
             miembros: info
               .filter((m) => m.status === "ACTIVE")
@@ -891,28 +1177,47 @@ export function createAssistantTools(
         } catch (err) {
           console.error("La tool consultarEquipo no pudo leer el equipo:", err);
           Sentry.captureException(err);
-          throw new Error("No he podido consultar el equipo. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido consultar el equipo. Inténtalo de nuevo en un momento.",
+          );
         }
       },
     }),
     analizarEquipo: tool({
       description:
-        "Analiza cómo está repartido el trabajo del equipo AHORA MISMO: pendientes, en progreso, vencidas y completadas en la última semana, por persona, más el total del equipo — para dar un diagnóstico o consejo de gestión CONCRETO, con nombres y números reales (\"¿cómo va el equipo?\", \"¿quién está más cargado?\", \"tengo un problema de organización, ayúdame\", \"¿cómo repartimos mejor las tareas?\"). De solo lectura — nunca modifica nada. Solo tiene sentido en un workspace de equipo.",
+        'Analiza cómo está repartido el trabajo del equipo AHORA MISMO: pendientes, en progreso, vencidas y completadas en la última semana, por persona, más el total del equipo — para dar un diagnóstico o consejo de gestión CONCRETO, con nombres y números reales ("¿cómo va el equipo?", "¿quién está más cargado?", "tengo un problema de organización, ayúdame", "¿cómo repartimos mejor las tareas?"). De solo lectura — nunca modifica nada. Solo tiene sentido en un workspace de equipo.',
       inputSchema: z.object({}),
       execute: async () => {
         if (members.length === 0) {
-          throw new Error("Estás en tu espacio personal — no hay equipo que analizar aquí.");
+          throw new Error(
+            "Estás en tu espacio personal — no hay equipo que analizar aquí.",
+          );
         }
         try {
           const now = new Date();
-          const sieteDiasAtras = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          const sieteDiasAtras = new Date(
+            now.getTime() - 7 * 24 * 60 * 60 * 1000,
+          );
           const [abiertas, completadasRecientes] = await Promise.all([
             prisma.message.findMany({
-              where: { workspaceId, estado: { in: ["POR_HACER", "EN_PROGRESO"] } },
-              select: { assigneeId: true, estado: true, fechaLimite: true, categoria: true, enProgresoPorId: true },
+              where: {
+                workspaceId,
+                estado: { in: ["POR_HACER", "EN_PROGRESO"] },
+              },
+              select: {
+                assigneeId: true,
+                estado: true,
+                fechaLimite: true,
+                categoria: true,
+                enProgresoPorId: true,
+              },
             }),
             prisma.message.findMany({
-              where: { workspaceId, estado: "HECHO", fecha: { gte: sieteDiasAtras } },
+              where: {
+                workspaceId,
+                estado: "HECHO",
+                fecha: { gte: sieteDiasAtras },
+              },
               select: { assigneeId: true },
             }),
           ]);
@@ -920,17 +1225,29 @@ export function createAssistantTools(
           const porMiembro = new Map(
             members.map((m) => [
               m.userId,
-              { email: m.email, pendientes: 0, enProgreso: 0, vencidas: 0, completadasUltimaSemana: 0, trabajandoAhora: false },
+              {
+                email: m.email,
+                pendientes: 0,
+                enProgreso: 0,
+                vencidas: 0,
+                completadasUltimaSemana: 0,
+                trabajandoAhora: false,
+              },
             ]),
           );
           const categoriaCounts = new Map<string, number>();
           let totalVencidas = 0;
 
           for (const t of abiertas) {
-            categoriaCounts.set(t.categoria, (categoriaCounts.get(t.categoria) ?? 0) + 1);
+            categoriaCounts.set(
+              t.categoria,
+              (categoriaCounts.get(t.categoria) ?? 0) + 1,
+            );
             const vencida = t.fechaLimite != null && t.fechaLimite < now;
             if (vencida) totalVencidas++;
-            const entry = t.assigneeId ? porMiembro.get(t.assigneeId) : undefined;
+            const entry = t.assigneeId
+              ? porMiembro.get(t.assigneeId)
+              : undefined;
             if (!entry) continue;
             if (t.estado === "POR_HACER") entry.pendientes++;
             if (t.estado === "EN_PROGRESO") entry.enProgreso++;
@@ -938,11 +1255,16 @@ export function createAssistantTools(
             if (t.enProgresoPorId) entry.trabajandoAhora = true;
           }
           for (const t of completadasRecientes) {
-            const entry = t.assigneeId ? porMiembro.get(t.assigneeId) : undefined;
+            const entry = t.assigneeId
+              ? porMiembro.get(t.assigneeId)
+              : undefined;
             if (entry) entry.completadasUltimaSemana++;
           }
 
-          const categoriaMasFrecuente = [...categoriaCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+          const categoriaMasFrecuente =
+            [...categoriaCounts.entries()].sort(
+              (a, b) => b[1] - a[1],
+            )[0]?.[0] ?? null;
 
           return {
             porMiembro: [...porMiembro.values()],
@@ -951,62 +1273,98 @@ export function createAssistantTools(
             categoriaMasFrecuente,
           };
         } catch (err) {
-          console.error("La tool analizarEquipo no pudo calcular las métricas:", err);
+          console.error(
+            "La tool analizarEquipo no pudo calcular las métricas:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No he podido analizar el equipo. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido analizar el equipo. Inténtalo de nuevo en un momento.",
+          );
         }
       },
     }),
     consultarPersona: tool({
       description:
-        "Ficha completa de UNA persona por su nombre o email (\"¿qué hace Carlos?\", \"¿qué lleva María?\", \"¿quién es carlosgallardo?\", \"¿está ocupado Pedro?\"): en qué equipos está y con qué rol, si está en línea, qué tiene entre manos ahora mismo, sus tareas abiertas con fechas límite (marcando las vencidas), cuántas cerró la última semana y sus próximas citas. Busca en TODOS los equipos del usuario, no solo en el que tenga abierto. De solo lectura. Llámala siempre que pregunten por una persona concreta — nunca respondas que no tienes información sobre alguien sin haberla llamado antes.",
+        'Ficha completa de UNA persona por su nombre o email ("¿qué hace Carlos?", "¿qué lleva María?", "¿quién es carlosgallardo?", "¿está ocupado Pedro?"): en qué equipos está y con qué rol, si está en línea, qué tiene entre manos ahora mismo, sus tareas abiertas con fechas límite (marcando las vencidas), cuántas cerró la última semana y sus próximas citas. Busca en TODOS los equipos del usuario, no solo en el que tenga abierto. De solo lectura. Llámala siempre que pregunten por una persona concreta — nunca respondas que no tienes información sobre alguien sin haberla llamado antes.',
       inputSchema: z.object({
-        nombre: z.string().min(1).describe("Nombre o email de la persona, tal como lo dijo el usuario (\"Carlos\", \"carlosgallardo\", \"ana@empresa.com\")."),
+        nombre: z
+          .string()
+          .min(1)
+          .describe(
+            'Nombre o email de la persona, tal como lo dijo el usuario ("Carlos", "carlosgallardo", "ana@empresa.com").',
+          ),
       }),
       execute: async ({ nombre }) => {
         try {
           const persona = await resolvePersona(userId, nombre);
           if (!persona) {
-            throw new Error(`No encuentro a nadie llamado "${nombre}" en ninguno de tus equipos.`);
+            throw new Error(
+              `No encuentro a nadie llamado "${nombre}" en ninguno de tus equipos.`,
+            );
           }
           return persona;
         } catch (err) {
-          if (err instanceof Error && err.message.startsWith("No encuentro")) throw err;
+          if (err instanceof Error && err.message.startsWith("No encuentro"))
+            throw err;
           console.error("La tool consultarPersona no pudo leer la ficha:", err);
           Sentry.captureException(err);
-          throw new Error("No he podido consultar a esa persona. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido consultar a esa persona. Inténtalo de nuevo en un momento.",
+          );
         }
       },
     }),
     consultarMisEquipos: tool({
       description:
-        "Lista TODOS los equipos a los que pertenece el usuario, con su rol en cada uno, cuánta gente hay y cuánto trabajo abierto tiene cada uno, marcando cuál es el que tiene seleccionado ahora (\"¿en qué equipos estoy?\", \"¿cuántos equipos tengo?\", \"¿en cuál hay más trabajo?\"). De solo lectura. Úsala para poder DIFERENCIAR entre equipos al responder, en vez de hablar de \"el equipo\" como si solo hubiera uno.",
+        'Lista TODOS los equipos a los que pertenece el usuario, con su rol en cada uno, cuánta gente hay y cuánto trabajo abierto tiene cada uno, marcando cuál es el que tiene seleccionado ahora ("¿en qué equipos estoy?", "¿cuántos equipos tengo?", "¿en cuál hay más trabajo?"). De solo lectura. Úsala para poder DIFERENCIAR entre equipos al responder, en vez de hablar de "el equipo" como si solo hubiera uno.',
       inputSchema: z.object({}),
       execute: async () => {
         try {
           const equipos = await resolveMisEquipos(userId, workspaceId);
           if (equipos.length === 0) {
-            throw new Error("Todavía no perteneces a ningún equipo — solo tienes tu espacio personal.");
+            throw new Error(
+              "Todavía no perteneces a ningún equipo — solo tienes tu espacio personal.",
+            );
           }
           return { equipos };
         } catch (err) {
-          if (err instanceof Error && err.message.startsWith("Todavía no perteneces")) throw err;
-          console.error("La tool consultarMisEquipos no pudo leer los equipos:", err);
+          if (
+            err instanceof Error &&
+            err.message.startsWith("Todavía no perteneces")
+          )
+            throw err;
+          console.error(
+            "La tool consultarMisEquipos no pudo leer los equipos:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No he podido consultar tus equipos. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido consultar tus equipos. Inténtalo de nuevo en un momento.",
+          );
         }
       },
     }),
     consultarAgenda: tool({
       description:
-        "Qué hay entre dos fechas: citas del calendario Y tareas que vencen, mezcladas en orden cronológico (\"¿qué tengo esta semana?\", \"¿qué hay mañana?\", \"¿qué tiene Ana el jueves?\", \"¿qué se viene en agosto?\"). Cubre todos los equipos del usuario más su espacio personal, e indica de qué equipo es cada cosa y quién la lleva. De solo lectura. Calcula tú `desde`/`hasta` en ISO 8601 a partir de la fecha actual — `hasta` es exclusivo (para \"mañana\", pon el día siguiente como `hasta`).",
+        'Qué hay entre dos fechas: citas del calendario Y tareas que vencen, mezcladas en orden cronológico ("¿qué tengo esta semana?", "¿qué hay mañana?", "¿qué tiene Ana el jueves?", "¿qué se viene en agosto?"). Cubre todos los equipos del usuario más su espacio personal, e indica de qué equipo es cada cosa y quién la lleva. De solo lectura. Calcula tú `desde`/`hasta` en ISO 8601 a partir de la fecha actual — `hasta` es exclusivo (para "mañana", pon el día siguiente como `hasta`).',
       inputSchema: z.object({
-        desde: z.string().describe("Inicio del tramo, en ISO 8601 (p. ej. \"2026-08-18T00:00:00+02:00\")."),
-        hasta: z.string().describe("Fin del tramo, en ISO 8601, EXCLUSIVO — lo que caiga justo en esta fecha ya no entra."),
+        desde: z
+          .string()
+          .describe(
+            'Inicio del tramo, en ISO 8601 (p. ej. "2026-08-18T00:00:00+02:00").',
+          ),
+        hasta: z
+          .string()
+          .describe(
+            "Fin del tramo, en ISO 8601, EXCLUSIVO — lo que caiga justo en esta fecha ya no entra.",
+          ),
         dePersona: z
           .string()
           .optional()
-          .describe("Nombre o email si preguntan por lo que lleva alguien en concreto; omítelo para ver todo lo que el usuario puede ver."),
+          .describe(
+            "Nombre o email si preguntan por lo que lleva alguien en concreto; omítelo para ver todo lo que el usuario puede ver.",
+          ),
       }),
       execute: async ({ desde, hasta, dePersona }) => {
         const inicio = new Date(desde);
@@ -1015,23 +1373,36 @@ export function createAssistantTools(
           throw new Error("Las fechas del tramo no son válidas.");
         }
         if (fin <= inicio) {
-          throw new Error("El final del tramo tiene que ser posterior al principio.");
+          throw new Error(
+            "El final del tramo tiene que ser posterior al principio.",
+          );
         }
         try {
-          const items = await resolveAgenda(userId, inicio, fin, personalWorkspaceId, dePersona);
+          const items = await resolveAgenda(
+            userId,
+            inicio,
+            fin,
+            personalWorkspaceId,
+            dePersona,
+          );
           return { items, total: items.length };
         } catch (err) {
           console.error("La tool consultarAgenda no pudo leer la agenda:", err);
           Sentry.captureException(err);
-          throw new Error("No he podido consultar la agenda. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido consultar la agenda. Inténtalo de nuevo en un momento.",
+          );
         }
       },
     }),
     enviarMensajeChat: tool({
       description:
-        "Envía un mensaje al chat de equipo en nombre del usuario (\"dile al equipo que llego tarde\", \"escribe en el chat que ya está listo\"). Llámala directamente cuando pida avisar, decir o escribir algo al equipo — no preguntes primero si quiere que lo hagas. Solo en un workspace de equipo.",
+        'Envía un mensaje al chat de equipo en nombre del usuario ("dile al equipo que llego tarde", "escribe en el chat que ya está listo"). Llámala directamente cuando pida avisar, decir o escribir algo al equipo — no preguntes primero si quiere que lo hagas. Solo en un workspace de equipo.',
       inputSchema: z.object({
-        texto: z.string().min(1).describe("El mensaje tal como debe aparecer en el chat."),
+        texto: z
+          .string()
+          .min(1)
+          .describe("El mensaje tal como debe aparecer en el chat."),
       }),
       execute: async ({ texto }) => {
         if (members.length === 0) {
@@ -1049,62 +1420,115 @@ export function createAssistantTools(
         // tiene forma de saber a cuál de varios grupos se refiere, así que
         // siempre escribe al que agrupa a todo el workspace (ver
         // ensureDefaultGroupConversation).
-        const conversationId = await ensureDefaultGroupConversation(workspaceId, userId);
-        const result = await postChatMessage(conversationId, workspaceId, userId, texto);
+        const conversationId = await ensureDefaultGroupConversation(
+          workspaceId,
+          userId,
+        );
+        const result = await postChatMessage(
+          conversationId,
+          workspaceId,
+          userId,
+          texto,
+        );
         if (result.error || !result.message) {
-          throw new Error(result.error || "No se ha podido enviar el mensaje al chat.");
+          throw new Error(
+            result.error || "No se ha podido enviar el mensaje al chat.",
+          );
         }
         return { texto: result.message.texto };
       },
     }),
     recordarPreferencia: tool({
       description:
-        "Guarda un hecho o preferencia sobre el usuario o su negocio para recordarlo SIEMPRE, en cualquier conversación futura (no solo en esta) — cosas como horarios, prioridades fijas de un cliente, o cómo prefiere que le hables. Llámala cuando el usuario te pida explícitamente que recuerdes algo (\"recuerda que los jueves cierro antes\", \"a partir de ahora háblame de tú\"), o cuando detectes tú mismo un patrón claro y repetido y tenga sentido ofrecerte a recordarlo. No la uses para hechos de una sola vez sin valor futuro (para eso ya existe crearNota).",
+        'Guarda un hecho o preferencia sobre el usuario o su negocio para recordarlo SIEMPRE, en cualquier conversación futura (no solo en esta) — cosas como horarios, prioridades fijas de un cliente, o cómo prefiere que le hables. Llámala cuando el usuario te pida explícitamente que recuerdes algo ("recuerda que los jueves cierro antes", "a partir de ahora háblame de tú"), o cuando detectes tú mismo un patrón claro y repetido y tenga sentido ofrecerte a recordarlo. No la uses para hechos de una sola vez sin valor futuro (para eso ya existe crearNota).',
       inputSchema: z.object({
-        hecho: z.string().min(1).describe("El hecho o preferencia, en una frase corta y clara, tal como debe recordarse."),
+        hecho: z
+          .string()
+          .min(1)
+          .describe(
+            "El hecho o preferencia, en una frase corta y clara, tal como debe recordarse.",
+          ),
       }),
       execute: async ({ hecho }) => {
         try {
           const saved = await saveAssistantMemory(userId, workspaceId, hecho);
           return { hecho: saved.hecho };
         } catch (err) {
-          console.error("La tool recordarPreferencia no pudo guardar el hecho:", err);
+          console.error(
+            "La tool recordarPreferencia no pudo guardar el hecho:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No he podido guardar eso. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido guardar eso. Inténtalo de nuevo en un momento.",
+          );
         }
       },
     }),
     olvidarPreferencia: tool({
       description:
-        "Olvida un hecho o preferencia guardada antes con recordarPreferencia, descrito en lenguaje libre (\"olvida lo de que cierro los jueves antes\"). Si no encuentra nada parecido, dilo con naturalidad — no inventes que lo has olvidado si no había nada guardado.",
+        'Olvida un hecho o preferencia guardada antes con recordarPreferencia, descrito en lenguaje libre ("olvida lo de que cierro los jueves antes"). Si no encuentra nada parecido, dilo con naturalidad — no inventes que lo has olvidado si no había nada guardado.',
       inputSchema: z.object({
-        descripcion: z.string().min(1).describe("Descripción libre de qué hecho olvidar, tal como lo diría el usuario."),
+        descripcion: z
+          .string()
+          .min(1)
+          .describe(
+            "Descripción libre de qué hecho olvidar, tal como lo diría el usuario.",
+          ),
       }),
       execute: async ({ descripcion }) => {
         try {
-          const forgotten = await forgetAssistantMemory(userId, workspaceId, descripcion);
-          if (!forgotten) throw new Error(`No tengo nada guardado parecido a "${descripcion}".`);
+          const forgotten = await forgetAssistantMemory(
+            userId,
+            workspaceId,
+            descripcion,
+          );
+          if (!forgotten)
+            throw new Error(
+              `No tengo nada guardado parecido a "${descripcion}".`,
+            );
           return { olvidado: true };
         } catch (err) {
-          if (err instanceof Error && err.message.startsWith("No tengo nada guardado")) throw err;
-          console.error("La tool olvidarPreferencia no pudo borrar el hecho:", err);
+          if (
+            err instanceof Error &&
+            err.message.startsWith("No tengo nada guardado")
+          )
+            throw err;
+          console.error(
+            "La tool olvidarPreferencia no pudo borrar el hecho:",
+            err,
+          );
           Sentry.captureException(err);
-          throw new Error("No he podido olvidar eso. Inténtalo de nuevo en un momento.");
+          throw new Error(
+            "No he podido olvidar eso. Inténtalo de nuevo en un momento.",
+          );
         }
       },
     }),
   } satisfies ToolSet;
 
   /**
-   * Solo se le pasa al modelo el juego de herramientas que puede usar EN
-   * ESTE MODO. Antes se le mandaban las 17 en cada petición, incluidas las
-   * seis de equipo estando en personal (o las dos de ahorro estando en
-   * equipo) — más tokens y latencia de más en cada turno, y la posibilidad
-   * de que intentara algo que iba a fallar seguro. `members.length > 0` es
-   * la misma señal que ya usan estas tools por dentro para saber si están
-   * en un workspace de equipo (ver el "if (members.length === 0) throw"
-   * repetido en consultarEquipo/analizarEquipo/enviarMensajeChat) — no se
-   * inventa un criterio nuevo, solo se aplica también aquí fuera.
+   * Se le quitan al modelo SOLO las herramientas que no podrían funcionar
+   * en este modo, para no gastar tokens en esquemas inservibles ni dejarle
+   * intentar algo que va a fallar seguro.
+   *
+   * El criterio es estrecho a propósito, y está comprobado tool por tool:
+   * únicamente se poda lo que de verdad NECESITA compañeros de equipo, o
+   * sea, lo que lleva dentro el `if (members.length === 0) throw` o
+   * resuelve un nombre contra `members` (`resolverMiembro`). Una primera
+   * versión de esta poda fue mucho más ancha y rompió cosas que sí
+   * funcionaban:
+   *
+   * - `consultarPersona` y `consultarMisEquipos` NO son de equipo aunque lo
+   *   parezcan: buscan por `userId` en TODOS los equipos del usuario (ver
+   *   `resolvePersona`/`resolveMisEquipos`), no en el workspace activo. Son
+   *   justo las que contestan "¿qué lleva Carlos?" o "¿en qué equipos
+   *   estoy?" desde el espacio personal — podarlas ahí dejaba al Asistente
+   *   sin nada que llamar y sin poder responder.
+   * - `registrarAhorro`/`consultarAhorros` NO son de solo-personal: reciben
+   *   `personalWorkspaceId` precisamente para funcionar DESDE un equipo
+   *   contra el espacio personal (ver su comentario más arriba). Podarlas
+   *   en modo equipo anulaba la razón de ser de ese parámetro.
    *
    * El `as typeof todas` no le miente a quien consume `AssistantTools`
    * (abajo): ese tipo describe TODOS los esquemas que el cliente podría
@@ -1113,10 +1537,17 @@ export function createAssistantTools(
    * sencillamente, no puede llamar a lo que no está en el objeto real.
    */
   const enEquipo = members.length > 0;
-  const SOLO_EQUIPO = ["asignarTarea", "consultarEquipo", "analizarEquipo", "consultarPersona", "consultarMisEquipos", "enviarMensajeChat"] as const;
-  const SOLO_PERSONAL = ["registrarAhorro", "consultarAhorros"] as const;
-  const excluidas = new Set<string>(enEquipo ? SOLO_PERSONAL : SOLO_EQUIPO);
-  return Object.fromEntries(Object.entries(todas).filter(([nombre]) => !excluidas.has(nombre))) as typeof todas;
+  // Las únicas cuatro que no pueden hacer nada sin compañeros de equipo.
+  const REQUIEREN_EQUIPO = [
+    "asignarTarea",
+    "consultarEquipo",
+    "analizarEquipo",
+    "enviarMensajeChat",
+  ] as const;
+  const excluidas = new Set<string>(enEquipo ? [] : REQUIEREN_EQUIPO);
+  return Object.fromEntries(
+    Object.entries(todas).filter(([nombre]) => !excluidas.has(nombre)),
+  ) as typeof todas;
 }
 
 export type AssistantTools = ReturnType<typeof createAssistantTools>;

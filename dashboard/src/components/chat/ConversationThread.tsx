@@ -1,7 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ChangeEvent, type ClipboardEvent } from "react";
-import { ArrowLeft, Send, ImagePlus, X, Bell, BellOff, Users, Trash2 } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ChangeEvent,
+  type ClipboardEvent,
+} from "react";
+import {
+  ArrowLeft,
+  Send,
+  ImagePlus,
+  X,
+  Bell,
+  BellOff,
+  Users,
+  Trash2,
+} from "lucide-react";
 import {
   listChatMessages,
   sendChatMessage,
@@ -75,7 +92,10 @@ export function ConversationThread({
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingImage, setPendingImage] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [pendingImage, setPendingImage] = useState<{
+    file: File;
+    previewUrl: string;
+  } | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastIdRef = useRef<string | undefined>(initialMessages.at(-1)?.id);
@@ -87,7 +107,9 @@ export function ConversationThread({
   // separado y se veía duplicado.
   const pendingIdRef = useRef<string | null>(null);
   const [typingEmail, setTypingEmail] = useState<string | null>(null);
-  const typingExpiryRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const typingExpiryRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const lastTypingSentAtRef = useRef(0);
 
   const pollAndMerge = useCallback(async () => {
@@ -95,7 +117,9 @@ export function ConversationThread({
       const fresh = await listChatMessages(conversationId, lastIdRef.current);
       if (fresh.length === 0) return;
       lastIdRef.current = fresh.at(-1)!.id;
-      const resolvesPending = pendingIdRef.current !== null && fresh.some((m) => m.userId === currentUserId);
+      const resolvesPending =
+        pendingIdRef.current !== null &&
+        fresh.some((m) => m.userId === currentUserId);
       const resolvedId = resolvesPending ? pendingIdRef.current : null;
       if (resolvesPending) pendingIdRef.current = null;
       setMessages((prev) => {
@@ -107,7 +131,9 @@ export function ConversationThread({
         // eco optimista) hace la fusión idempotente sin importar cuántas
         // veces se solape.
         const freshIds = new Set(fresh.map((m) => m.id));
-        const base = prev.filter((m) => m.id !== resolvedId && !freshIds.has(m.id));
+        const base = prev.filter(
+          (m) => m.id !== resolvedId && !freshIds.has(m.id),
+        );
         return [...base, ...fresh];
       });
       // Si ya se ven en pantalla, cuentan como leídos — evita que el punto
@@ -115,7 +141,10 @@ export function ConversationThread({
       // tiene delante en este mismo momento.
       markConversationRead(conversationId).catch(() => {});
     } catch (err) {
-      console.error("No se pudo actualizar el chat (no crítico, se reintenta en el siguiente sondeo):", err);
+      console.error(
+        "No se pudo actualizar el chat (no crítico, se reintenta en el siguiente sondeo):",
+        err,
+      );
     }
   }, [currentUserId, conversationId]);
 
@@ -124,18 +153,35 @@ export function ConversationThread({
       if (userId === currentUserId) return;
       setTypingEmail(email);
       clearTimeout(typingExpiryRef.current);
-      typingExpiryRef.current = setTimeout(() => setTypingEmail(null), TYPING_EXPIRY_MS);
+      typingExpiryRef.current = setTimeout(
+        () => setTypingEmail(null),
+        TYPING_EXPIRY_MS,
+      );
     },
     [currentUserId],
   );
-  const { connected, sendTyping } = useChatRealtime(conversationId, pollAndMerge, handleTyping);
-  useVisibilityAwarePolling(pollAndMerge, connected ? SLOW_POLL_MS : FAST_POLL_MS);
+  const { connected, sendTyping } = useChatRealtime(
+    conversationId,
+    pollAndMerge,
+    handleTyping,
+  );
+  useVisibilityAwarePolling(
+    pollAndMerge,
+    connected ? SLOW_POLL_MS : FAST_POLL_MS,
+  );
 
   useEffect(() => () => clearTimeout(typingExpiryRef.current), []);
 
-  const self = conversation.participants.find((p) => p.userId === currentUserId);
+  const self = conversation.participants.find(
+    (p) => p.userId === currentUserId,
+  );
   const selfEmail = self?.email ?? "";
-  const other = conversation.type === "DIRECT" ? conversation.participants.find((p) => p.userId === conversation.otherUserId) : undefined;
+  const other =
+    conversation.type === "DIRECT"
+      ? conversation.participants.find(
+          (p) => p.userId === conversation.otherUserId,
+        )
+      : undefined;
 
   function handleInputChange(value: string) {
     setInput(value);
@@ -150,7 +196,10 @@ export function ConversationThread({
   }, [conversationId]);
 
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+    listRef.current?.scrollTo({
+      top: listRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages.length]);
 
   /**
@@ -189,9 +238,20 @@ export function ConversationThread({
    * texto en el campo, no un error.
    */
   function handlePaste(e: ClipboardEvent<HTMLFormElement>) {
-    if (!puedeAdjuntar) return;
-    const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith("image/"));
+    const item = Array.from(e.clipboardData.items).find((it) =>
+      it.type.startsWith("image/"),
+    );
     if (!item) return;
+    // Pegar una imagen con el almacenamiento sin configurar tiene que
+    // DECIRLO. Callar aquí es lo que hacía que pegar una captura pareciera
+    // que la aplicación se la tragaba sin más.
+    if (!puedeAdjuntar) {
+      e.preventDefault();
+      setError(
+        "Adjuntar imágenes no está configurado en este servidor (falta BLOB_READ_WRITE_TOKEN).",
+      );
+      return;
+    }
     const file = item.getAsFile();
     if (!file) return;
     e.preventDefault();
@@ -251,7 +311,9 @@ export function ConversationThread({
       // limpio), el mensaje real ya está en la lista — no duplicarlo.
       if (pendingIdRef.current === tempId) {
         pendingIdRef.current = null;
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? result.message! : m)));
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? result.message! : m)),
+        );
       }
     } catch (err) {
       console.error("Error al enviar el mensaje de chat:", err);
@@ -263,7 +325,10 @@ export function ConversationThread({
     }
   }
 
-  const headerTitle = conversation.type === "GROUP" ? conversation.nombre : shortEmailName(conversation.nombre);
+  const headerTitle =
+    conversation.type === "GROUP"
+      ? conversation.nombre
+      : shortEmailName(conversation.nombre);
   const participantCount = conversation.participants.length;
   const headerSubtitle =
     conversation.type === "GROUP"
@@ -275,7 +340,10 @@ export function ConversationThread({
         : undefined;
 
   return (
-    <section aria-label={`Conversación: ${headerTitle}`} className="flex min-h-0 flex-1 flex-col gap-3">
+    <section
+      aria-label={`Conversación: ${headerTitle}`}
+      className="flex min-h-0 flex-1 flex-col gap-3"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {onBack && (
@@ -309,8 +377,14 @@ export function ConversationThread({
                 <Avatar email={other?.email ?? headerTitle} size="sm" />
               )}
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-ink">{headerTitle}</p>
-                {headerSubtitle && <p className="truncate text-xs text-muted">{headerSubtitle}</p>}
+                <p className="truncate text-sm font-semibold text-ink">
+                  {headerTitle}
+                </p>
+                {headerSubtitle && (
+                  <p className="truncate text-xs text-muted">
+                    {headerSubtitle}
+                  </p>
+                )}
               </div>
             </button>
           </ConversationInfoDialog>
@@ -321,31 +395,57 @@ export function ConversationThread({
             onClick={() => {
               const next = !muted;
               setMuted(next);
-              setConversationMuted(conversationId, next).catch(() => setMuted(!next));
+              setConversationMuted(conversationId, next).catch(() =>
+                setMuted(!next),
+              );
             }}
-            title={muted ? "Activar avisos de esta conversación" : "Silenciar esta conversación"}
+            title={
+              muted
+                ? "Activar avisos de esta conversación"
+                : "Silenciar esta conversación"
+            }
             aria-pressed={muted}
             className="flex items-center gap-1.5 rounded-full border border-paper-line bg-paper px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong"
           >
-            {muted ? <BellOff aria-hidden size={13} /> : <Bell aria-hidden size={13} />}
+            {muted ? (
+              <BellOff aria-hidden size={13} />
+            ) : (
+              <Bell aria-hidden size={13} />
+            )}
             {muted ? "Silenciado" : "Avisos activos"}
           </button>
-          {conversation.type === "DIRECT" && <PresenceSelect current={self?.presenceStatus ?? null} />}
+          {conversation.type === "DIRECT" && (
+            <PresenceSelect current={self?.presenceStatus ?? null} />
+          )}
         </div>
       </div>
 
       {/* `min-h-0` (y NO `min-h-[50vh]`): dentro de un contenedor flex, un
           hijo con altura mínima grande se niega a encoger, así que la lista
           desbordaba en vez de hacer scroll dentro de sí misma. */}
-      <ul ref={listRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-paper-line bg-paper-raised p-4">
-        {messages.length === 0 && <li className="m-auto text-center text-sm text-muted">Todavía no hay mensajes — escribe el primero.</li>}
+      <ul
+        ref={listRef}
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-paper-line bg-paper-raised p-4"
+      >
+        {messages.length === 0 && (
+          <li className="m-auto text-center text-sm text-muted">
+            Todavía no hay mensajes — escribe el primero.
+          </li>
+        )}
         {messages.map((message) => {
           const isSelf = message.userId === currentUserId;
           return (
             // `group`: el botón de borrar solo aparece al pasar por encima
             // (o al enfocarlo con teclado), para no llenar el hilo de
             // iconos — pero SIEMPRE es alcanzable tabulando.
-            <li key={message.id} className={isSelf ? "group flex items-center justify-end gap-1" : "group flex items-end gap-2"}>
+            <li
+              key={message.id}
+              className={
+                isSelf
+                  ? "group flex items-center justify-end gap-1"
+                  : "group flex items-end gap-2"
+              }
+            >
               {isSelf && !message.pending && (
                 <button
                   type="button"
@@ -364,7 +464,9 @@ export function ConversationThread({
               {!isSelf && <Avatar email={message.email} size="sm" />}
               <div className="flex max-w-[75%] flex-col gap-0.5">
                 {!isSelf && conversation.type === "GROUP" && (
-                  <span className="text-[11px] font-medium text-muted">{shortEmailName(message.email)}</span>
+                  <span className="text-[11px] font-medium text-muted">
+                    {shortEmailName(message.email)}
+                  </span>
                 )}
                 {message.imagenUrl && (
                   // eslint-disable-next-line @next/next/no-img-element -- URL externa (Vercel Blob), no una ruta estática local
@@ -385,14 +487,22 @@ export function ConversationThread({
                     {message.texto}
                   </div>
                 )}
-                <span className={`text-[10px] text-muted ${isSelf ? "text-right" : ""}`}>{formatEventTime(message.createdAt)}</span>
+                <span
+                  className={`text-[10px] text-muted ${isSelf ? "text-right" : ""}`}
+                >
+                  {formatEventTime(message.createdAt)}
+                </span>
               </div>
             </li>
           );
         })}
       </ul>
 
-      {typingEmail && <p className="-mt-1 text-xs text-muted italic">{shortEmailName(typingEmail)} está escribiendo…</p>}
+      {typingEmail && (
+        <p className="-mt-1 text-xs text-muted italic">
+          {shortEmailName(typingEmail)} está escribiendo…
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-danger">
@@ -400,11 +510,19 @@ export function ConversationThread({
         </p>
       )}
 
-      <form onSubmit={handleSubmit} onPaste={handlePaste} className="flex flex-col gap-2">
+      <form
+        onSubmit={handleSubmit}
+        onPaste={handlePaste}
+        className="flex flex-col gap-2"
+      >
         {pendingImage && (
           <div className="flex items-center gap-2 rounded-lg border border-paper-line bg-paper p-2 text-xs text-muted">
             {/* eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob: URL), no cabe en next/image */}
-            <img src={pendingImage.previewUrl} alt="" className="h-10 w-10 rounded object-cover" />
+            <img
+              src={pendingImage.previewUrl}
+              alt=""
+              className="h-10 w-10 rounded object-cover"
+            />
             <span className="flex-1 truncate">{pendingImage.file.name}</span>
             <button
               type="button"
@@ -420,10 +538,13 @@ export function ConversationThread({
           <label htmlFor="chat-input" className="sr-only">
             Escribe un mensaje
           </label>
-          {/* Sin BLOB_READ_WRITE_TOKEN en el servidor, subir una imagen
-              falla siempre — mejor no ofrecer el botón que dejar que el
-              usuario lo intente una y otra vez (ver isBlobConfigured). */}
-          {puedeAdjuntar && (
+          {/* Sin BLOB_READ_WRITE_TOKEN el botón se enseña igual, pero
+              desactivado y diciendo por qué. Antes desaparecía del todo, y
+              eso se leía desde fuera como "las imágenes no funcionan" sin
+              ninguna pista de que lo que falta es configurar el servidor
+              (ver isBlobConfigured). Un control desactivado que explica su
+              motivo enseña algo; uno ausente, no. */}
+          {puedeAdjuntar ? (
             <>
               <input
                 ref={fileInputRef}
@@ -443,6 +564,17 @@ export function ConversationThread({
                 <ImagePlus aria-hidden size={16} />
               </Button>
             </>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              disabled
+              aria-label="Adjuntar imagen (no disponible: falta configurar el almacenamiento de imágenes en el servidor)"
+              title="Adjuntar imágenes no está configurado en este servidor (falta BLOB_READ_WRITE_TOKEN)."
+            >
+              <ImagePlus aria-hidden size={16} />
+            </Button>
           )}
           <Input
             id="chat-input"
@@ -452,8 +584,19 @@ export function ConversationThread({
             disabled={sending}
             className="flex-1"
           />
-          <Button type="submit" disabled={sending || (input.trim() === "" && !pendingImage)}>
-            {sending ? (uploadingImage ? "Subiendo…" : "…") : <Send aria-hidden size={16} />}
+          <Button
+            type="submit"
+            disabled={sending || (input.trim() === "" && !pendingImage)}
+          >
+            {sending ? (
+              uploadingImage ? (
+                "Subiendo…"
+              ) : (
+                "…"
+              )
+            ) : (
+              <Send aria-hidden size={16} />
+            )}
             <span className="sr-only sm:not-sr-only">Enviar</span>
           </Button>
         </div>

@@ -65,6 +65,8 @@ const CHAT_TEXTO_MAX_LENGTH = 2000;
 const MAX_GROUP_NAME_LENGTH = 40;
 const SEARCH_USERS_LIMIT = 8;
 const SEARCH_USERS_MIN_LENGTH = 2;
+/** Sugerencias con el campo vacío (ver listKnownPeople) — algo más que el buscador: aquí no hay nada que teclear para acotar. */
+const KNOWN_PEOPLE_LIMIT = 12;
 
 /**
  * Avisa por Realtime Broadcast de que hay un mensaje nuevo en una
@@ -377,6 +379,64 @@ export async function listConversations(): Promise<ConversationView[]> {
       a.lastMessage?.createdAt ?? "",
     ),
   );
+}
+
+/**
+ * Gente que el usuario YA conoce, para sugerirla sin que tenga que escribir
+ * nada: sus compañeros de equipo (de todos sus equipos, no solo el activo)
+ * y las personas con las que ya tiene alguna conversación.
+ *
+ * El buscador por email sigue existiendo para todo lo demás, pero exigirlo
+ * SIEMPRE era la parte poco práctica de invitar a alguien: para añadir a un
+ * compañero había que acordarse de su email entero y teclear al menos dos
+ * letras, cuando el sistema ya sabe perfectamente quién es. Esto es lo que
+ * se enseña con el campo vacío; en cuanto se escribe, manda `searchUsers`.
+ */
+export async function listKnownPeople(): Promise<UserSearchResult[]> {
+  const userId = await verifySession();
+
+  const [misWorkspaces, misConversaciones] = await Promise.all([
+    prisma.membership.findMany({
+      where: { userId, status: "ACTIVE" },
+      select: { workspaceId: true },
+    }),
+    prisma.chatConversationParticipant.findMany({
+      where: { userId, status: "ACTIVE" },
+      select: { conversationId: true },
+    }),
+  ]);
+
+  const [companeros, contactos] = await Promise.all([
+    prisma.membership.findMany({
+      where: {
+        workspaceId: { in: misWorkspaces.map((w) => w.workspaceId) },
+        status: "ACTIVE",
+        userId: { not: userId },
+        user: { accountPending: false },
+      },
+      select: { user: { select: { id: true, email: true } } },
+    }),
+    prisma.chatConversationParticipant.findMany({
+      where: {
+        conversationId: { in: misConversaciones.map((c) => c.conversationId) },
+        status: "ACTIVE",
+        userId: { not: userId },
+        user: { accountPending: false },
+      },
+      select: { user: { select: { id: true, email: true } } },
+    }),
+  ]);
+
+  // Una misma persona puede ser compañera Y tener ya un hilo abierto (o
+  // estar en dos equipos a la vez): se deduplica por id.
+  const porId = new Map<string, UserSearchResult>();
+  for (const { user } of [...companeros, ...contactos]) {
+    if (!porId.has(user.id))
+      porId.set(user.id, { userId: user.id, email: user.email });
+  }
+  return [...porId.values()]
+    .sort((a, b) => a.email.localeCompare(b.email))
+    .slice(0, KNOWN_PEOPLE_LIMIT);
 }
 
 /**
