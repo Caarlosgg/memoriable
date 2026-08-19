@@ -3,6 +3,8 @@ import {
   resolverColumnas,
   columnaDeTarjeta,
   faseDeColumna,
+  columnaDeDragId,
+  COLUMN_DRAG_PREFIX,
 } from "../src/lib/boardColumns";
 
 describe("resolverColumnas", () => {
@@ -139,5 +141,20 @@ describe("resolverColumnas — cambio de identidad al crear la primera columna p
     ]);
     const idsDespues = new Set(despues.map((c) => c.id));
     for (const c of antes) expect(idsDespues.has(c.id)).toBe(false);
+  });
+});
+
+describe("columnaDeDragId", () => {
+  it("distingue el arrastre de una COLUMNA del de una tarjeta", () => {
+    // El prefijo existe porque el id pelado de la columna ya lo ocupa su
+    // zona de destino: sin él, dnd-kit tendría el mismo id como origen y
+    // como destino. De paso es lo que deja al tablero saber, sin consultar
+    // ninguna lista, si lo que viaja es una tarjeta o una columna.
+    expect(columnaDeDragId(`${COLUMN_DRAG_PREFIX}ck1`)).toBe("ck1");
+    expect(columnaDeDragId("ck1")).toBeNull();
+  });
+
+  it("un id de tarjeta que empiece por algo parecido no se confunde", () => {
+    expect(columnaDeDragId("colaborador-123")).toBeNull();
   });
 });
