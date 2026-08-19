@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Bell, StickyNote, CalendarDays, Users, ShieldCheck } from "lucide-react";
+import { Bell, StickyNote, CalendarDays, Users, ShieldCheck, MessagesSquare } from "lucide-react";
 import type { NotificationType } from "@prisma/client";
 import { setNotificationPref, type NotificationPrefs } from "@/app/(dashboard)/cuenta/actions";
 
@@ -10,6 +10,7 @@ const TYPES: { type: NotificationType; label: string; Icon: typeof Bell }[] = [
   { type: "ASSIGNED_EVENTO", label: "Te asignan un evento", Icon: CalendarDays },
   { type: "ADDED_TO_TEAM", label: "Te añaden a un equipo", Icon: Users },
   { type: "ROLE_CHANGED", label: "Te cambian el rol en un equipo", Icon: ShieldCheck },
+  { type: "CHAT_INVITE", label: "Te invitan a un grupo de chat", Icon: MessagesSquare },
 ];
 
 /** Ausente en `prefs` = activado (comportamiento de siempre) — solo se guarda lo que se ha desactivado. */

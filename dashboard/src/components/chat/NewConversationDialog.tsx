@@ -2,11 +2,21 @@
 
 import { useState, type ReactNode } from "react";
 import { Plus, Users, User, X } from "lucide-react";
-import { createDirectConversation, createGroupConversation, type UserSearchResult } from "@/app/(dashboard)/chat/actions";
+import {
+  createDirectConversation,
+  createGroupConversation,
+  type UserSearchResult,
+} from "@/app/(dashboard)/chat/actions";
 import { shortEmailName } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { UserSearchPicker } from "./UserSearchPicker";
 
 type Mode = "individual" | "grupo";
@@ -57,7 +67,10 @@ export function NewConversationDialog({
   async function handleCreateGroup() {
     setPending(true);
     setError(null);
-    const result = await createGroupConversation(groupName, selected.map((u) => u.userId));
+    const result = await createGroupConversation(
+      groupName,
+      selected.map((u) => u.userId),
+    );
     setPending(false);
     if (result.error || !result.conversationId) {
       setError(result.error || "No se ha podido crear el grupo.");
@@ -79,7 +92,12 @@ export function NewConversationDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button type="button" variant="secondary" size="icon" aria-label="Nueva conversación">
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          aria-label="Nueva conversación"
+        >
           <Plus aria-hidden size={16} />
         </Button>
       </DialogTrigger>
@@ -89,10 +107,18 @@ export function NewConversationDialog({
         </DialogHeader>
 
         <div className="mb-4 flex gap-2">
-          <ModeButton active={mode === "individual"} onClick={() => setMode("individual")} icon={<User aria-hidden size={14} />}>
+          <ModeButton
+            active={mode === "individual"}
+            onClick={() => setMode("individual")}
+            icon={<User aria-hidden size={14} />}
+          >
             Individual
           </ModeButton>
-          <ModeButton active={mode === "grupo"} onClick={() => setMode("grupo")} icon={<Users aria-hidden size={14} />}>
+          <ModeButton
+            active={mode === "grupo"}
+            onClick={() => setMode("grupo")}
+            icon={<Users aria-hidden size={14} />}
+          >
             Grupo
           </ModeButton>
         </div>
@@ -118,11 +144,18 @@ export function NewConversationDialog({
             {selected.length > 0 && (
               <ul className="flex flex-wrap gap-1.5">
                 {selected.map((u) => (
-                  <li key={u.userId} className="flex items-center gap-1 rounded-full bg-accent-soft py-1 pr-1 pl-2.5 text-xs text-accent-strong">
+                  <li
+                    key={u.userId}
+                    className="flex items-center gap-1 rounded-full bg-accent-soft py-1 pr-1 pl-2.5 text-xs text-accent-strong"
+                  >
                     {shortEmailName(u.email)}
                     <button
                       type="button"
-                      onClick={() => setSelected((prev) => prev.filter((x) => x.userId !== u.userId))}
+                      onClick={() =>
+                        setSelected((prev) =>
+                          prev.filter((x) => x.userId !== u.userId),
+                        )
+                      }
                       aria-label={`Quitar a ${u.email}`}
                       className="rounded-full p-0.5 hover:bg-accent/30"
                     >
@@ -132,8 +165,21 @@ export function NewConversationDialog({
                 ))}
               </ul>
             )}
-            <UserSearchPicker excludeIds={excludeIds} onPick={(u) => setSelected((prev) => [...prev, u])} placeholder="Añade personas por email…" />
-            <Button type="button" onClick={handleCreateGroup} disabled={pending || groupName.trim() === "" || selected.length === 0}>
+            <UserSearchPicker
+              excludeIds={excludeIds}
+              onPick={(u) => setSelected((prev) => [...prev, u])}
+              placeholder="Añade personas por email…"
+            />
+            <p className="text-xs text-muted">
+              Se les invitará y entrarán cuando acepten, no de forma inmediata.
+            </p>
+            <Button
+              type="button"
+              onClick={handleCreateGroup}
+              disabled={
+                pending || groupName.trim() === "" || selected.length === 0
+              }
+            >
               {pending ? "Creando…" : "Crear grupo"}
             </Button>
           </div>
@@ -149,7 +195,17 @@ export function NewConversationDialog({
   );
 }
 
-function ModeButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode }) {
+function ModeButton({
+  active,
+  onClick,
+  icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"

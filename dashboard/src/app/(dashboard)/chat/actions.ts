@@ -7,6 +7,7 @@ import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { uploadImageToBlob } from "@/lib/blobUpload";
 import { notifyChatParticipants } from "@/lib/chatNotifications";
+import { createNotification } from "@/lib/notifications";
 import {
   chatChannelTopic,
   CHAT_NEW_MESSAGE_EVENT,
@@ -41,7 +42,12 @@ export interface ConversationView {
   equipo: string | null;
   /** Solo DIRECT — para encontrar sus datos dentro de `participants`. */
   otherUserId: string | null;
-  lastMessage: { texto: string; imagenUrl: string | null; createdAt: string; userId: string } | null;
+  lastMessage: {
+    texto: string;
+    imagenUrl: string | null;
+    createdAt: string;
+    userId: string;
+  } | null;
   /** Cuántos mensajes sin leer (0 = ninguno) — un número, no un punto: saber si son 2 o 40 cambia si abres ahora o luego. */
   unreadCount: number;
   muted: boolean;
@@ -75,25 +81,50 @@ async function broadcastNewChatMessage(conversationId: string): Promise<void> {
     const url = `${supabaseRealtimeUrl()}/realtime/v1/api/broadcast/${topic}/events/${CHAT_NEW_MESSAGE_EVENT}`;
     const res = await fetch(url, {
       method: "POST",
-      headers: { apikey: supabaseRealtimeAnonKey()!, "Content-Type": "application/json" },
+      headers: {
+        apikey: supabaseRealtimeAnonKey()!,
+        "Content-Type": "application/json",
+      },
       body: "{}",
     });
     if (!res.ok) {
-      console.error(`No se pudo avisar por Realtime (HTTP ${res.status}) — hay sondeo de respaldo.`);
+      console.error(
+        `No se pudo avisar por Realtime (HTTP ${res.status}) — hay sondeo de respaldo.`,
+      );
     }
   } catch (err) {
-    console.error("No se pudo avisar por Realtime de un mensaje nuevo de chat (no crítico, hay sondeo de respaldo):", err);
+    console.error(
+      "No se pudo avisar por Realtime de un mensaje nuevo de chat (no crítico, hay sondeo de respaldo):",
+      err,
+    );
   }
 }
 
-/** Conversación + a qué workspace/tipo pertenece, SOLO si `userId` es de verdad participante — null si no, o si no existe. `workspaceId` es null en toda conversación personal (DIRECT, o GROUP creado a mano). */
+/**
+ * Conversación + a qué workspace/tipo pertenece, SOLO si `userId` es de
+ * verdad participante ACTIVO — null si no, si no existe, o si está
+ * PENDING de aceptar la invitación (ver ChatParticipantStatus). Este es el
+ * punto de seguridad de la invitación: sin el filtro por `status`, alguien
+ * invitado a un grupo podría leer y escribir en él antes de aceptar, que es
+ * justo lo que la invitación pretende impedir. `workspaceId` es null en
+ * toda conversación personal (DIRECT, o GROUP creado a mano).
+ */
 async function requireParticipant(
   conversationId: string,
   userId: string,
-): Promise<{ id: string; workspaceId: string | null; type: ChatConversationType } | null> {
+): Promise<{
+  id: string;
+  workspaceId: string | null;
+  type: ChatConversationType;
+} | null> {
   const participant = await prisma.chatConversationParticipant.findUnique({
-    where: { conversationId_userId: { conversationId, userId } },
-    select: { conversation: { select: { id: true, workspaceId: true, type: true } } },
+    where: {
+      conversationId_userId: { conversationId, userId },
+      status: "ACTIVE",
+    },
+    select: {
+      conversation: { select: { id: true, workspaceId: true, type: true } },
+    },
   });
   return participant?.conversation ?? null;
 }
@@ -108,17 +139,32 @@ async function requireParticipant(
  */
 async function getGlobalPresence(
   userIds: string[],
-): Promise<Map<string, { presenceStatus: MemberPresence | null; lastSeenAt: Date | null }>> {
+): Promise<
+  Map<
+    string,
+    { presenceStatus: MemberPresence | null; lastSeenAt: Date | null }
+  >
+> {
   if (userIds.length === 0) return new Map();
   const memberships = await prisma.membership.findMany({
     where: { userId: { in: userIds }, status: "ACTIVE" },
     select: { userId: true, presenceStatus: true, lastSeenAt: true },
   });
-  const map = new Map<string, { presenceStatus: MemberPresence | null; lastSeenAt: Date | null }>();
+  const map = new Map<
+    string,
+    { presenceStatus: MemberPresence | null; lastSeenAt: Date | null }
+  >();
   for (const m of memberships) {
     const existing = map.get(m.userId);
-    if (!existing || (m.lastSeenAt && (!existing.lastSeenAt || m.lastSeenAt > existing.lastSeenAt))) {
-      map.set(m.userId, { presenceStatus: m.presenceStatus, lastSeenAt: m.lastSeenAt });
+    if (
+      !existing ||
+      (m.lastSeenAt &&
+        (!existing.lastSeenAt || m.lastSeenAt > existing.lastSeenAt))
+    ) {
+      map.set(m.userId, {
+        presenceStatus: m.presenceStatus,
+        lastSeenAt: m.lastSeenAt,
+      });
     }
   }
   return map;
@@ -137,7 +183,10 @@ async function getGlobalPresence(
  * se creara el grupo) — cualquier miembro ACTIVO pertenece al grupo del
  * equipo, sin tener que unirse a mano.
  */
-export async function ensureDefaultGroupConversation(workspaceId: string, userId: string): Promise<string> {
+export async function ensureDefaultGroupConversation(
+  workspaceId: string,
+  userId: string,
+): Promise<string> {
   const existing = await prisma.chatConversation.findFirst({
     where: { workspaceId, type: "GROUP", nombre: "Equipo" },
     select: { id: true },
@@ -153,7 +202,10 @@ export async function ensureDefaultGroupConversation(workspaceId: string, userId
     return existing.id;
   }
 
-  const memberships = await prisma.membership.findMany({ where: { workspaceId, status: "ACTIVE" }, select: { userId: true } });
+  const memberships = await prisma.membership.findMany({
+    where: { workspaceId, status: "ACTIVE" },
+    select: { userId: true },
+  });
   const participantIds = new Set(memberships.map((m) => m.userId));
   participantIds.add(userId);
   const created = await prisma.chatConversation.create({
@@ -162,7 +214,9 @@ export async function ensureDefaultGroupConversation(workspaceId: string, userId
       nombre: "Equipo",
       workspaceId,
       createdById: userId,
-      participants: { create: [...participantIds].map((id) => ({ userId: id })) },
+      participants: {
+        create: [...participantIds].map((id) => ({ userId: id })),
+      },
     },
     select: { id: true },
   });
@@ -170,12 +224,15 @@ export async function ensureDefaultGroupConversation(workspaceId: string, userId
 }
 
 /**
- * Todas las conversaciones del usuario: sus DIRECT y GROUP personales (de
- * cualquier equipo o de ninguno — el chat es suyo, no del workspace activo,
- * ver ChatConversation en el schema) MÁS el grupo "Equipo" de cada equipo
- * del que sea miembro ACTIVO ahora mismo. Ya no depende de qué workspace
- * tenga seleccionado el selector de arriba, ni desaparece en el espacio
- * personal.
+ * Todas las conversaciones ACTIVAS del usuario: sus DIRECT y GROUP
+ * personales (de cualquier equipo o de ninguno — el chat es suyo, no del
+ * workspace activo, ver ChatConversation en el schema) MÁS el grupo
+ * "Equipo" de cada equipo del que sea miembro ACTIVO ahora mismo. Ya no
+ * depende de qué workspace tenga seleccionado el selector de arriba, ni
+ * desaparece en el espacio personal.
+ *
+ * Los grupos a los que le han invitado pero aún no ha aceptado NO
+ * aparecen aquí — ver `listPendingChatInvites`.
  */
 export async function listConversations(): Promise<ConversationView[]> {
   const userId = await verifySession();
@@ -186,10 +243,14 @@ export async function listConversations(): Promise<ConversationView[]> {
       select: { workspaceId: true },
     })
   ).map((m) => m.workspaceId);
-  await Promise.all(teamWorkspaceIds.map((wsId) => ensureDefaultGroupConversation(wsId, userId)));
+  await Promise.all(
+    teamWorkspaceIds.map((wsId) =>
+      ensureDefaultGroupConversation(wsId, userId),
+    ),
+  );
 
   const participations = await prisma.chatConversationParticipant.findMany({
-    where: { userId },
+    where: { userId, status: "ACTIVE" },
     select: {
       lastReadAt: true,
       muted: true,
@@ -202,8 +263,24 @@ export async function listConversations(): Promise<ConversationView[]> {
           // los grupos "Equipo" de tres equipos distintos se veían los tres
           // como "Equipo", sin forma de saber en cuál estabas escribiendo.
           workspace: { select: { nombre: true } },
-          participants: { select: { userId: true, user: { select: { email: true } } } },
-          messages: { orderBy: { createdAt: "desc" }, take: 1, select: { texto: true, imagenUrl: true, createdAt: true, userId: true } },
+          // Solo participantes ACTIVOS: alguien invitado y aún sin aceptar
+          // no debe aparecer en la lista de "quién está en el grupo"
+          // todavía — sería enseñar como miembro a alguien que ni ha
+          // decidido si entra.
+          participants: {
+            where: { status: "ACTIVE" },
+            select: { userId: true, user: { select: { email: true } } },
+          },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              texto: true,
+              imagenUrl: true,
+              createdAt: true,
+              userId: true,
+            },
+          },
         },
       },
     },
@@ -213,10 +290,17 @@ export async function listConversations(): Promise<ConversationView[]> {
   // mensaje es posterior a la última lectura, y no es tuyo): así el conteo
   // cuesta UNA consulta agrupada, y solo cuando de verdad hay algo — no una
   // por conversación ni un recuento completo cada vez que se abre /chat.
-  const conPendientes = participations.filter(({ conversation, lastReadAt, muted }) => {
-    const last = conversation.messages[0];
-    return !muted && last != null && last.userId !== userId && (!lastReadAt || last.createdAt > lastReadAt);
-  });
+  const conPendientes = participations.filter(
+    ({ conversation, lastReadAt, muted }) => {
+      const last = conversation.messages[0];
+      return (
+        !muted &&
+        last != null &&
+        last.userId !== userId &&
+        (!lastReadAt || last.createdAt > lastReadAt)
+      );
+    },
+  );
 
   const unreadPorConversacion = new Map<string, number>();
   if (conPendientes.length > 0) {
@@ -232,42 +316,67 @@ export async function listConversations(): Promise<ConversationView[]> {
       },
       _count: { _all: true },
     });
-    for (const g of grupos) unreadPorConversacion.set(g.conversationId, g._count._all);
+    for (const g of grupos)
+      unreadPorConversacion.set(g.conversationId, g._count._all);
   }
 
-  const allParticipantIds = [...new Set(participations.flatMap(({ conversation }) => conversation.participants.map((p) => p.userId)))];
+  const allParticipantIds = [
+    ...new Set(
+      participations.flatMap(({ conversation }) =>
+        conversation.participants.map((p) => p.userId),
+      ),
+    ),
+  ];
   const presenceMap = await getGlobalPresence(allParticipantIds);
 
   // `lastReadAt` ya no hace falta aquí: el conteo de sin leer se resolvió
   // arriba de una vez para todas las conversaciones.
-  const views = participations.map(({ conversation, muted }): ConversationView => {
-    const lastMessage = conversation.messages[0] ?? null;
-    const otherParticipant =
-      conversation.type === "DIRECT" ? conversation.participants.find((p) => p.userId !== userId) : undefined;
-    const nombre =
-      conversation.type === "GROUP" ? (conversation.nombre ?? "Grupo") : (otherParticipant?.user.email ?? "Conversación");
-    return {
-      id: conversation.id,
-      type: conversation.type,
-      nombre,
-      equipo: conversation.workspace?.nombre ?? null,
-      otherUserId: otherParticipant?.userId ?? null,
-      lastMessage: lastMessage
-        ? { texto: lastMessage.texto, imagenUrl: lastMessage.imagenUrl, createdAt: lastMessage.createdAt.toISOString(), userId: lastMessage.userId }
-        : null,
-      unreadCount: muted ? 0 : (unreadPorConversacion.get(conversation.id) ?? 0),
-      muted,
-      participants: conversation.participants.map((p) => ({
-        userId: p.userId,
-        email: p.user.email,
-        presenceStatus: presenceMap.get(p.userId)?.presenceStatus ?? null,
-        lastSeenAt: presenceMap.get(p.userId)?.lastSeenAt?.toISOString() ?? null,
-      })),
-    };
-  });
+  const views = participations.map(
+    ({ conversation, muted }): ConversationView => {
+      const lastMessage = conversation.messages[0] ?? null;
+      const otherParticipant =
+        conversation.type === "DIRECT"
+          ? conversation.participants.find((p) => p.userId !== userId)
+          : undefined;
+      const nombre =
+        conversation.type === "GROUP"
+          ? (conversation.nombre ?? "Grupo")
+          : (otherParticipant?.user.email ?? "Conversación");
+      return {
+        id: conversation.id,
+        type: conversation.type,
+        nombre,
+        equipo: conversation.workspace?.nombre ?? null,
+        otherUserId: otherParticipant?.userId ?? null,
+        lastMessage: lastMessage
+          ? {
+              texto: lastMessage.texto,
+              imagenUrl: lastMessage.imagenUrl,
+              createdAt: lastMessage.createdAt.toISOString(),
+              userId: lastMessage.userId,
+            }
+          : null,
+        unreadCount: muted
+          ? 0
+          : (unreadPorConversacion.get(conversation.id) ?? 0),
+        muted,
+        participants: conversation.participants.map((p) => ({
+          userId: p.userId,
+          email: p.user.email,
+          presenceStatus: presenceMap.get(p.userId)?.presenceStatus ?? null,
+          lastSeenAt:
+            presenceMap.get(p.userId)?.lastSeenAt?.toISOString() ?? null,
+        })),
+      };
+    },
+  );
 
   // Más reciente primero — sin mensajes (grupo recién creado) al final.
-  return views.sort((a, b) => (b.lastMessage?.createdAt ?? "").localeCompare(a.lastMessage?.createdAt ?? ""));
+  return views.sort((a, b) =>
+    (b.lastMessage?.createdAt ?? "").localeCompare(
+      a.lastMessage?.createdAt ?? "",
+    ),
+  );
 }
 
 /**
@@ -284,7 +393,11 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   if (trimmed.length < SEARCH_USERS_MIN_LENGTH) return [];
 
   const users = await prisma.user.findMany({
-    where: { id: { not: userId }, accountPending: false, email: { contains: trimmed, mode: "insensitive" } },
+    where: {
+      id: { not: userId },
+      accountPending: false,
+      email: { contains: trimmed, mode: "insensitive" },
+    },
     select: { id: true, email: true },
     orderBy: { email: "asc" },
     take: SEARCH_USERS_LIMIT,
@@ -293,10 +406,16 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 }
 
 /** Abre (o reutiliza, si ya existía) el hilo individual con cualquier persona con cuenta en la app — no hace falta compartir equipo. */
-export async function createDirectConversation(otherUserId: string): Promise<{ conversationId?: string; error?: string }> {
+export async function createDirectConversation(
+  otherUserId: string,
+): Promise<{ conversationId?: string; error?: string }> {
   const userId = await verifySession();
-  if (otherUserId === userId) return { error: "No puedes iniciar una conversación contigo mismo." };
-  const other = await prisma.user.findUnique({ where: { id: otherUserId }, select: { id: true } });
+  if (otherUserId === userId)
+    return { error: "No puedes iniciar una conversación contigo mismo." };
+  const other = await prisma.user.findUnique({
+    where: { id: otherUserId },
+    select: { id: true },
+  });
   if (!other) return { error: "Esa persona no tiene cuenta en MemorIAble." };
 
   const directKey = [userId, otherUserId].sort().join("_");
@@ -321,19 +440,67 @@ export async function createDirectConversation(otherUserId: string): Promise<{ c
   }
 }
 
-/** Crea un grupo personal nuevo con nombre propio y las personas elegidas (además de quien lo crea) — cualquiera con cuenta en la app, no solo del equipo. */
-export async function createGroupConversation(nombre: string, memberIds: string[]): Promise<{ conversationId?: string; error?: string }> {
+/**
+ * Avisa a cada persona invitada a un GRUPO. Best-effort — el grupo ya está
+ * creado/la persona ya está añadida en PENDING; que falle el aviso no debe
+ * deshacer nada de eso, solo se registra.
+ *
+ * `link` lleva el id de la conversación como query param (`?invite=`) — es
+ * lo que lee `NotificationsList.tsx` para ofrecer Aceptar/Rechazar EN la
+ * propia notificación, no solo un enlace a /chat a ciegas.
+ */
+function notifyChatInvites(
+  conversationId: string,
+  memberIds: string[],
+  nombreGrupo: string,
+): void {
+  void Promise.all(
+    memberIds.map((id) =>
+      createNotification({
+        userId: id,
+        type: "CHAT_INVITE",
+        title: `Te han invitado al grupo «${nombreGrupo}»`,
+        body: "Acepta para empezar a ver los mensajes.",
+        link: `/chat?invite=${conversationId}`,
+      }).catch((err) =>
+        console.error(
+          "No se pudo avisar de la invitación al chat (no crítico):",
+          err,
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Crea un grupo personal nuevo — cualquiera con cuenta en la app, no solo
+ * del equipo. Quien lo crea entra ACTIVO; el resto entra PENDING y recibe
+ * una notificación (ver `notifyChatInvites`): nadie aparece metido en un
+ * grupo sin haberlo decidido. Los DIRECT no pasan por esto — ver
+ * `createDirectConversation`.
+ */
+export async function createGroupConversation(
+  nombre: string,
+  memberIds: string[],
+): Promise<{ conversationId?: string; error?: string }> {
   const userId = await verifySession();
 
   const trimmed = nombre.trim();
   if (!trimmed) return { error: "Ponle un nombre al grupo." };
-  if (trimmed.length > MAX_GROUP_NAME_LENGTH) return { error: `El nombre no puede tener más de ${MAX_GROUP_NAME_LENGTH} caracteres.` };
+  if (trimmed.length > MAX_GROUP_NAME_LENGTH)
+    return {
+      error: `El nombre no puede tener más de ${MAX_GROUP_NAME_LENGTH} caracteres.`,
+    };
 
   const uniqueMemberIds = [...new Set(memberIds.filter((id) => id !== userId))];
-  if (uniqueMemberIds.length === 0) return { error: "Elige al menos otra persona para el grupo." };
+  if (uniqueMemberIds.length === 0)
+    return { error: "Elige al menos otra persona para el grupo." };
 
-  const existingCount = await prisma.user.count({ where: { id: { in: uniqueMemberIds } } });
-  if (existingCount !== uniqueMemberIds.length) return { error: "Alguna de las personas elegidas ya no tiene cuenta." };
+  const existingCount = await prisma.user.count({
+    where: { id: { in: uniqueMemberIds } },
+  });
+  if (existingCount !== uniqueMemberIds.length)
+    return { error: "Alguna de las personas elegidas ya no tiene cuenta." };
 
   try {
     const conversation = await prisma.chatConversation.create({
@@ -341,11 +508,20 @@ export async function createGroupConversation(nombre: string, memberIds: string[
         type: "GROUP",
         nombre: trimmed,
         createdById: userId,
-        participants: { create: [userId, ...uniqueMemberIds].map((id) => ({ userId: id })) },
+        participants: {
+          create: [
+            { userId, status: "ACTIVE" },
+            ...uniqueMemberIds.map((id) => ({
+              userId: id,
+              status: "PENDING" as const,
+            })),
+          ],
+        },
       },
       select: { id: true },
     });
     revalidatePath("/chat");
+    notifyChatInvites(conversation.id, uniqueMemberIds, trimmed);
     return { conversationId: conversation.id };
   } catch (err) {
     console.error("No se pudo crear el grupo:", err);
@@ -354,40 +530,154 @@ export async function createGroupConversation(nombre: string, memberIds: string[
   }
 }
 
-/** Añade más gente a un grupo ya existente — cualquiera con cuenta en la app, no solo del equipo (sin roles de admin dentro del chat: cualquier participante puede añadir, mismo espíritu informal de siempre). */
-export async function addParticipants(conversationId: string, memberIds: string[]): Promise<{ error?: string }> {
+/**
+ * Invita a más gente a un grupo ya existente — cualquiera con cuenta en la
+ * app, no solo del equipo (sin roles de admin dentro del chat: cualquier
+ * participante puede invitar, mismo espíritu informal de siempre). Entran
+ * PENDING, igual que al crear el grupo — mismo motivo: nadie se entera de
+ * golpe de que está en una conversación que no eligió.
+ */
+export async function addParticipants(
+  conversationId: string,
+  memberIds: string[],
+): Promise<{ error?: string }> {
   const userId = await verifySession();
   const conversation = await requireParticipant(conversationId, userId);
   if (!conversation) return { error: "No perteneces a esta conversación." };
-  if (conversation.type !== "GROUP") return { error: "Solo se puede añadir gente a un grupo." };
+  if (conversation.type !== "GROUP")
+    return { error: "Solo se puede añadir gente a un grupo." };
 
   const uniqueMemberIds = [...new Set(memberIds)];
-  const existingCount = await prisma.user.count({ where: { id: { in: uniqueMemberIds } } });
-  if (existingCount !== uniqueMemberIds.length) return { error: "Alguna de las personas elegidas ya no tiene cuenta." };
+  const existingCount = await prisma.user.count({
+    where: { id: { in: uniqueMemberIds } },
+  });
+  if (existingCount !== uniqueMemberIds.length)
+    return { error: "Alguna de las personas elegidas ya no tiene cuenta." };
 
   try {
+    // Quién ya estaba dentro (ACTIVE o PENDING de antes) — se calcula ANTES
+    // de insertar porque `createMany` con `skipDuplicates` solo devuelve un
+    // recuento, no CUÁLES se saltó. Sin esto, notificar a `uniqueMemberIds`
+    // tal cual avisaría también a quien ya estaba invitado o ya era
+    // participante, como si acabara de pasar algo que no ha pasado.
+    const yaDentro = new Set(
+      (
+        await prisma.chatConversationParticipant.findMany({
+          where: { conversationId, userId: { in: uniqueMemberIds } },
+          select: { userId: true },
+        })
+      ).map((p) => p.userId),
+    );
+    const nuevos = uniqueMemberIds.filter((id) => !yaDentro.has(id));
+
     await prisma.chatConversationParticipant.createMany({
-      data: uniqueMemberIds.map((id) => ({ conversationId, userId: id })),
+      data: nuevos.map((id) => ({
+        conversationId,
+        userId: id,
+        status: "PENDING" as const,
+      })),
       skipDuplicates: true,
     });
     revalidatePath("/chat");
+    if (nuevos.length > 0) {
+      const grupo = await prisma.chatConversation.findUnique({
+        where: { id: conversationId },
+        select: { nombre: true },
+      });
+      notifyChatInvites(conversationId, nuevos, grupo?.nombre ?? "Grupo");
+    }
     return {};
   } catch (err) {
-    console.error("No se pudo añadir a los participantes:", err);
+    console.error("No se pudo invitar a los participantes:", err);
     Sentry.captureException(err);
-    return { error: "No se ha podido añadir." };
+    return { error: "No se ha podido invitar." };
+  }
+}
+
+export interface PendingChatInvite {
+  conversationId: string;
+  nombre: string;
+  /** Cuánta gente hay YA dentro (activa), para dar una idea de tamaño al decidir. */
+  participantes: number;
+}
+
+/** Grupos a los que te han invitado y todavía no has aceptado ni rechazado — ver ChatParticipantStatus. */
+export async function listPendingChatInvites(): Promise<PendingChatInvite[]> {
+  const userId = await verifySession();
+  const invites = await prisma.chatConversationParticipant.findMany({
+    where: { userId, status: "PENDING" },
+    select: {
+      conversation: {
+        select: {
+          id: true,
+          nombre: true,
+          _count: { select: { participants: { where: { status: "ACTIVE" } } } },
+        },
+      },
+    },
+  });
+  return invites.map(({ conversation: c }) => ({
+    conversationId: c.id,
+    nombre: c.nombre ?? "Grupo",
+    participantes: c._count.participants,
+  }));
+}
+
+/** Acepta una invitación a un grupo — pasa de PENDING a ACTIVE, mismo criterio que `acceptMembership` para equipos. */
+export async function acceptChatInvite(
+  conversationId: string,
+): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  try {
+    const { count } = await prisma.chatConversationParticipant.updateMany({
+      where: { conversationId, userId, status: "PENDING" },
+      data: { status: "ACTIVE" },
+    });
+    if (count === 0) return { error: "No se ha encontrado esa invitación." };
+    revalidatePath("/chat");
+    revalidatePath("/notificaciones");
+    return {};
+  } catch (err) {
+    console.error("No se pudo aceptar la invitación al chat:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido aceptar. Inténtalo de nuevo." };
+  }
+}
+
+/** Rechaza una invitación a un grupo — borra la fila PENDING, mismo criterio que `declineMembership` para equipos. */
+export async function declineChatInvite(
+  conversationId: string,
+): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  try {
+    const { count } = await prisma.chatConversationParticipant.deleteMany({
+      where: { conversationId, userId, status: "PENDING" },
+    });
+    if (count === 0) return { error: "No se ha encontrado esa invitación." };
+    revalidatePath("/chat");
+    revalidatePath("/notificaciones");
+    return {};
+  } catch (err) {
+    console.error("No se pudo rechazar la invitación al chat:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido rechazar. Inténtalo de nuevo." };
   }
 }
 
 /** Sale de un grupo (no aplica a conversaciones individuales). */
-export async function leaveConversation(conversationId: string): Promise<{ error?: string }> {
+export async function leaveConversation(
+  conversationId: string,
+): Promise<{ error?: string }> {
   const userId = await verifySession();
   const conversation = await requireParticipant(conversationId, userId);
   if (!conversation) return { error: "No perteneces a esta conversación." };
-  if (conversation.type !== "GROUP") return { error: "No puedes salir de una conversación individual." };
+  if (conversation.type !== "GROUP")
+    return { error: "No puedes salir de una conversación individual." };
 
   try {
-    await prisma.chatConversationParticipant.delete({ where: { conversationId_userId: { conversationId, userId } } });
+    await prisma.chatConversationParticipant.delete({
+      where: { conversationId_userId: { conversationId, userId } },
+    });
     revalidatePath("/chat");
     return {};
   } catch (err) {
@@ -403,15 +693,26 @@ export async function leaveConversation(conversationId: string): Promise<{ error
  * Vacío si el usuario no es participante (nunca lanza — mismo criterio que
  * el resto de lecturas ante un id ajeno/inexistente).
  */
-export async function listChatMessages(conversationId: string, after?: string): Promise<ChatMessageView[]> {
+export async function listChatMessages(
+  conversationId: string,
+  after?: string,
+): Promise<ChatMessageView[]> {
   const userId = await verifySession();
   const conversation = await requireParticipant(conversationId, userId);
   if (!conversation) return [];
 
-  const cursor = after ? await prisma.chatMessage.findUnique({ where: { id: after }, select: { createdAt: true } }) : null;
+  const cursor = after
+    ? await prisma.chatMessage.findUnique({
+        where: { id: after },
+        select: { createdAt: true },
+      })
+    : null;
 
   const messages = await prisma.chatMessage.findMany({
-    where: { conversationId, ...(cursor ? { createdAt: { gt: cursor.createdAt } } : {}) },
+    where: {
+      conversationId,
+      ...(cursor ? { createdAt: { gt: cursor.createdAt } } : {}),
+    },
     include: { user: { select: { email: true } } },
     orderBy: { createdAt: cursor ? "asc" : "desc" },
     ...(cursor ? {} : { take: CHAT_MESSAGES_LIMIT }),
@@ -451,19 +752,34 @@ export async function postChatMessage(
   imagenUrl?: string | null,
 ): Promise<SendChatMessageResult> {
   const trimmed = texto.trim();
-  if (!trimmed && !imagenUrl) return { error: "Escribe algo o adjunta una imagen antes de enviar." };
-  if (trimmed.length > CHAT_TEXTO_MAX_LENGTH) return { error: `El mensaje no puede tener más de ${CHAT_TEXTO_MAX_LENGTH} caracteres.` };
+  if (!trimmed && !imagenUrl)
+    return { error: "Escribe algo o adjunta una imagen antes de enviar." };
+  if (trimmed.length > CHAT_TEXTO_MAX_LENGTH)
+    return {
+      error: `El mensaje no puede tener más de ${CHAT_TEXTO_MAX_LENGTH} caracteres.`,
+    };
 
   try {
     const created = await prisma.chatMessage.create({
-      data: { texto: trimmed, imagenUrl: imagenUrl || null, userId, workspaceId, conversationId },
+      data: {
+        texto: trimmed,
+        imagenUrl: imagenUrl || null,
+        userId,
+        workspaceId,
+        conversationId,
+      },
       include: { user: { select: { email: true } } },
     });
     await broadcastNewChatMessage(conversationId);
     // Push a los demás participantes no silenciados. `void` a propósito:
     // el mensaje ya está guardado y el aviso no debe retrasar la respuesta
     // al que escribe (ni tumbarla si falla — ver chatNotifications.ts).
-    void notifyChatParticipants(conversationId, userId, trimmed, Boolean(imagenUrl));
+    void notifyChatParticipants(
+      conversationId,
+      userId,
+      trimmed,
+      Boolean(imagenUrl),
+    );
     revalidatePath("/chat");
     return {
       message: {
@@ -487,24 +803,39 @@ export async function postChatMessage(
  * mutación de contenido de workspace (tareas/notas/eventos), así que no
  * pasa por `canWrite`/rol.
  */
-export async function sendChatMessage(conversationId: string, texto: string, imagenUrl?: string | null): Promise<SendChatMessageResult> {
+export async function sendChatMessage(
+  conversationId: string,
+  texto: string,
+  imagenUrl?: string | null,
+): Promise<SendChatMessageResult> {
   const userId = await verifySession();
   const conversation = await requireParticipant(conversationId, userId);
   if (!conversation) return { error: "No perteneces a esta conversación." };
-  return postChatMessage(conversationId, conversation.workspaceId, userId, texto, imagenUrl);
+  return postChatMessage(
+    conversationId,
+    conversation.workspaceId,
+    userId,
+    texto,
+    imagenUrl,
+  );
 }
 
 /** Sube la imagen adjunta de un mensaje de chat a Vercel Blob — sin `canWrite`, mismo criterio que `sendChatMessage`. */
-export async function uploadChatImage(formData: FormData, conversationId: string): Promise<{ url?: string; error?: string }> {
+export async function uploadChatImage(
+  formData: FormData,
+  conversationId: string,
+): Promise<{ url?: string; error?: string }> {
   const userId = await verifySession();
   const conversation = await requireParticipant(conversationId, userId);
   if (!conversation) return { error: "No perteneces a esta conversación." };
 
   const file = formData.get("file");
-  if (!(file instanceof File)) return { error: "No se ha recibido ningún fichero." };
+  if (!(file instanceof File))
+    return { error: "No se ha recibido ningún fichero." };
 
   const result = await uploadImageToBlob(`chat/${conversationId}`, file);
-  if (result.error) Sentry.captureMessage(`Fallo al subir imagen de chat: ${result.error}`);
+  if (result.error)
+    Sentry.captureMessage(`Fallo al subir imagen de chat: ${result.error}`);
   return result;
 }
 
@@ -518,11 +849,16 @@ export async function uploadChatImage(formData: FormData, conversationId: string
  * no es suyo, esto no borra nada en vez de tocar el de otro — la
  * comprobación va en la propia consulta.
  */
-export async function deleteChatMessage(messageId: string): Promise<{ error?: string }> {
+export async function deleteChatMessage(
+  messageId: string,
+): Promise<{ error?: string }> {
   const userId = await verifySession();
   try {
-    const { count } = await prisma.chatMessage.deleteMany({ where: { id: messageId, userId } });
-    if (count === 0) return { error: "Solo puedes borrar tus propios mensajes." };
+    const { count } = await prisma.chatMessage.deleteMany({
+      where: { id: messageId, userId },
+    });
+    if (count === 0)
+      return { error: "Solo puedes borrar tus propios mensajes." };
     revalidatePath("/chat");
     return {};
   } catch (err) {
@@ -533,18 +869,34 @@ export async function deleteChatMessage(messageId: string): Promise<{ error?: st
 }
 
 /** Marca una conversación como leída hasta ahora — apaga su indicador de no leído. */
-export async function markConversationRead(conversationId: string): Promise<void> {
+export async function markConversationRead(
+  conversationId: string,
+): Promise<void> {
   const userId = await verifySession();
   await prisma.chatConversationParticipant
-    .update({ where: { conversationId_userId: { conversationId, userId } }, data: { lastReadAt: new Date() } })
-    .catch((err) => console.error("No se pudo marcar la conversación como leída (no crítico):", err));
+    .update({
+      where: { conversationId_userId: { conversationId, userId } },
+      data: { lastReadAt: new Date() },
+    })
+    .catch((err) =>
+      console.error(
+        "No se pudo marcar la conversación como leída (no crítico):",
+        err,
+      ),
+    );
 }
 
 /** Silencia/reactiva UNA conversación para el usuario actual — no afecta a poder leer/escribir, solo al indicador de no leído. */
-export async function setConversationMuted(conversationId: string, muted: boolean): Promise<{ error?: string }> {
+export async function setConversationMuted(
+  conversationId: string,
+  muted: boolean,
+): Promise<{ error?: string }> {
   const userId = await verifySession();
   try {
-    await prisma.chatConversationParticipant.update({ where: { conversationId_userId: { conversationId, userId } }, data: { muted } });
+    await prisma.chatConversationParticipant.update({
+      where: { conversationId_userId: { conversationId, userId } },
+      data: { muted },
+    });
     return {};
   } catch (err) {
     console.error("No se pudo cambiar el silencio de la conversación:", err);
@@ -553,20 +905,47 @@ export async function setConversationMuted(conversationId: string, muted: boolea
   }
 }
 
-/** Para el indicador de no leído del menú (Sidebar/BottomTabs, ver layout.tsx) — hay algo sin leer en CUALQUIER conversación no silenciada del usuario. Best-effort: no bloquea la navegación si falla. */
+/**
+ * Para el indicador de no leído del menú (Sidebar/BottomTabs, ver
+ * layout.tsx) — hay algo sin leer en CUALQUIER conversación ACTIVA no
+ * silenciada, O una invitación a un grupo esperando respuesta (una
+ * invitación sin decidir es, para efectos de "algo te espera en el chat",
+ * tan "sin leer" como un mensaje). Best-effort: no bloquea la navegación
+ * si falla.
+ */
 export async function hasUnreadChat(): Promise<boolean> {
   const userId = await verifySession();
   try {
-    const participations = await prisma.chatConversationParticipant.findMany({
-      where: { userId, muted: false },
-      select: { lastReadAt: true, conversation: { select: { messages: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } } } } },
-    });
+    const [participations, invitacionesPendientes] = await Promise.all([
+      prisma.chatConversationParticipant.findMany({
+        where: { userId, status: "ACTIVE", muted: false },
+        select: {
+          lastReadAt: true,
+          conversation: {
+            select: {
+              messages: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: { createdAt: true },
+              },
+            },
+          },
+        },
+      }),
+      prisma.chatConversationParticipant.count({
+        where: { userId, status: "PENDING" },
+      }),
+    ]);
+    if (invitacionesPendientes > 0) return true;
     return participations.some(({ lastReadAt, conversation }) => {
       const latest = conversation.messages[0];
       return latest != null && (!lastReadAt || latest.createdAt > lastReadAt);
     });
   } catch (err) {
-    console.error("No se pudo comprobar si hay mensajes de chat sin leer (no crítico):", err);
+    console.error(
+      "No se pudo comprobar si hay mensajes de chat sin leer (no crítico):",
+      err,
+    );
     return false;
   }
 }

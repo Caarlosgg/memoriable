@@ -321,6 +321,10 @@ enum NotificationType {
   ADDED_TO_TEAM
   /// Un owner/admin te ha cambiado el rol dentro de un equipo.
   ROLE_CHANGED
+  /// Te han invitado a un GRUPO de chat que no es el "Equipo" automático de
+  /// ningún workspace tuyo — ver ChatParticipantStatus. Accionable desde la
+  /// propia notificación (aceptar/rechazar), no solo un enlace.
+  CHAT_INVITE
 }
 
 /// Notificación en la app (Fase Equipo). Sin canal externo (email/push)
@@ -400,6 +404,19 @@ enum ChatConversationType {
   GROUP
 }
 
+/// Estado de UN participante dentro de una conversación (Fase Mensajería —
+/// invitaciones). PENDING = le han invitado a un GRUPO y todavía no ha
+/// decidido; ACTIVE = ya lee y escribe ahí. Las conversaciones DIRECT no
+/// pasan por PENDING (ver createDirectConversation en chat/actions.ts): un
+/// hilo 1-a-1 sin mensajes no molesta a nadie, así que pedir que se acepte
+/// antes de que exista una sola palabra sería fricción sin beneficio — la
+/// propuesta se justifica en grupos, donde te pueden meter en una
+/// conversación de gente que no elegiste.
+enum ChatParticipantStatus {
+  PENDING
+  ACTIVE
+}
+
 /// Conversación de chat: DIRECT y GROUP creados a mano SIEMPRE son
 /// personales (`workspaceId` null) — pertenecen a las personas, no a un
 /// equipo, así que se ven igual en espacio personal o en cualquier
@@ -453,6 +470,12 @@ model ChatConversationParticipant {
   /// Silencia ESTA conversación para este participante — no enciende el
   /// punto de "no leído" del menú, aunque sí se sigue pudiendo leer/escribir.
   muted          Boolean   @default(false)
+  /// PENDING mientras no ha aceptado la invitación a un grupo (ver el
+  /// comentario de ChatParticipantStatus) — @default(ACTIVE) para que
+  /// ninguna fila existente cambie de comportamiento con esta migración: el
+  /// creador de una conversación, y todo lo que ya existía antes de esto,
+  /// nace/sigue ACTIVE.
+  status         ChatParticipantStatus @default(ACTIVE)
 
   conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -35,7 +35,10 @@ export async function notifyChatParticipants(
         type: true,
         nombre: true,
         participants: {
-          where: { muted: false, userId: { not: senderUserId } },
+          // `status: "ACTIVE"`: quien todavía no ha aceptado la invitación
+          // al grupo no debe recibir push de sus mensajes — se enteraría de
+          // conversaciones a las que ni ha decidido si entra.
+          where: { muted: false, userId: { not: senderUserId }, status: "ACTIVE" },
           select: { userId: true },
         },
       },

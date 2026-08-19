@@ -217,6 +217,7 @@ enum NotificationType {
   ASSIGNED_EVENTO
   ADDED_TO_TEAM
   ROLE_CHANGED
+  CHAT_INVITE
 }
 
 /// Ver ../../prisma/schema.prisma: notificación en la app.
@@ -276,6 +277,12 @@ enum ChatConversationType {
   GROUP
 }
 
+/// Ver ../../prisma/schema.prisma: estado de un participante — invitaciones a grupo.
+enum ChatParticipantStatus {
+  PENDING
+  ACTIVE
+}
+
 /// Ver ../../prisma/schema.prisma: conversación de chat (Fase Mensajería).
 /// DIRECT y GROUP creados a mano son SIEMPRE personales (workspaceId null)
 /// — solo el grupo "Equipo" autocreado por workspace lleva workspaceId.
@@ -307,6 +314,8 @@ model ChatConversationParticipant {
   joinedAt       DateTime  @default(now())
   lastReadAt     DateTime?
   muted          Boolean   @default(false)
+  /// Ver ../../prisma/schema.prisma: PENDING mientras no acepta la invitación a un grupo.
+  status         ChatParticipantStatus @default(ACTIVE)
 
   conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
