@@ -21,7 +21,10 @@ export class PrismaMessageRepository implements MessageRepository {
   private clientPromise: Promise<{
     message: {
       create(args: unknown): Promise<StoredMessage>;
-      findMany(args: unknown): Promise<StoredMessage[]>;
+      // `user` opcional y aparte de `StoredMessage`: solo `pending()` la
+      // pide (con `include`), para saber el email de quien creó una tarea
+      // asignada a otra persona — ver `asignadaPor` en repository.ts.
+      findMany(args: unknown): Promise<(StoredMessage & { user?: { email: string } | null })[]>;
     };
     user: {
       findUnique(args: unknown): Promise<{ personalWorkspaceId: string | null } | null>;
@@ -120,16 +123,33 @@ export class PrismaMessageRepository implements MessageRepository {
 
   async pending(userId: string, limit: number = DEFAULT_PENDING_LIMIT): Promise<StoredMessage[]> {
     const client = await this.getClient();
-    // Pendientes = accionables (tarea/recordatorio) que aún no están hechos.
-    return client.message.findMany({
+    // Pendientes = accionables (tarea/recordatorio) que aún no están hechos
+    // Y, además de las propias, las que otra persona te ha ASIGNADO (Fase
+    // Equipo) — antes solo se miraba `userId` (quien la creó), que nunca
+    // cambia al asignar, así que una tarea asignada a ti por un compañero
+    // no aparecía nunca en tu /pendientes de Telegram. El chequeo de
+    // membresía ACTIVA evita que siga colándose una asignación de un
+    // equipo del que ya saliste (mismo rigor que usa el dashboard).
+    const rows = await client.message.findMany({
       where: {
-        userId,
         hecho: false,
         categoria: { in: [...ACTIONABLE_CATEGORIES] },
+        OR: [
+          { userId },
+          { assigneeId: userId, workspace: { memberships: { some: { userId, status: 'ACTIVE' } } } },
+        ],
       },
+      include: { user: { select: { email: true } } },
       orderBy: { fecha: 'desc' },
       take: Math.max(0, limit),
     });
+    // Solo se anota `asignadaPor` cuando NO es tuya — para una nota propia
+    // sería ruido, no información (ver el comentario del campo en
+    // repository.ts).
+    return rows.map(({ user, ...m }) => ({
+      ...m,
+      asignadaPor: m.userId !== userId ? (user?.email ?? undefined) : undefined,
+    }));
   }
 
   async savedBetween(userId: string, from: Date, to: Date): Promise<StoredMessage[]> {

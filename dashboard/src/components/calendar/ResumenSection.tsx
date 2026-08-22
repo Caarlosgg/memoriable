@@ -31,6 +31,20 @@ export function ResumenSection({
   const router = useRouter();
   const [pending, setPending] = useState(importantPending);
 
+  // Resincroniza cuando el SERVIDOR manda una lista distinta (p. ej. al
+  // editar un evento en "Próximos días", que hace `router.refresh()`, o si
+  // otra pestaña/persona cambia algo). Sin esto, `pending` se congelaba en
+  // la lista del primer render para siempre — solo `handleToggleDone`
+  // (abajo) la tocaba, así que cualquier cambio que no pasara por ese botón
+  // se quedaba invisible hasta salir de /calendario y volver. Comparación
+  // de ids durante el render, mismo patrón que `byEstado` en KanbanBoard.
+  const firmaPending = importantPending.map((m) => m.id).join("|");
+  const [firmaPendingPrevia, setFirmaPendingPrevia] = useState(firmaPending);
+  if (firmaPending !== firmaPendingPrevia) {
+    setFirmaPendingPrevia(firmaPending);
+    setPending(importantPending);
+  }
+
   function memberOf(assigneeId: string | null): WorkspaceMemberInfo | undefined {
     return members.find((m) => m.userId === assigneeId);
   }

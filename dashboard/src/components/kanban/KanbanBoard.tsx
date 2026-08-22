@@ -941,10 +941,22 @@ export function KanbanBoard({
             strategy={horizontalListSortingStrategy}
           >
             <div className="flex flex-col gap-4 sm:flex-row sm:overflow-x-auto sm:pb-2">
-              {columnasLocales.map((columna) => (
+              {columnasLocales.map((columna) => {
+                // Las columnas por defecto se renombran con `boardLabels`
+                // (estado optimista, ver handleRenameColumn) — las propias
+                // llevan su nombre real ya en `columna.nombre`, puesto que
+                // vienen de BoardStatus y se renombran por otra vía
+                // (GestionColumnasDialog). Sin este `??`, un renombrado de
+                // "Por hacer"/"En progreso"/"Hecho" se guardaba bien en la
+                // base de datos pero la pantalla volvía a mostrar el nombre
+                // viejo al instante, porque nada leía `boardLabels`.
+                const columnaMostrada = columna.esPersonalizada
+                  ? columna
+                  : { ...columna, nombre: boardLabels[columna.fase] ?? columna.nombre };
+                return (
                 <KanbanColumn
                   key={columna.id}
-                  columna={columna}
+                  columna={columnaMostrada}
                   canReorder={puedeReordenar}
                   messages={byEstado[columna.id] ?? EMPTY_LIST}
                   density={density}
@@ -969,7 +981,8 @@ export function KanbanBoard({
                   onRename={handleRenameColumn}
                   onCreated={puedeEditar ? handleCreated : undefined}
                 />
-              ))}
+                );
+              })}
             </div>
           </SortableContext>
           <DragOverlay>

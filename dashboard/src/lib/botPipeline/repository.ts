@@ -12,6 +12,8 @@ export interface StoredMessage extends IncomingMessage, Analysis {
   fecha: Date;
   /** Dueño de la nota (Fase 2, multiusuario). Ver MessageRepository. */
   userId: string;
+  /** Email de quien la creó, solo si es distinto de quien consulta (tarea asignada). Ver PrismaMessageRepository.pending(). */
+  asignadaPor?: string;
   /** Vector de embedding, si se generó al guardar. Ver embedder.ts. */
   embedding?: number[] | null;
 }

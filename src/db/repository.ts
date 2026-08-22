@@ -11,6 +11,15 @@ export interface StoredMessage extends IncomingMessage, Analysis {
   /** Dueño de la nota (Fase 2, multiusuario). Ver MessageRepository. */
   userId: string;
   /**
+   * Email de quien la creó, SOLO cuando no es quien la está consultando
+   * (una tarea asignada por otra persona en un workspace de equipo — ver
+   * `pending()` en PrismaMessageRepository). `undefined` en el resto de
+   * casos, incluida cualquier nota propia: así el consumidor solo tiene
+   * que comprobar si el campo existe para saber si hace falta decir
+   * "asignada por X".
+   */
+  asignadaPor?: string;
+  /**
    * Vector de embedding, si se generó al guardar (ver ai/embedder.ts).
    * `undefined`/`null` es un estado válido y frecuente: sin GEMINI_API_KEY,
    * o pendiente de backfill. No forma parte de lo que se muestra al usuario.
