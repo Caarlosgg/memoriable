@@ -26,9 +26,15 @@ export interface GroqChatClient {
 
 const SYSTEM_PROMPT = [
   'Eres un asistente que clasifica y resume mensajes cortos en español.',
-  'Devuelve SIEMPRE un JSON válido con exactamente dos campos:',
+  'Devuelve SIEMPRE un JSON válido con estos campos:',
   '  - "categoria": una de estas etiquetas exactas: ' + CATEGORIES.join(', ') + '.',
   '  - "resumen": un resumen conciso (una frase) del mensaje.',
+  '  - "confianza": un número entre 0 y 1, qué tan seguro estás de la categoría elegida.',
+  '  - "pregunta_aclaratoria" (opcional, solo si hace falta): si el mensaje es una',
+  '    tarea o recordatorio pero le falta un dato importante para tener sentido del',
+  '    todo (sobre todo una fecha/hora concreta), una pregunta MUY corta para pedirlo,',
+  '    en tono natural (p. ej. "¿Para qué día lo recuerdo?"). Si el mensaje ya está',
+  '    completo o no es tarea/recordatorio, omite este campo.',
   'No añadas texto fuera del JSON.',
 ].join('\n');
 
@@ -58,7 +64,23 @@ export function parseAnalysis(raw: string, fallbackContenido: string): Analysis 
   const resumenRaw = typeof record.resumen === 'string' ? record.resumen.trim() : '';
   const resumen = resumenRaw.length > 0 ? resumenRaw : fallbackContenido.trim().slice(0, 140);
 
-  return { categoria, resumen };
+  const confianzaRaw = record.confianza;
+  const confianza =
+    typeof confianzaRaw === 'number' && Number.isFinite(confianzaRaw)
+      ? Math.min(1, Math.max(0, confianzaRaw))
+      : undefined;
+
+  // Solo tiene sentido pedir una aclaración sobre algo accionable (tarea/
+  // recordatorio) — para el resto de categorías se ignora aunque el modelo
+  // la incluya por error.
+  const preguntaRaw = record.pregunta_aclaratoria;
+  const esAccionable = categoria === 'tarea' || categoria === 'recordatorio';
+  const preguntaAclaratoria =
+    esAccionable && typeof preguntaRaw === 'string' && preguntaRaw.trim().length > 0
+      ? preguntaRaw.trim().slice(0, 200)
+      : undefined;
+
+  return { categoria, resumen, confianza, preguntaAclaratoria };
 }
 
 /**
