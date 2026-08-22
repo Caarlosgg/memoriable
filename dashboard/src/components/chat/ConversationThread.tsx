@@ -483,6 +483,11 @@ export function ConversationThread({
                 ? "Activar avisos de esta conversación"
                 : "Silenciar esta conversación"
             }
+            aria-label={
+              muted
+                ? "Activar avisos de esta conversación"
+                : "Silenciar esta conversación"
+            }
             aria-pressed={muted}
             className="flex items-center gap-1.5 rounded-full border border-paper-line bg-paper px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong"
           >

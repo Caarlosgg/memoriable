@@ -24,7 +24,12 @@ function ConversationAvatar({ conversation }: { conversation: ConversationView }
           className={`absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2 border-paper ${
             isOnline(other.lastSeenAt) ? "bg-accent" : "bg-paper-line"
           }`}
-        />
+        >
+          {/* Un punto de color sin texto no dice nada a quien no puede
+              verlo — la cabecera del hilo abierto ya dice "en línea"/
+              "desconectado" en texto, aquí faltaba lo mismo. */}
+          <span className="sr-only">{isOnline(other.lastSeenAt) ? "En línea" : "Desconectado"}</span>
+        </span>
       )}
     </span>
   );

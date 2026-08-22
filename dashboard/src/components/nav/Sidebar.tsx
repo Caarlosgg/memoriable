@@ -113,6 +113,7 @@ export function Sidebar({
           type="button"
           onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
           title={collapsed ? "Buscar (Ctrl+K)" : undefined}
+          aria-label="Buscar (Ctrl+K)"
           className="flex w-full items-center gap-3 rounded-lg border border-paper-line px-3 py-2 text-sm text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <Search aria-hidden size={16} className="shrink-0" />
@@ -169,6 +170,7 @@ export function Sidebar({
           <button
             type="submit"
             title={collapsed ? "Salir" : undefined}
+            aria-label="Salir"
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong active:bg-accent-soft"
           >
             <LogOut aria-hidden size={18} className="shrink-0" />

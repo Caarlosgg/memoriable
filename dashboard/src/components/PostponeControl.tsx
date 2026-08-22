@@ -44,7 +44,11 @@ export function PostponeControl({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           title={fechaLimite ? "Cambiar la fecha límite" : "Aplazar"}
-          aria-label={fechaLimite ? `Aplazada a ${dayLabel(dateKey(fechaLimite))}. Cambiar.` : "Aplazar esta tarjeta"}
+          aria-label={
+            fechaLimite
+              ? `${overdue ? "Vencida, aplazada" : "Aplazada"} a ${dayLabel(dateKey(fechaLimite))}. Cambiar.`
+              : "Aplazar esta tarjeta"
+          }
           className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
             overdue
               ? "border-danger/40 bg-danger/10 text-danger hover:brightness-95"

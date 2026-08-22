@@ -77,6 +77,7 @@ export function WorkspaceSwitcher({
           type="button"
           disabled={pending}
           title={collapsed ? (active?.nombre ?? "Workspace") : undefined}
+          aria-label={`Cambiar de espacio de trabajo. Activo: ${active?.nombre ?? "Personal"}.`}
           className="relative flex w-full items-center gap-2 rounded-lg border border-paper-line px-3 py-2 text-sm text-ink transition-colors hover:bg-accent-soft hover:text-accent-strong focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-60"
         >
           <ModoIcon aria-hidden size={16} className={`shrink-0 ${acento}`} />

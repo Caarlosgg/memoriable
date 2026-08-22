@@ -463,6 +463,7 @@ export function CalendarView({
                           <button
                             type="button"
                             title={`Tarea${vencida ? " vencida" : ""}: ${tarea.resumen}`}
+                            aria-label={`Tarea${vencida ? " vencida" : ""}: ${tarea.resumen}`}
                             className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] font-medium transition-[filter] hover:brightness-95 ${tareaChipClass(vencida)}`}
                           >
                             <ListTodo aria-hidden size={10} className="shrink-0" />
@@ -558,6 +559,7 @@ export function CalendarView({
                             <button
                               type="button"
                               title={`Tarea${vencida ? " vencida" : ""}: ${tarea.resumen}`}
+                            aria-label={`Tarea${vencida ? " vencida" : ""}: ${tarea.resumen}`}
                               className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] font-medium transition-[filter] hover:brightness-95 ${tareaChipClass(vencida)}`}
                             >
                               <ListTodo aria-hidden size={9} className="shrink-0" />
