@@ -145,13 +145,6 @@ export async function exportData(scope: ExportScope, format: "markdown" | "json"
 
 export type NotificationPrefs = Partial<Record<NotificationType, boolean>>;
 
-/** Preferencias de notificación del usuario — ausente = ese tipo está activado (comportamiento de siempre). */
-export async function getNotificationPrefs(): Promise<NotificationPrefs> {
-  const userId = await verifySession();
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { notificationPrefs: true } });
-  return (user?.notificationPrefs ?? {}) as NotificationPrefs;
-}
-
 /** Activa/desactiva un tipo de notificación — ver `createNotification` en lib/notifications.ts, que es quien de verdad respeta esto. */
 export async function setNotificationPref(type: NotificationType, enabled: boolean): Promise<{ error?: string }> {
   const userId = await verifySession();
