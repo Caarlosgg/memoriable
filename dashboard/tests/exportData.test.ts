@@ -44,6 +44,7 @@ function fakeMessage(overrides: Partial<ExportPayload["notas"][number]> = {}): E
     fecha: new Date("2026-08-01T10:00:00.000Z"),
     fechaLimite: null,
     boardStatusId: null,
+    customCategoryId: null,
     enProgresoPorId: null,
     enProgresoDesde: null,
     userId: "u1",

@@ -73,4 +73,32 @@ describe('InMemoryMessageRepository', () => {
     await expect(repo.recategorize('u2', stored.id, 'tarea')).resolves.toBeNull();
     expect(repo.all().find((m) => m.id === stored.id)?.categoria).toBe('nota');
   });
+
+  it('setCustomCategory pone la etiqueta propia SIN tocar la categoría fija', async () => {
+    const repo = new InMemoryMessageRepository();
+    const stored = await repo.save('u1', { tipo: 'text', contenido: 'x', categoria: 'nota', resumen: 'x' });
+
+    const updated = await repo.setCustomCategory('u1', stored.id, 'cc1');
+
+    expect(updated?.customCategoryId).toBe('cc1');
+    expect(updated?.categoria).toBe('nota');
+  });
+
+  it('setCustomCategory con null quita la etiqueta propia', async () => {
+    const repo = new InMemoryMessageRepository();
+    const stored = await repo.save('u1', { tipo: 'text', contenido: 'x', categoria: 'nota', resumen: 'x' });
+    await repo.setCustomCategory('u1', stored.id, 'cc1');
+
+    const updated = await repo.setCustomCategory('u1', stored.id, null);
+
+    expect(updated?.customCategoryId).toBeNull();
+  });
+
+  it('setCustomCategory con un id de mensaje ajeno o inventado no toca nada y devuelve null', async () => {
+    const repo = new InMemoryMessageRepository();
+    const stored = await repo.save('u1', { tipo: 'text', contenido: 'x', categoria: 'nota', resumen: 'x' });
+
+    await expect(repo.setCustomCategory('u2', stored.id, 'cc1')).resolves.toBeNull();
+    expect(repo.all().find((m) => m.id === stored.id)?.customCategoryId).toBeUndefined();
+  });
 });

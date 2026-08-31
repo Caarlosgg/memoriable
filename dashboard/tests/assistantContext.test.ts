@@ -29,6 +29,7 @@ function fakeMessage(overrides: Partial<Message> = {}): Message {
     fecha: new Date("2026-07-28T21:24:00.000Z"),
     fechaLimite: null,
     boardStatusId: null,
+    customCategoryId: null,
     enProgresoPorId: null,
     enProgresoDesde: null,
     userId: "u1",

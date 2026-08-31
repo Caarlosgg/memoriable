@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const findMany = vi.fn();
 const findFirst = vi.fn();
 const updateMany = vi.fn();
+const customCategoryFindFirst = vi.fn();
 vi.mock('@prisma/client', () => ({
   PrismaClient: class {
     message = { create: vi.fn(), findMany, findFirst, updateMany };
     user = { findUnique: vi.fn() };
+    customCategory = { findFirst: customCategoryFindFirst };
     $executeRaw = vi.fn();
   },
 }));
@@ -160,6 +162,73 @@ describe('PrismaMessageRepository.recategorize', () => {
     const repo = new PrismaMessageRepository();
 
     await expect(repo.recategorize('u2', 'm1', 'idea')).resolves.toBeNull();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('PrismaMessageRepository.setCustomCategory', () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    findFirst.mockReset();
+    updateMany.mockReset();
+    customCategoryFindFirst.mockReset();
+  });
+
+  it('verifica que la categoría propia sea de ESTE usuario ANTES de escribir', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    // Sin esto, alguien podría etiquetar su nota con el id de la categoría
+    // propia de OTRO usuario — la clave foránea de Postgres solo garantiza
+    // que la fila exista, no que sea suya.
+    customCategoryFindFirst.mockResolvedValue(null);
+    const { PrismaMessageRepository } = await import('../src/db/prismaRepository.js');
+    const repo = new PrismaMessageRepository();
+
+    const result = await repo.setCustomCategory('u1', 'm1', 'cc-ajena');
+
+    expect(customCategoryFindFirst).toHaveBeenCalledWith({ where: { id: 'cc-ajena', userId: 'u1' } });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(result).toBeNull();
+  });
+
+  it('con una categoría propia de verdad, actualiza SOLO customCategoryId', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    customCategoryFindFirst.mockResolvedValue({ id: 'cc1' });
+    updateMany.mockResolvedValue({ count: 1 });
+    findFirst.mockResolvedValue({ id: 'm1', userId: 'u1', categoria: 'nota', customCategoryId: 'cc1' });
+    const { PrismaMessageRepository } = await import('../src/db/prismaRepository.js');
+    const repo = new PrismaMessageRepository();
+
+    const result = await repo.setCustomCategory('u1', 'm1', 'cc1');
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: 'm1', userId: 'u1' },
+      data: { customCategoryId: 'cc1' },
+    });
+    expect(result?.customCategoryId).toBe('cc1');
+  });
+
+  it('con null, quita la etiqueta sin comprobar propiedad (no hay nada que verificar)', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    updateMany.mockResolvedValue({ count: 1 });
+    findFirst.mockResolvedValue({ id: 'm1', userId: 'u1', categoria: 'nota', customCategoryId: null });
+    const { PrismaMessageRepository } = await import('../src/db/prismaRepository.js');
+    const repo = new PrismaMessageRepository();
+
+    const result = await repo.setCustomCategory('u1', 'm1', null);
+
+    expect(customCategoryFindFirst).not.toHaveBeenCalled();
+    expect(result?.customCategoryId).toBeNull();
+  });
+
+  it('con un id de mensaje ajeno o inventado no toca nada y devuelve null', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    customCategoryFindFirst.mockResolvedValue({ id: 'cc1' });
+    updateMany.mockResolvedValue({ count: 0 });
+    const { PrismaMessageRepository } = await import('../src/db/prismaRepository.js');
+    const repo = new PrismaMessageRepository();
+
+    await expect(repo.setCustomCategory('u2', 'm-ajeno', 'cc1')).resolves.toBeNull();
     expect(findFirst).not.toHaveBeenCalled();
   });
 });

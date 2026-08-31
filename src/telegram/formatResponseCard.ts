@@ -30,6 +30,14 @@ export interface ResponseCardData extends Analysis {
   fecha: Date;
   /** Email de quien la creó, si es una tarea asignada por otra persona (ver StoredMessage.asignadaPor). */
   asignadaPor?: string;
+  /**
+   * Nombre (y emoji) de la etiqueta propia, ya resuelta por quien llama —
+   * ver `StoredMessage.customCategoryId`. `formatResponseCard` no consulta
+   * la base de datos por su cuenta: el llamante ya tenía la lista de
+   * categorías propias del usuario para pintar el selector, así que
+   * resolverlo aquí sería una segunda consulta redundante.
+   */
+  categoriaPersonalizada?: { nombre: string; emoji: string | null };
 }
 
 /**
@@ -44,11 +52,24 @@ function formatFecha(fecha: Date): string {
   return DATE_FORMATTER.format(fecha);
 }
 
-export function formatResponseCard({ categoria, resumen, fecha, asignadaPor }: ResponseCardData): string {
+export function formatResponseCard({
+  categoria,
+  resumen,
+  fecha,
+  asignadaPor,
+  categoriaPersonalizada,
+}: ResponseCardData): string {
   const { emoji, label } = CATEGORY_PRESENTATION[categoria] ?? CATEGORY_PRESENTATION.otro;
   const resumenLimpio = escapeHtml(resumen.trim()) || '(sin resumen)';
 
   const lineas = [`${emoji} <b>${label}</b>`, resumenLimpio, `🕒 ${formatFecha(fecha)}`];
+  // La etiqueta propia va APARTE de la categoría fija (nunca la sustituye
+  // — ver el comentario de Message.customCategoryId), así que se enseña
+  // como una línea más, no cambiando la cabecera de arriba.
+  if (categoriaPersonalizada) {
+    const prefijo = categoriaPersonalizada.emoji ? `${categoriaPersonalizada.emoji} ` : '🏷️ ';
+    lineas.push(`${prefijo}${escapeHtml(categoriaPersonalizada.nombre)}`);
+  }
   // Solo en tareas que otra persona te ha asignado — sin esto, verla en tu
   // /pendientes sin más contexto parece una tarea que no recuerdas haber
   // escrito tú mismo.

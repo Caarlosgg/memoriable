@@ -41,4 +41,33 @@ describe('categoryPickerKeyboard', () => {
       expect((b as { callback_data: string }).callback_data.length).toBeLessThanOrEqual(64);
     }
   });
+
+  it('añade una fila por cada categoría PROPIA, con su propio prefijo de callback (setcustom, no setcat)', () => {
+    const rows = categoryPickerKeyboard('m1', [
+      { id: 'c1', nombre: 'Recetas', emoji: '🍳' },
+      { id: 'c2', nombre: 'Viajes', emoji: null },
+    ]).reply_markup.inline_keyboard;
+
+    expect(rows).toHaveLength(CATEGORIES.length + 2);
+    const ultimasDos = rows.slice(-2).flat();
+    expect((ultimasDos[0] as { callback_data: string }).callback_data).toBe('setcustom:m1:c1');
+    expect((ultimasDos[1] as { callback_data: string }).callback_data).toBe('setcustom:m1:c2');
+    // Un emoji propio se respeta; sin emoji, cae a un 🏷️ genérico —
+    // mismo criterio que formatResponseCard.
+    expect((ultimasDos[0] as { text: string }).text).toBe('🍳 Recetas');
+    expect((ultimasDos[1] as { text: string }).text).toBe('🏷️ Viajes');
+  });
+
+  it('el peor caso (setcustom + dos cuids de 25) sigue cabiendo en 64 bytes', () => {
+    const rows = categoryPickerKeyboard('c'.repeat(25), [{ id: 'd'.repeat(25), nombre: 'X', emoji: null }])
+      .reply_markup.inline_keyboard;
+    for (const b of rows.flat()) {
+      expect((b as { callback_data: string }).callback_data.length).toBeLessThanOrEqual(64);
+    }
+  });
+
+  it('sin categorías propias, no añade ninguna fila de más', () => {
+    const rows = categoryPickerKeyboard('m1').reply_markup.inline_keyboard;
+    expect(rows).toHaveLength(CATEGORIES.length);
+  });
 });

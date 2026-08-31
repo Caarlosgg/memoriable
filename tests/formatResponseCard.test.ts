@@ -50,4 +50,44 @@ describe('formatResponseCard', () => {
     const card = formatResponseCard({ categoria: 'nota', resumen: 'x', fecha: new Date('esto-no-es-una-fecha') });
     expect(card).toContain('🕒 fecha desconocida');
   });
+
+  it('con una categoría propia, añade una línea aparte sin tocar la cabecera fija', () => {
+    const card = formatResponseCard({
+      categoria: 'nota',
+      resumen: 'x',
+      fecha,
+      categoriaPersonalizada: { nombre: 'Recetas', emoji: '🍳' },
+    });
+
+    // La cabecera sigue siendo la categoría FIJA — la propia es aditiva.
+    expect(card).toContain('<b>Nota</b>');
+    expect(card).toContain('🍳 Recetas');
+  });
+
+  it('una categoría propia sin emoji cae a un 🏷️ genérico', () => {
+    const card = formatResponseCard({
+      categoria: 'nota',
+      resumen: 'x',
+      fecha,
+      categoriaPersonalizada: { nombre: 'Recetas', emoji: null },
+    });
+
+    expect(card).toContain('🏷️ Recetas');
+  });
+
+  it('escapa HTML del nombre de la categoría propia (no es contenido nuestro)', () => {
+    const card = formatResponseCard({
+      categoria: 'nota',
+      resumen: 'x',
+      fecha,
+      categoriaPersonalizada: { nombre: '<b>hola</b>', emoji: null },
+    });
+
+    expect(card).toContain('&lt;b&gt;hola&lt;/b&gt;');
+  });
+
+  it('sin categoría propia, no añade ninguna línea de más', () => {
+    const card = formatResponseCard({ categoria: 'nota', resumen: 'x', fecha });
+    expect(card.split('\n')).toHaveLength(3);
+  });
 });

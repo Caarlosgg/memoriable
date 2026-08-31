@@ -2,6 +2,7 @@ import { Markup } from 'telegraf';
 import { CATEGORIES, type Category } from '../ai/types.js';
 import { isPending } from '../db/pending.js';
 import type { StoredMessage } from '../db/repository.js';
+import type { CustomCategory } from '../db/customCategories.js';
 
 /** Presentación (emoji + etiqueta) de cada categoría — mismo criterio visual que formatResponseCard.ts. */
 const CATEGORY_BUTTON_LABEL: Record<Category, string> = {
@@ -33,21 +34,31 @@ export function noteActionsKeyboard(message: Pick<StoredMessage, 'id' | 'categor
 }
 
 /**
- * Selector de categoría: una fila por botón (6 categorías, se lee mejor
- * apiladas que en una cuadrícula estrecha). Deliberadamente sin marcar cuál
- * es la actual ni un botón de "cancelar": eso exigiría una consulta aparte
- * solo para pintar el selector, y el mismo resultado (deshacer un cambio)
- * ya se consigue pulsando "Recategorizar" otra vez sobre la tarjeta
- * actualizada — más simple, sin dato extra que mantener sincronizado.
+ * Selector de categoría: una fila por botón (6 fijas + las propias del
+ * usuario, se lee mejor apiladas que en una cuadrícula estrecha).
+ * Deliberadamente sin marcar cuál es la actual ni un botón de "cancelar":
+ * eso exigiría una consulta aparte solo para pintar el selector, y el
+ * mismo resultado (deshacer un cambio) ya se consigue pulsando
+ * "Recategorizar" otra vez sobre la tarjeta actualizada — más simple, sin
+ * dato extra que mantener sincronizado.
  *
- * `callback_data` lleva id + categoría (`setcat:<id>:<categoria>`): con un
- * cuid de 25 caracteres y la categoría más larga ("recordatorio"), son ~45
- * bytes — de sobra bajo el límite de 64 de Telegram.
+ * Dos prefijos de `callback_data` distintos (`setcat:`/`setcustom:`), no
+ * uno solo: una categoría FIJA cambia `categoria` (recategorize); una
+ * PROPIA pone `customCategoryId` APARTE, sin tocar `categoria` (ver el
+ * comentario de `Message.customCategoryId` en schema.prisma) — son dos
+ * columnas y dos operaciones distintas, así que van por rutas distintas
+ * desde el principio, sin ambigüedad que parsear en el handler.
+ *
+ * Con un cuid de 25 caracteres cada uno, el caso más largo
+ * (`setcustom:<25>:<25>`) son 61 bytes — de sobra bajo el límite de 64 de
+ * Telegram.
  */
-export function categoryPickerKeyboard(messageId: string) {
-  return Markup.inlineKeyboard(
-    CATEGORIES.map((categoria) => [
-      Markup.button.callback(CATEGORY_BUTTON_LABEL[categoria], `setcat:${messageId}:${categoria}`),
-    ]),
-  );
+export function categoryPickerKeyboard(messageId: string, customCategories: readonly CustomCategory[] = []) {
+  const fijas = CATEGORIES.map((categoria) => [
+    Markup.button.callback(CATEGORY_BUTTON_LABEL[categoria], `setcat:${messageId}:${categoria}`),
+  ]);
+  const propias = customCategories.map((c) => [
+    Markup.button.callback(`${c.emoji ? `${c.emoji} ` : '🏷️ '}${c.nombre}`, `setcustom:${messageId}:${c.id}`),
+  ]);
+  return Markup.inlineKeyboard([...fijas, ...propias]);
 }

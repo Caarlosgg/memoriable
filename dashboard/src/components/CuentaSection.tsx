@@ -9,18 +9,24 @@ import { ExportSection } from "@/components/ExportSection";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { NotificationPrefsForm } from "@/components/NotificationPrefsForm";
 import { HiddenCategoriesForm } from "@/components/HiddenCategoriesForm";
+import { CustomCategoriesForm } from "@/components/CustomCategoriesForm";
 import { PushNotificationsToggle } from "@/components/PushNotificationsToggle";
-import { hasPushSubscription, type NotificationPrefs } from "@/app/(dashboard)/cuenta/actions";
+import {
+  hasPushSubscription,
+  listCustomCategories,
+  type NotificationPrefs,
+} from "@/app/(dashboard)/cuenta/actions";
 
 export async function CuentaSection() {
   const userId = await verifySession();
-  const [user, { workspaceId }, pushEnabled] = await Promise.all([
+  const [user, { workspaceId }, pushEnabled, customCategories] = await Promise.all([
     prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { email: true, telegramChatId: true, passwordHash: true, notificationPrefs: true },
     }),
     getActiveWorkspace(userId),
     hasPushSubscription(),
+    listCustomCategories(),
   ]);
   const hiddenCategories = await getHiddenCategories(userId, workspaceId);
 
@@ -67,6 +73,7 @@ export async function CuentaSection() {
       <Grupo id="apariencia" titulo="Apariencia y contenido" Icon={Palette}>
         <ThemeSettings />
         <HiddenCategoriesForm initialHidden={hiddenCategories} />
+        <CustomCategoriesForm initialCategories={customCategories} />
       </Grupo>
 
       <Grupo id="datos" titulo="Tus datos" Icon={Download}>

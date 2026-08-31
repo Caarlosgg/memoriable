@@ -2,11 +2,15 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const messageUpdateMany = vi.fn();
 const messageFindFirst = vi.fn();
+const customCategoryFindFirst = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     message: {
       updateMany: (...a: unknown[]) => messageUpdateMany(...a),
       findFirst: (...a: unknown[]) => messageFindFirst(...a),
+    },
+    customCategory: {
+      findFirst: (...a: unknown[]) => customCategoryFindFirst(...a),
     },
   },
 }));
@@ -14,6 +18,7 @@ vi.mock("@/lib/prisma", () => ({
 beforeEach(() => {
   messageUpdateMany.mockReset();
   messageFindFirst.mockReset();
+  customCategoryFindFirst.mockReset();
 });
 
 /**
@@ -91,5 +96,70 @@ describe("DashboardMessageRepository.recategorize", () => {
 
     await expect(repo.recategorize("u2", "m1", "tarea")).resolves.toBeNull();
     expect(messageFindFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("DashboardMessageRepository.setCustomCategory", () => {
+  it("verifica que la categoría propia sea de ESTE usuario ANTES de escribir", async () => {
+    // La clave foránea de Postgres solo garantiza que la fila exista, no
+    // que sea de este usuario — sin esta comprobación, se podría enseñar
+    // el nombre de la categoría propia de OTRO usuario.
+    customCategoryFindFirst.mockResolvedValue(null);
+    const { DashboardMessageRepository } = await import("../src/lib/pipeline");
+    const repo = new DashboardMessageRepository("ws1");
+
+    const result = await repo.setCustomCategory("u1", "m1", "cc-ajena");
+
+    expect(customCategoryFindFirst).toHaveBeenCalledWith({ where: { id: "cc-ajena", userId: "u1" } });
+    expect(messageUpdateMany).not.toHaveBeenCalled();
+    expect(result).toBeNull();
+  });
+
+  it("con una categoría propia de verdad, actualiza SOLO customCategoryId", async () => {
+    customCategoryFindFirst.mockResolvedValue({ id: "cc1" });
+    messageUpdateMany.mockResolvedValue({ count: 1 });
+    messageFindFirst.mockResolvedValue({
+      id: "m1",
+      tipo: "text",
+      contenido: "x",
+      categoria: "nota",
+      resumen: "x",
+      hecho: false,
+      fecha: new Date(),
+      userId: "u1",
+      customCategoryId: "cc1",
+    });
+    const { DashboardMessageRepository } = await import("../src/lib/pipeline");
+    const repo = new DashboardMessageRepository("ws1");
+
+    const result = await repo.setCustomCategory("u1", "m1", "cc1");
+
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: { id: "m1", userId: "u1" },
+      data: { customCategoryId: "cc1" },
+    });
+    expect(result?.customCategoryId).toBe("cc1");
+  });
+
+  it("con null, quita la etiqueta sin comprobar propiedad", async () => {
+    messageUpdateMany.mockResolvedValue({ count: 1 });
+    messageFindFirst.mockResolvedValue({
+      id: "m1",
+      tipo: "text",
+      contenido: "x",
+      categoria: "nota",
+      resumen: "x",
+      hecho: false,
+      fecha: new Date(),
+      userId: "u1",
+      customCategoryId: null,
+    });
+    const { DashboardMessageRepository } = await import("../src/lib/pipeline");
+    const repo = new DashboardMessageRepository("ws1");
+
+    const result = await repo.setCustomCategory("u1", "m1", null);
+
+    expect(customCategoryFindFirst).not.toHaveBeenCalled();
+    expect(result?.customCategoryId).toBeNull();
   });
 });

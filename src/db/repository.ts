@@ -20,6 +20,13 @@ export interface StoredMessage extends IncomingMessage, Analysis {
    */
   asignadaPor?: string;
   /**
+   * Etiqueta propia del usuario (Fase 3 del roadmap: "categorías
+   * configurables"), APARTE de `categoria` — nunca la sustituye, ver el
+   * comentario de `Message.customCategoryId` en schema.prisma. `undefined`
+   * en la mayoría de mensajes (el caso normal, sin etiqueta propia).
+   */
+  customCategoryId?: string | null;
+  /**
    * Vector de embedding, si se generó al guardar (ver ai/embedder.ts).
    * `undefined`/`null` es un estado válido y frecuente: sin GEMINI_API_KEY,
    * o pendiente de backfill. No forma parte de lo que se muestra al usuario.
@@ -72,6 +79,14 @@ export interface MessageRepository {
    * recálculo. `null` si el id no existe o no es de este usuario.
    */
   recategorize(userId: string, messageId: string, categoria: Category): Promise<StoredMessage | null>;
+  /**
+   * Pone (o quita, con `null`) la etiqueta propia de un mensaje — botón
+   * inline "🏷️ Recategorizar" cuando se elige una categoría PROPIA en vez
+   * de una de las 6 fijas (esas van por `recategorize`). No toca
+   * `categoria`: las dos conviven, ver `Message.customCategoryId`.
+   * `null` si el mensaje no existe o no es de este usuario.
+   */
+  setCustomCategory(userId: string, messageId: string, customCategoryId: string | null): Promise<StoredMessage | null>;
 }
 
 /**
@@ -119,6 +134,17 @@ export class InMemoryMessageRepository implements MessageRepository {
     const item = this.findOwn(userId, messageId);
     if (!item) return null;
     item.categoria = categoria;
+    return item;
+  }
+
+  async setCustomCategory(
+    userId: string,
+    messageId: string,
+    customCategoryId: string | null,
+  ): Promise<StoredMessage | null> {
+    const item = this.findOwn(userId, messageId);
+    if (!item) return null;
+    item.customCategoryId = customCategoryId;
     return item;
   }
 

@@ -136,6 +136,7 @@ model User {
   pushSubscriptions PushSubscription[]
   chatConversationsCreated ChatConversation[]            @relation("ChatConversationCreator")
   chatParticipations       ChatConversationParticipant[]
+  customCategories         CustomCategory[]
 
   @@map("users")
 }
@@ -579,8 +580,19 @@ model Message {
   tipo      String
   /// Contenido original del mensaje.
   contenido String
-  /// Categoría asignada por la IA (tarea, idea, pregunta, ...).
+  /// Categoría asignada por la IA (tarea, idea, pregunta, ...). Es la
+  /// verdad semántica de siempre — accionable/fase del kanban/`/pendientes`
+  /// siguen mirando SOLO esto, nunca `customCategoryId`.
   categoria String
+  /// Etiqueta propia del usuario (Fase 3 del roadmap del bot: "categorías
+  /// configurables"), a MAYORES de `categoria` — nunca la sustituye. Solo
+  /// asignable a mano (recategorizar); la IA no clasifica en categorías
+  /// propias, sigue devolviendo siempre una de las 6 fijas. Null = sin
+  /// etiqueta propia (el caso normal). Al borrar la categoría, vuelve a
+  /// null (mismo patrón ON DELETE SET NULL que `boardStatusId`) — la nota
+  /// no se pierde ni rompe nada, solo deja de llevar esa etiqueta.
+  customCategoryId String?
+  customCategory   CustomCategory? @relation(fields: [customCategoryId], references: [id], onDelete: SetNull)
   /// Resumen conciso generado por la IA.
   resumen   String
   /// ¿Está marcado como hecho? Solo relevante para categorías accionables
@@ -707,7 +719,40 @@ model Message {
   @@index([workspaceId])
   @@index([assigneeId])
   @@index([enProgresoPorId])
+  @@index([customCategoryId])
   @@map("messages")
+}
+
+/// Categoría propia del usuario (Fase 3 del roadmap del bot: "categorías
+/// configurables"), a mayores de las 6 fijas (tarea/idea/pregunta/
+/// recordatorio/nota/otro). Por USUARIO, no por workspace: es la misma
+/// idea que "mis notas son mías" en toda la app (ver el comentario de
+/// `buildExportData` en el dashboard) — no algo que se comparta con un
+/// equipo.
+///
+/// Solo se asignan A MANO (recategorizar, en el bot o el dashboard): la
+/// categorización automática por IA se queda en las 6 fijas a propósito,
+/// para no arriesgar la calidad del categorizador por cada categoría
+/// nueva e idiosincrática que alguien invente — ver el comentario del
+/// prompt en ai/categorizer.ts si esto cambia algún día.
+///
+/// Va enlazada desde `Message.customCategoryId` — ver ese campo para el
+/// porqué es aditiva y no sustituye a `categoria`.
+model CustomCategory {
+  id        String   @id @default(cuid())
+  nombre    String
+  /// Emoji suelto (p. ej. "🎯"), opcional — sin exigir uno, para no
+  /// convertir "añadir una categoría" en un paso más largo del necesario.
+  emoji     String?
+  createdAt DateTime @default(now())
+
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([userId, nombre])
+  @@index([userId])
+  @@map("custom_categories")
 }
 
 /// Evento del calendario (Fase I): cita/recordatorio con fecha y hora,

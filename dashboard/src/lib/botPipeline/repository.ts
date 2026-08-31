@@ -14,6 +14,8 @@ export interface StoredMessage extends IncomingMessage, Analysis {
   userId: string;
   /** Email de quien la creó, solo si es distinto de quien consulta (tarea asignada). Ver PrismaMessageRepository.pending(). */
   asignadaPor?: string;
+  /** Etiqueta propia del usuario, APARTE de `categoria` — ver Message.customCategoryId en schema.prisma. */
+  customCategoryId?: string | null;
   /** Vector de embedding, si se generó al guardar. Ver embedder.ts. */
   embedding?: number[] | null;
 }
@@ -35,4 +37,5 @@ export interface MessageRepository {
   savedBetween(userId: string, from: Date, to: Date): Promise<StoredMessage[]>;
   markDone(userId: string, messageId: string): Promise<StoredMessage | null>;
   recategorize(userId: string, messageId: string, categoria: Category): Promise<StoredMessage | null>;
+  setCustomCategory(userId: string, messageId: string, customCategoryId: string | null): Promise<StoredMessage | null>;
 }

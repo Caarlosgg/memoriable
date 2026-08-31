@@ -293,6 +293,7 @@ describe('handleSearchCommand', () => {
       savedBetween: vi.fn(),
       markDone: vi.fn(),
       recategorize: vi.fn(),
+      setCustomCategory: vi.fn(),
     };
 
     const reply = await handleSearchCommand(
@@ -334,6 +335,7 @@ describe('handlePendingCommand', () => {
       savedBetween: vi.fn(),
       markDone: vi.fn(),
       recategorize: vi.fn(),
+      setCustomCategory: vi.fn(),
     };
 
     const reply = await handlePendingCommand(
@@ -419,6 +421,7 @@ describe('handleBriefingCommand', () => {
       savedBetween: vi.fn(),
       markDone: vi.fn(),
       recategorize: vi.fn(),
+      setCustomCategory: vi.fn(),
     };
 
     const reply = await handleBriefingCommand(

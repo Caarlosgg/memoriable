@@ -27,11 +27,19 @@ vi.mock("@/lib/sessionRevocation", () => ({
 
 const userFindUniqueOrThrow = vi.fn();
 const userUpdate = vi.fn();
+const customCategoryFindMany = vi.fn();
+const customCategoryCreate = vi.fn();
+const customCategoryDeleteMany = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: {
       findUniqueOrThrow: (...args: unknown[]) => userFindUniqueOrThrow(...args),
       update: (...args: unknown[]) => userUpdate(...args),
+    },
+    customCategory: {
+      findMany: (...args: unknown[]) => customCategoryFindMany(...args),
+      create: (...args: unknown[]) => customCategoryCreate(...args),
+      deleteMany: (...args: unknown[]) => customCategoryDeleteMany(...args),
     },
   },
 }));
@@ -43,6 +51,9 @@ beforeEach(() => {
   userFindUniqueOrThrow.mockReset();
   userUpdate.mockReset();
   userUpdate.mockResolvedValue({});
+  customCategoryFindMany.mockReset();
+  customCategoryCreate.mockReset();
+  customCategoryDeleteMany.mockReset();
   createSession.mockReset();
   createSession.mockResolvedValue(undefined);
   revokeAllSessions.mockReset();
@@ -147,5 +158,102 @@ describe("closeOtherSessions", () => {
 
     expect(result.error).toMatch(/No se ha podido completar/);
     expect(createSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("listCustomCategories", () => {
+  it("pide las categorías del usuario de la sesión, más antigua primero", async () => {
+    customCategoryFindMany.mockResolvedValue([{ id: "c1", nombre: "Recetas", emoji: "🍳" }]);
+    const { listCustomCategories } = await import("../src/app/(dashboard)/cuenta/actions");
+
+    const result = await listCustomCategories();
+
+    expect(customCategoryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: "u1" }, orderBy: { createdAt: "asc" } }),
+    );
+    expect(result).toEqual([{ id: "c1", nombre: "Recetas", emoji: "🍳" }]);
+  });
+});
+
+describe("createCustomCategory", () => {
+  it("rechaza un nombre vacío sin tocar la base de datos", async () => {
+    const { createCustomCategory } = await import("../src/app/(dashboard)/cuenta/actions");
+    const result = await createCustomCategory("   ", "");
+
+    expect(result.error).toMatch(/ponle un nombre/i);
+    expect(customCategoryCreate).not.toHaveBeenCalled();
+  });
+
+  it("rechaza un nombre demasiado largo", async () => {
+    const { createCustomCategory } = await import("../src/app/(dashboard)/cuenta/actions");
+    const result = await createCustomCategory("x".repeat(31), "");
+
+    expect(result.error).toMatch(/no puede tener más de 30/i);
+    expect(customCategoryCreate).not.toHaveBeenCalled();
+  });
+
+  it("rechaza claramente más de un emoji", async () => {
+    const { createCustomCategory } = await import("../src/app/(dashboard)/cuenta/actions");
+    // 5 emoji sueltos = 5 code points, por encima del límite de 4.
+    const result = await createCustomCategory("Cosas", "🍳🎯🍳🎯🍳");
+
+    expect(result.error).toMatch(/un solo emoji/i);
+    expect(customCategoryCreate).not.toHaveBeenCalled();
+  });
+
+  it("un emoji normal de dos code points (🍳, por el par subrogado UTF-16) no se rechaza contándolo por .length", async () => {
+    // `.length` de "🍳" es 2 (par subrogado) — si el límite se comparara
+    // contra `.length` en vez de contra el iterador por code point, un
+    // emoji normal y corriente ya se rechazaría como "demasiado largo".
+    customCategoryCreate.mockResolvedValue({ id: "c1", nombre: "Recetas", emoji: "🍳" });
+    const { createCustomCategory } = await import("../src/app/(dashboard)/cuenta/actions");
+
+    const result = await createCustomCategory("Recetas", "🍳");
+
+    expect("🍳".length).toBe(2);
+    expect([..."🍳"].length).toBe(1);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("crea la categoría y devuelve el registro con su id real", async () => {
+    customCategoryCreate.mockResolvedValue({ id: "c1", nombre: "Recetas", emoji: "🍳" });
+    const { createCustomCategory } = await import("../src/app/(dashboard)/cuenta/actions");
+
+    const result = await createCustomCategory("  Recetas  ", "🍳");
+
+    expect(customCategoryCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { userId: "u1", nombre: "Recetas", emoji: "🍳" } }),
+    );
+    expect(result.categoria).toEqual({ id: "c1", nombre: "Recetas", emoji: "🍳" });
+  });
+
+  it("un nombre duplicado da un mensaje claro, no el error crudo de Postgres", async () => {
+    customCategoryCreate.mockRejectedValue(new Error("Unique constraint failed on the fields: (`userId`,`nombre`)"));
+    const { createCustomCategory } = await import("../src/app/(dashboard)/cuenta/actions");
+
+    const result = await createCustomCategory("Recetas", "");
+
+    expect(result.error).toMatch(/ya tienes una categoría con ese nombre/i);
+  });
+});
+
+describe("deleteCustomCategory", () => {
+  it("borra filtrando por dueño", async () => {
+    customCategoryDeleteMany.mockResolvedValue({ count: 1 });
+    const { deleteCustomCategory } = await import("../src/app/(dashboard)/cuenta/actions");
+
+    const result = await deleteCustomCategory("c1");
+
+    expect(customCategoryDeleteMany).toHaveBeenCalledWith({ where: { id: "c1", userId: "u1" } });
+    expect(result.error).toBeUndefined();
+  });
+
+  it("con un id ajeno o inventado dice que no existe, sin filtrar de quién era", async () => {
+    customCategoryDeleteMany.mockResolvedValue({ count: 0 });
+    const { deleteCustomCategory } = await import("../src/app/(dashboard)/cuenta/actions");
+
+    const result = await deleteCustomCategory("c-ajena");
+
+    expect(result.error).toMatch(/no existe/i);
   });
 });

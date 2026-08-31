@@ -36,6 +36,10 @@ export class PrismaMessageRepository implements MessageRepository {
     user: {
       findUnique(args: unknown): Promise<{ personalWorkspaceId: string | null } | null>;
     };
+    // Solo para verificar propiedad en setCustomCategory — ver su comentario.
+    customCategory: {
+      findFirst(args: unknown): Promise<{ id: string } | null>;
+    };
     $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
   }> | null = null;
 
@@ -186,6 +190,29 @@ export class PrismaMessageRepository implements MessageRepository {
     const { count } = await client.message.updateMany({
       where: { id: messageId, userId },
       data: { categoria },
+    });
+    if (count === 0) return null;
+    return client.message.findFirst({ where: { id: messageId, userId } });
+  }
+
+  async setCustomCategory(
+    userId: string,
+    messageId: string,
+    customCategoryId: string | null,
+  ): Promise<StoredMessage | null> {
+    const client = await this.getClient();
+    // La clave foránea de Postgres solo garantiza que la fila EXISTA, no
+    // que sea de este usuario — sin esta comprobación, alguien podría
+    // etiquetar su propia nota con el id de la categoría propia de OTRO
+    // usuario y acabar enseñando su nombre. Se verifica la propiedad antes
+    // de escribir, no después.
+    if (customCategoryId !== null) {
+      const owned = await client.customCategory.findFirst({ where: { id: customCategoryId, userId } });
+      if (!owned) return null;
+    }
+    const { count } = await client.message.updateMany({
+      where: { id: messageId, userId },
+      data: { customCategoryId },
     });
     if (count === 0) return null;
     return client.message.findFirst({ where: { id: messageId, userId } });

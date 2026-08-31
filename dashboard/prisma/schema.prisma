@@ -89,6 +89,7 @@ model User {
   chatConversationsCreated ChatConversation[]            @relation("ChatConversationCreator")
   chatParticipations       ChatConversationParticipant[]
   pushSubscriptions PushSubscription[]
+  customCategories  CustomCategory[]
 
   @@map("users")
 }
@@ -390,6 +391,9 @@ model Message {
   contenido String
   /// Categoría asignada por la IA (tarea, idea, pregunta, ...).
   categoria String
+  /// Ver ../../prisma/schema.prisma: etiqueta propia del usuario, aditiva.
+  customCategoryId String?
+  customCategory   CustomCategory? @relation(fields: [customCategoryId], references: [id], onDelete: SetNull)
   /// Resumen conciso generado por la IA.
   resumen   String
   /// ¿Está marcado como hecho? Se mantiene sincronizado con `estado`.
@@ -468,7 +472,27 @@ model Message {
   @@index([workspaceId])
   @@index([assigneeId])
   @@index([enProgresoPorId])
+  @@index([customCategoryId])
   @@map("messages")
+}
+
+/// Ver ../../prisma/schema.prisma: categoría propia del usuario (Fase 3 del
+/// roadmap del bot). Solo asignable a mano — la IA sigue clasificando solo
+/// en las 6 fijas. Aditiva vía `Message.customCategoryId`, nunca sustituye
+/// a `categoria`.
+model CustomCategory {
+  id        String   @id @default(cuid())
+  nombre    String
+  emoji     String?
+  createdAt DateTime @default(now())
+
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([userId, nombre])
+  @@index([userId])
+  @@map("custom_categories")
 }
 
 /// Ver ../../prisma/schema.prisma: evento del calendario (Fase I).
