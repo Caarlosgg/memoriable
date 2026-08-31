@@ -44,21 +44,6 @@ export async function PersonalToday({ workspaceId, userId }: { workspaceId: stri
         />
       </div>
 
-      {/* El rasgo del modo personal: nunca aparece en el modo equipo. Cifra
-          en euros, no un contador — es la única StatTile que no es un
-          número entero, así que va aparte en vez de forzarla en la fila. */}
-      <Link
-        href="/ahorros"
-        className="flex items-center justify-between gap-3 rounded-2xl border border-paper-line bg-paper-raised p-4 transition-colors hover:border-accent hover:bg-accent-soft/40"
-      >
-        <span className="flex items-center gap-2 text-sm font-medium text-ink">
-          <PiggyBank aria-hidden size={16} className="text-accent" /> Ahorrado en total
-        </span>
-        <span className="font-display text-xl font-semibold text-accent-strong tabular-nums">
-          {formatCentimos(totalAhorrado)}
-        </span>
-      </Link>
-
       {overview.vencidasTotal > 0 && (
         <Bloque titulo="Se te ha pasado" Icon={TriangleAlert} tono="alerta" href="/pendientes?vista=vencidas" hrefLabel="Ver las vencidas">
           <ul className="flex flex-col">
@@ -111,6 +96,22 @@ export async function PersonalToday({ workspaceId, userId }: { workspaceId: stri
           <Sparkles aria-hidden size={16} className="text-accent" /> Preguntar al Asistente
         </Link>
       </div>
+
+      {/* El rasgo del modo personal, pero ya no lo primero que se ve: cifra
+          en euros, no un contador, así que va aparte en vez de forzarla en
+          la fila de arriba — y va AL FINAL para no competir con capturar y
+          preguntar al Asistente, el bucle que de verdad define el producto. */}
+      <Link
+        href="/ahorros"
+        className="flex items-center justify-between gap-3 rounded-2xl border border-paper-line bg-paper-raised p-4 transition-colors hover:border-accent hover:bg-accent-soft/40"
+      >
+        <span className="flex items-center gap-2 text-sm font-medium text-ink">
+          <PiggyBank aria-hidden size={16} className="text-accent" /> Ahorrado en total
+        </span>
+        <span className="font-display text-xl font-semibold text-accent-strong tabular-nums">
+          {formatCentimos(totalAhorrado)}
+        </span>
+      </Link>
     </>
   );
 }

@@ -7,15 +7,19 @@ Tailwind, con su propio despliegue en Vercel, independiente del bot.
 
 ## ¿Qué hace?
 
-- **Multiusuario** (Fase 2): cada persona crea su propia cuenta en
-  `/registro` (email + contraseña con hash) y ve solo sus propias notas.
+- **Multiusuario**: cada persona crea su propia cuenta en `/registro`
+  (email + contraseña con hash, o Google) y ve solo sus propias notas.
   Sesión con cookie firmada (`SESSION_SECRET`). El chat de Telegram se
   vincula a la cuenta desde "Cuenta" en el dashboard, con un código de un
   solo uso (`/vincular <código>` al bot).
 - **Navegación** con sidebar colapsable en desktop y barra de pestañas en
-  móvil, entre los apartados: Asistente, Buscador, Categorías, Pendientes y
-  Cuenta (ver [Navegación](#navegación)).
-- **Asistente conversacional** (pantalla de inicio): preguntas en lenguaje
+  móvil (ver [Navegación](#navegación)). El núcleo — mismo que el del bot —
+  es Inicio, Asistente, Notas (búsqueda híbrida + captura) y Calendario.
+  A mayores, el dashboard incluye un tablero kanban, chat entre usuarios,
+  equipos (workspaces compartidos) y ahorros (modo personal) — funciones
+  completas, pero que no son el foco de este documento; el propio menú las
+  agrupa aparte del núcleo.
+- **Asistente conversacional**: preguntas en lenguaje
   natural sobre tus notas guardadas, respondidas por Groq en streaming a
   partir de lo que encuentra por similitud semántica, citando de qué notas
   concretas sale la información — nunca inventa si no encuentra nada. Ver
@@ -37,8 +41,8 @@ Tailwind, con su propio despliegue en Vercel, independiente del bot.
   rompe el resto.
 - **Aviso de sin conexión**, no intrusivo.
 
-No incluye (fuera de alcance, ver [ROADMAP.md](../ROADMAP.md)): más de un
-usuario, edición de mensajes ya guardados, imágenes/documentos/adjuntos.
+No incluye (fuera de alcance, ver [ROADMAP.md](../ROADMAP.md)):
+imágenes/documentos/adjuntos.
 
 ## Cómo reutiliza los datos del bot
 
@@ -97,12 +101,19 @@ su propio repositorio (con su Prisma). Ver
 ## Navegación
 
 Sidebar colapsable en desktop (`src/components/nav/Sidebar.tsx`) que en
-móvil se convierte en una barra de pestañas fija abajo
-(`BottomTabs.tsx`) — con solo 4 destinos, una barra de pestañas se siente
-más nativa que un menú hamburguesa, que tiene más sentido con listas
-largas. La sección activa se marca con el color de acento, no solo en
-negrita. `src/components/nav/navItems.ts` es la única fuente de verdad
-de los 4 destinos, compartida por ambos componentes.
+móvil se convierte en una barra de pestañas fija abajo (`BottomTabs.tsx`,
+recortada a 4 + "Más", que abre la paleta de comandos con TODOS los
+destinos) — con pocos destinos fijos, una barra de pestañas se siente más
+nativa que un menú hamburguesa. La sección activa se marca con el color de
+acento, no solo en negrita. `src/components/nav/navItems.ts` es la única
+fuente de verdad de los destinos (y de qué modo — personal/equipo — los
+muestra), compartida por ambos componentes.
+
+Los destinos se agrupan en dos niveles, marcados con un separador en el
+sidebar: el **núcleo** (Inicio, Asistente, Notas, Calendario) va primero;
+Tablero, Chat, Ahorros y Equipo van después — siguen a un clic, solo que
+no son lo que el proyecto lidera al presentarse (ver
+[ROADMAP.md](../ROADMAP.md)).
 
 El colapso del sidebar es la única animación de Framer Motion del
 dashboard (import dinámico vía `next/dynamic`, para no meterlo en el
@@ -110,8 +121,10 @@ bundle inicial): es una transición de ancho con física de resorte que
 CSS no reproduce bien. Todo lo demás (`fade-in`, transiciones de color,
 skeletons) es CSS/Tailwind puro, y respeta `prefers-reduced-motion`.
 
-`/` redirige a `/asistente` (pantalla de inicio). Las rutas viven en
-`src/app/(dashboard)/{asistente,buscador,categorias,pendientes}/page.tsx`.
+`/` redirige a `/inicio`. Las rutas viven en
+`src/app/(dashboard)/{inicio,asistente,categorias,pendientes,calendario,ahorros,chat,equipo,cuenta}/page.tsx`
+(`categorias` es la ruta de "Notas" en el menú — el nombre de carpeta no
+cambió al fusionarse con el antiguo Buscador).
 
 ## Asistente y búsqueda semántica
 
@@ -290,9 +303,9 @@ dashboard/
 ├── src/
 │   ├── app/
 │   │   ├── (dashboard)/
-│   │   │   ├── asistente|buscador|categorias|pendientes/page.tsx  # las 4 secciones
+│   │   │   ├── inicio|asistente|categorias|pendientes|calendario|.../page.tsx  # una carpeta por sección (ver Navegación)
 │   │   │   ├── layout.tsx  # verifySession() + Sidebar/BottomTabs/MobileHeader
-│   │   │   └── page.tsx    # redirect("/asistente")
+│   │   │   └── page.tsx    # redirect("/inicio")
 │   │   ├── login/          # público
 │   │   ├── api/
 │   │   │   ├── search/     # Route Handler protegido (JSON, no redirige)

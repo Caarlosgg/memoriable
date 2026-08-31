@@ -37,26 +37,48 @@ comprometido hasta que tenga uso real detrás.
   fuentes expandibles bajo la respuesta y su propio fusible de coste
   diario, independiente del del bot.
 
-## Fase 3 — superficie más allá de Telegram
+## Fase 3 — superficie más allá de Telegram — completado
 
-Ideas para cuando el proyecto tenga tracción, sin orden fijo todavía:
+- Edición y recategorización de mensajes ya guardados, tanto desde el
+  dashboard (`MessageDetailDialog`) como con botones inline en el propio
+  Telegram (marcar hecho, recategorizar entre las 6 categorías fijas o
+  entre las propias del usuario).
+- Categorías configurables por el usuario, a mayores de las 6 fijas
+  (se crean desde "Cuenta" en el dashboard, se asignan desde ambos sitios).
+- Exportar los mensajes guardados: Markdown/Obsidian (un `.md` por nota,
+  con front matter) y CSV/JSON.
 
-- Edición de mensajes ya guardados desde el dashboard (hoy se pueden crear
-  con la captura rápida y marcar pendientes como hechos, pero no editar
-  contenido/categoría de un mensaje existente).
-- Botones inline en Telegram (recategorizar, marcar como hecho, archivar)
-  — hoy las respuestas son deliberadamente mensajes simples.
-- Categorías configurables por el usuario en vez de la lista fija actual.
-- Exportar los mensajes guardados (CSV / JSON).
+## El dashboard creció más allá de lo que promociona el proyecto
+
+Lo de arriba es lo que este proyecto **enseña primero**: le escribes al bot
+de Telegram, categoriza y resume con IA, lo buscas (texto + semántico) y le
+preguntas al Asistente sobre tus notas — todo autoalojado. Es el núcleo, y
+es lo que sigue definiendo el producto.
+
+Por el camino, el dashboard fue creciendo con funciones reales y
+terminadas que van más allá de ese núcleo — no son un experimento a medio
+hacer, pero tampoco es lo que se lidera al presentar el proyecto:
+
+- **Equipos**: workspaces compartidos, roles, invitaciones.
+- **Tablero** (`/pendientes`): vista kanban de tus tareas/recordatorios,
+  con columnas personalizables.
+- **Chat**: mensajería entre usuarios (personal y de equipo), en tiempo
+  real vía Supabase Realtime si está configurado.
+- **Calendario**: vista de eventos y tareas con fecha.
+- **Ahorros**: seguimiento de cuentas y movimientos, solo en modo
+  personal.
+- Notificaciones push, login con Google, instalación como PWA.
+
+Todo esto sigue en el código, sin planes de quitarlo — simplemente no es
+con lo que este README ni la landing abren la conversación. El detalle de
+cada función vive en [`dashboard/README.md`](./dashboard/README.md).
 
 ## Fuera de alcance por ahora
 
-- Sustituir Telegram por otra interfaz.
+- Sustituir Telegram por otra interfaz de captura.
 - Cualquier plan de pago o facturación — el fusible de coste
   (`MAX_MESSAGES_PER_DAY`) es solo protección ante bugs, no un sistema de
   cuotas de producto.
-- Multiusuario / multi-tenant — el proyecto asume un único usuario/bot por
-  despliegue.
 - Imágenes, documentos o adjuntos (p. ej. fotos de documentos de
   identidad o tarjetas): fuera de alcance por completo por ahora — antes
   de tocar nada de esto hace falta una conversación aparte sobre cómo

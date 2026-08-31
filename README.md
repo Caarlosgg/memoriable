@@ -400,12 +400,16 @@ Notas:
 Además del bot de Telegram, el proyecto incluye un **dashboard web** en
 [`dashboard/`](./dashboard): una app Next.js (App Router) + TypeScript +
 Tailwind para consultar, buscar y gestionar tus mensajes desde el navegador
-(o instalada como PWA en el móvil) — login por contraseña, navegación con
-sidebar (barra de pestañas en móvil) entre **Asistente** (pantalla de
-inicio: chat en lenguaje natural sobre tus notas, con fuentes citadas y
-streaming), **Buscador** (híbrido: texto + semántica, con filtro de
-categoría), **Categorías** (vista + captura rápida) y **Pendientes**
-(marcar como hechos).
+(o instalada como PWA en el móvil), con login propio (contraseña o Google).
+
+El núcleo del dashboard es el mismo que el del bot: **Inicio** (tu día de
+un vistazo), **Asistente** (chat en lenguaje natural sobre tus notas, con
+fuentes citadas y streaming), **Notas** (búsqueda híbrida — texto exacto +
+semántica — y captura rápida) y **Calendario**. A partir de ahí, el
+dashboard creció con funciones propias que no son el foco de este README
+pero están completas y en uso: un **tablero** kanban de tus tareas, **chat**
+entre usuarios, **equipos** (workspaces compartidos) y **ahorros** (en modo
+personal) — detalladas en [`dashboard/README.md`](./dashboard/README.md).
 
 Es **un proyecto aparte, con despliegue independiente** del bot:
 
@@ -432,7 +436,7 @@ en **[`dashboard/README.md`](./dashboard/README.md)**.
 
 ---
 
-## 🔭 Fase 2 — búsqueda semántica y Asistente (activa)
+## 🔭 Búsqueda semántica y Asistente
 
 Cada mensaje guardado (desde el bot o desde la captura rápida del
 dashboard) genera un embedding con la API gratuita de Gemini
@@ -448,7 +452,7 @@ aparte, fuera del flujo normal de guardado.
 El dashboard usa estos embeddings en dos sitios — ver
 [`dashboard/README.md`](./dashboard/README.md) para el detalle de cada uno:
 
-- **Buscador**: búsqueda híbrida (texto exacto + semántica como
+- **Notas**: búsqueda híbrida (texto exacto + semántica como
   complemento) con filtro de categoría.
 - **Asistente**: pantalla de inicio del dashboard, un chat que responde
   preguntas en lenguaje natural sobre tus notas guardadas, citando de
