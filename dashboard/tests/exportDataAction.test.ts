@@ -61,4 +61,31 @@ describe("exportData (server action)", () => {
     expect(result.error).toBeDefined();
     expect(result.error).not.toMatch(/ECONNREFUSED|5432/);
   });
+
+  it("genera CSV cuando se pide ese formato", async () => {
+    buildExportData.mockResolvedValue({
+      generatedAt: "2026-08-06T00:00:00.000Z",
+      scope: { type: "notas" },
+      notas: [],
+      eventos: [],
+      ahorros: [],
+    });
+    const { exportData } = await import("../src/app/(dashboard)/cuenta/actions");
+    const result = await exportData({ type: "notas" }, "csv");
+
+    expect(result.filename).toMatch(/^memoriable-notas-2026-08-06\.csv$/);
+    expect(result.content).toMatch(/^fecha,categoria,resumen,contenido,estado,prioridad,etiquetas/);
+    expect(result.binary).toBeUndefined();
+  });
+
+  it("genera el vault de Obsidian como .zip en base64, marcado como binario", async () => {
+    const { exportData } = await import("../src/app/(dashboard)/cuenta/actions");
+    const result = await exportData({ type: "todo" }, "obsidian");
+
+    expect(result.filename).toMatch(/^memoriable-obsidian-todo-2026-08-06\.zip$/);
+    expect(result.binary).toBe(true);
+    // Un .zip real empieza por la firma "PK" — confirma que de verdad es
+    // binario codificado en base64, no texto plano disfrazado.
+    expect(Buffer.from(result.content ?? "", "base64").subarray(0, 2).toString()).toBe("PK");
+  });
 });
