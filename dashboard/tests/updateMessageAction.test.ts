@@ -16,6 +16,11 @@ vi.mock("@/lib/prisma", () => ({
   prisma: { message: { updateMany: (...args: unknown[]) => messageUpdateMany(...args) } },
 }));
 
+const findOwnCustomCategory = vi.fn();
+vi.mock("@/lib/customCategories", () => ({
+  findOwnCustomCategory: (...args: unknown[]) => findOwnCustomCategory(...args),
+}));
+
 const revalidatePath = vi.fn();
 vi.mock("next/cache", () => ({ revalidatePath: (path: string) => revalidatePath(path) }));
 
@@ -24,6 +29,7 @@ beforeEach(() => {
   getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "OWNER" });
   messageUpdateMany.mockReset();
   messageUpdateMany.mockResolvedValue({ count: 1 });
+  findOwnCustomCategory.mockReset();
   revalidatePath.mockReset();
 });
 
@@ -83,5 +89,39 @@ describe("updateMessage", () => {
     const result = await updateMessage("m1", { resumen: "X" });
     expect(result.error).toMatch(/solo lectura/);
     expect(messageUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("verifica que la categoría propia sea de QUIEN EDITA antes de escribir", async () => {
+    // Una FK solo garantiza que la fila existe, no que sea tuya — sin este
+    // chequeo, se podría enseñar el nombre de la categoría propia de OTRO
+    // usuario (mismo motivo que en PrismaMessageRepository.setCustomCategory).
+    findOwnCustomCategory.mockResolvedValue(null);
+    const { updateMessage } = await import("../src/app/(dashboard)/actions");
+    const result = await updateMessage("m1", { customCategoryId: "cc-ajena" });
+    expect(findOwnCustomCategory).toHaveBeenCalledWith("u1", "cc-ajena");
+    expect(result.error).toMatch(/no existe/i);
+    expect(messageUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("con una categoría propia de verdad, la aplica", async () => {
+    findOwnCustomCategory.mockResolvedValue({ id: "cc1", nombre: "Recetas", emoji: "🍳" });
+    const { updateMessage } = await import("../src/app/(dashboard)/actions");
+    const result = await updateMessage("m1", { customCategoryId: "cc1" });
+    expect(result.error).toBeUndefined();
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: { id: "m1", workspaceId: "ws1" },
+      data: { customCategoryId: "cc1" },
+    });
+  });
+
+  it("con null, quita la etiqueta sin comprobar propiedad", async () => {
+    const { updateMessage } = await import("../src/app/(dashboard)/actions");
+    const result = await updateMessage("m1", { customCategoryId: null });
+    expect(findOwnCustomCategory).not.toHaveBeenCalled();
+    expect(result.error).toBeUndefined();
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: { id: "m1", workspaceId: "ws1" },
+      data: { customCategoryId: null },
+    });
   });
 });

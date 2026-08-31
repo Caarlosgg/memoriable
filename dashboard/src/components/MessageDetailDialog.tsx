@@ -8,6 +8,7 @@ import { ESTADO_PRESENTATION, ESTADOS_TABLERO, PRIORIDADES, PRIORIDAD_PRESENTATI
 import { formatDate } from "@/lib/format";
 import { isOverdue, dayLabel, dateKey } from "@/lib/calendar";
 import { updateMessage, deleteMessage, uploadImage, getCampoTemplate, saveCampoTemplate } from "@/app/(dashboard)/actions";
+import { listCustomCategories, type CustomCategoryView } from "@/app/(dashboard)/cuenta/actions";
 import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtraJson } from "@/lib/camposExtra";
 import { checklistToArray, checklistToJson, type ChecklistItem } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ export interface EditableFields {
   checklist: ChecklistItem[];
   imagenes: string[];
   fechaLimite: Date | null;
+  customCategoryId: string | null;
 }
 
 function fieldsFrom(message: Message): EditableFields {
@@ -48,6 +50,7 @@ function fieldsFrom(message: Message): EditableFields {
     checklist: checklistToArray(message.checklist),
     imagenes: message.imagenes,
     fechaLimite: message.fechaLimite,
+    customCategoryId: message.customCategoryId,
   };
 }
 
@@ -119,6 +122,7 @@ export function MessageDetailDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [templatePending, startTemplatePending] = useTransition();
+  const [customCategories, setCustomCategories] = useState<CustomCategoryView[]>([]);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -132,6 +136,12 @@ export function MessageDetailDialog({
       setError(null);
       setUploadError(null);
       setTemplateMessage(null);
+      // Las categorías propias son de QUIEN EDITA, no del autor de la nota
+      // (ver comentario de `customCategoryId` en actions.ts) — se piden en
+      // cada apertura en vez de precargarlas en cada tarjeta del listado.
+      listCustomCategories()
+        .then(setCustomCategories)
+        .catch((err) => console.error("No se pudieron cargar las categorías propias:", err));
     }
   }
 
@@ -318,6 +328,16 @@ export function MessageDetailDialog({
             <div className="flex items-center justify-between gap-2">
               <p className={`flex items-center gap-1.5 text-xs font-semibold ${color}`}>
                 <CategoryIcon aria-hidden size={14} /> {categoryLabel}
+                {message.customCategoryId &&
+                  (() => {
+                    const propia = customCategories.find((c) => c.id === message.customCategoryId);
+                    return propia ? (
+                      <span className="ml-1 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-strong">
+                        {propia.emoji ? `${propia.emoji} ` : ""}
+                        {propia.nombre}
+                      </span>
+                    ) : null;
+                  })()}
               </p>
               {members && members.length > 0 && onAssigneeChange && (
                 <AssigneeControl
@@ -501,6 +521,27 @@ export function MessageDetailDialog({
                 Esta categoría no aparece en el Tablero, así que no tiene estado ni prioridad — cámbiala a Tarea o
                 Recordatorio si quieres que sí aparezca.
               </p>
+            )}
+            {customCategories.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="detalle-categoria-propia" className="text-sm font-medium text-ink">
+                  Categoría propia
+                </label>
+                <select
+                  id="detalle-categoria-propia"
+                  className={SELECT_CLASSNAME}
+                  value={fields.customCategoryId ?? ""}
+                  onChange={(e) => setFields((f) => ({ ...f, customCategoryId: e.target.value || null }))}
+                >
+                  <option value="">Ninguna</option>
+                  {customCategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.emoji ? `${c.emoji} ` : ""}
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
             {esAccionable(fields.categoria) && (
               <div className="flex flex-col gap-1.5">

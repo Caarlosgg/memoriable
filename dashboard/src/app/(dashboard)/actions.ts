@@ -16,6 +16,7 @@ import type { StoredMessage } from "@/lib/botPipeline/repository";
 import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } from "@/lib/campoTemplates";
 import { uploadImageToBlob } from "@/lib/blobUpload";
 import { logActivity } from "@/lib/activityLog";
+import { findOwnCustomCategory } from "@/lib/customCategories";
 
 /**
  * Al marcar HECHA una tarjeta (o al cambiarla a una categoría que deja de
@@ -375,6 +376,13 @@ export interface UpdateMessageInput {
   imagenes?: string[];
   /** `null` para quitar la fecha límite. `undefined` para no tocarla. */
   fechaLimite?: Date | null;
+  /**
+   * `null` para quitar la categoría propia. `undefined` para no tocarla.
+   * Siempre de QUIEN EDITA, nunca del autor original de la nota — mismo
+   * criterio que usa el bot al recategorizar (cada uno aplica sus propias
+   * categorías, sean o no el autor de la nota compartida).
+   */
+  customCategoryId?: string | null;
 }
 
 export interface UpdateMessageResult {
@@ -399,6 +407,13 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
   if (input.categoria !== undefined && !isCategory(input.categoria)) {
     return { error: "Esa categoría no existe." };
   }
+  // Una FK solo garantiza que la fila existe, no que sea tuya — sin este
+  // chequeo, se podría enseñar el nombre de la categoría propia de OTRO
+  // usuario (mismo motivo que en PrismaMessageRepository.setCustomCategory).
+  if (input.customCategoryId !== undefined && input.customCategoryId !== null) {
+    const propia = await findOwnCustomCategory(userId, input.customCategoryId);
+    if (!propia) return { error: "Esa categoría propia no existe." };
+  }
 
   try {
     const result = await prisma.message.updateMany({
@@ -414,6 +429,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
         ...(input.checklist !== undefined ? { checklist: input.checklist } : {}),
         ...(input.imagenes !== undefined ? { imagenes: input.imagenes } : {}),
         ...(input.fechaLimite !== undefined ? { fechaLimite: input.fechaLimite } : {}),
+        ...(input.customCategoryId !== undefined ? { customCategoryId: input.customCategoryId } : {}),
         // Aparte del `if` de arriba: se limpia también si SOLO cambia la
         // categoría (sin tocar el estado) a una no accionable — antes esto
         // se comprobaba solo dentro del bloque de `estado`, así que
