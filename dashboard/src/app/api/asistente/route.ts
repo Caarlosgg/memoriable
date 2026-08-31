@@ -98,7 +98,7 @@ export async function POST(req: Request) {
   // consultarlo, no se bloquea al usuario — se registra y se sigue (fail-open).
   const maxPerDay = Number(process.env.ASSISTANT_MAX_QUESTIONS_PER_DAY ?? DEFAULT_MAX_QUESTIONS_PER_DAY);
   try {
-    const canProceed = await tryConsumeAssistantBudget(maxPerDay);
+    const canProceed = await tryConsumeAssistantBudget(maxPerDay, userId);
     if (!canProceed) {
       return errorResponse("Se alcanzó el límite de preguntas al Asistente por hoy. Vuelve mañana.", 429);
     }

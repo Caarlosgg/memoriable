@@ -791,17 +791,21 @@ model MovimientoAhorro {
   @@map("movimientos_ahorro")
 }
 
-/// Fusible de coste propio del Asistente conversacional del dashboard
-/// (independiente de MAX_MESSAGES_PER_DAY, que es solo del bot). Un
-/// contador por día; el dashboard corre en Vercel (serverless, sin disco
-/// persistente entre invocaciones), así que el contador vive en Postgres
-/// en vez de en un fichero como el fusible del bot (ver src/cost/budget.ts).
+/// Fusible de coste propio del Asistente conversacional del dashboard, POR
+/// USUARIO (antes era un contador global: un solo usuario preguntando mucho
+/// podía agotar el límite diario para TODOS los demás). Independiente de
+/// MAX_MESSAGES_PER_DAY, que es solo del bot. El dashboard corre en Vercel
+/// (serverless, sin disco persistente entre invocaciones), así que el
+/// contador vive en Postgres en vez de en un fichero como el fusible del
+/// bot (ver src/cost/budget.ts).
 model AssistantBudget {
   /// Día en curso, formato YYYY-MM-DD (UTC).
-  day   String @id
-  /// Preguntas consumidas ese día.
-  count Int    @default(0)
+  day    String
+  userId String
+  /// Preguntas consumidas ese día por este usuario.
+  count  Int    @default(0)
 
+  @@id([day, userId])
   @@map("assistant_budget")
 }
 

@@ -16,16 +16,20 @@ function utcDay(date: Date): string {
  * Postgres. La política (un contador que resetea solo al cambiar el día) es
  * la misma; la implementación no, por eso no es un import compartido.
  *
+ * POR USUARIO (día + userId como clave compuesta): antes era un contador
+ * global — un solo usuario preguntando mucho agotaba el límite diario para
+ * TODOS los demás usuarios del despliegue.
+ *
  * Devuelve `true` si la pregunta se puede procesar (la cuenta ya queda
  * reservada al llamar); `false` si el fusible está fundido por hoy.
  */
-export async function tryConsumeAssistantBudget(maxPerDay: number): Promise<boolean> {
+export async function tryConsumeAssistantBudget(maxPerDay: number, userId: string): Promise<boolean> {
   if (maxPerDay <= 0) return false;
 
   const day = utcDay(new Date());
   const row = await prisma.assistantBudget.upsert({
-    where: { day },
-    create: { day, count: 1 },
+    where: { day_userId: { day, userId } },
+    create: { day, userId, count: 1 },
     update: { count: { increment: 1 } },
   });
 

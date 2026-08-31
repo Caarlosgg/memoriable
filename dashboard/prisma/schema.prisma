@@ -535,12 +535,14 @@ model MovimientoAhorro {
 }
 
 /// Ver ../../prisma/schema.prisma: fusible de coste propio del Asistente,
-/// backed por Postgres porque el dashboard es serverless (sin disco
-/// persistente entre invocaciones).
+/// POR USUARIO, backed por Postgres porque el dashboard es serverless (sin
+/// disco persistente entre invocaciones).
 model AssistantBudget {
-  day   String @id
-  count Int    @default(0)
+  day    String
+  userId String
+  count  Int    @default(0)
 
+  @@id([day, userId])
   @@map("assistant_budget")
 }
 
