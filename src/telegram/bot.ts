@@ -10,6 +10,8 @@ import { linkAttemptLimiter, type LinkAttemptLimiter } from './linkRateLimit.js'
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
+import { noteActionsKeyboard, categoryPickerKeyboard } from './actionsKeyboard.js';
+import { isCategory, type Category } from '../ai/types.js';
 import { startDailySummary } from '../summary/scheduler.js';
 import { dayKey, buildDailySummary } from '../summary/dailySummary.js';
 import { FileFocusStateStore, type FocusStateStore } from '../summary/focusState.js';
@@ -164,6 +166,12 @@ export interface TextMessageResult {
    * un aviso aparte, a mayores.
    */
   followUp?: string;
+  /**
+   * La nota recién guardada, solo lo justo para construir los botones
+   * inline (Fase 3 del roadmap) bajo la tarjeta — `undefined` si el
+   * guardado falló y `reply` es un mensaje de error, que no lleva botones.
+   */
+  saved?: { id: string; categoria: Category; hecho: boolean };
 }
 
 /**
@@ -182,7 +190,11 @@ export async function handleTextMessage(
     const stored = await processMessage({ tipo: 'text', contenido: text }, userId, pipeline, (analysis) => {
       followUp = analysis.preguntaAclaratoria;
     });
-    return { reply: formatResponseCard(stored), followUp };
+    return {
+      reply: formatResponseCard(stored),
+      followUp,
+      saved: { id: stored.id, categoria: stored.categoria, hecho: stored.hecho },
+    };
   } catch (err) {
     if (err instanceof InvalidMessageError) return { reply: REPLIES.empty };
     logger?.error('telegram.handler_failed', errorContext(err));
@@ -406,8 +418,10 @@ export function createBot(
 
     const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
     if (!userId) return;
-    const { reply, followUp } = await handleTextMessage(ctx.message.text, userId, pipeline, logger);
-    await ctx.reply(reply, { parse_mode: 'HTML' });
+    const { reply, followUp, saved } = await handleTextMessage(ctx.message.text, userId, pipeline, logger);
+    // Botones inline (Fase 3 del roadmap) solo si de verdad se guardó algo
+    // — un mensaje de error no lleva "Hecho"/"Recategorizar" sobre nada.
+    await ctx.reply(reply, { parse_mode: 'HTML', ...(saved ? noteActionsKeyboard(saved) : {}) });
     // Aparte, nunca en vez de la confirmación de arriba (ver TextMessageResult).
     if (followUp) await ctx.reply(followUp);
   });
@@ -430,9 +444,77 @@ export function createBot(
       return;
     }
 
-    const { reply, followUp } = await handleVoiceMessage(audioUrl, userId, pipeline, transcriber, logger);
-    await ctx.reply(reply, { parse_mode: 'HTML' });
+    const { reply, followUp, saved } = await handleVoiceMessage(audioUrl, userId, pipeline, transcriber, logger);
+    await ctx.reply(reply, { parse_mode: 'HTML', ...(saved ? noteActionsKeyboard(saved) : {}) });
     if (followUp) await ctx.reply(followUp);
+  });
+
+  // Botones inline bajo la tarjeta de confirmación (Fase 3 del roadmap).
+  // El id de la nota va en `callback_data` (ver actionsKeyboard.ts) — se
+  // extrae con una regex en vez de parsear a mano en cada handler.
+  bot.action(/^done:(.+)$/, async (ctx) => {
+    const messageId = ctx.match[1]!;
+    const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    const updated = await pipeline.repository.markDone(userId, messageId);
+    if (!updated) {
+      await ctx.answerCbQuery('Esa nota ya no existe.');
+      return;
+    }
+    await ctx.answerCbQuery('Marcada como hecha ✅');
+    try {
+      await ctx.editMessageText(formatResponseCard(updated), {
+        parse_mode: 'HTML',
+        ...noteActionsKeyboard(updated),
+      });
+    } catch (err) {
+      // "message is not modified" si se pulsa dos veces seguidas — no es un
+      // fallo real (mismo criterio que briefing:refresh, más arriba).
+      logger.debug('telegram.done_edit_noop', errorContext(err));
+    }
+  });
+
+  bot.action(/^cat:(.+)$/, async (ctx) => {
+    const messageId = ctx.match[1]!;
+    await ctx.answerCbQuery();
+    // Solo cambia el TECLADO (no el texto de la tarjeta): no hace falta
+    // volver a leer la nota de la base de datos únicamente para pintar el
+    // selector — ver el comentario de categoryPickerKeyboard.
+    try {
+      await ctx.editMessageReplyMarkup(categoryPickerKeyboard(messageId).reply_markup);
+    } catch (err) {
+      logger.debug('telegram.category_picker_noop', errorContext(err));
+    }
+  });
+
+  bot.action(/^setcat:([^:]+):(.+)$/, async (ctx) => {
+    const [, messageId, categoriaRaw] = ctx.match;
+    if (!isCategory(categoriaRaw)) {
+      await ctx.answerCbQuery('Categoría no válida.');
+      return;
+    }
+    const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    const updated = await pipeline.repository.recategorize(userId, messageId!, categoriaRaw);
+    if (!updated) {
+      await ctx.answerCbQuery('Esa nota ya no existe.');
+      return;
+    }
+    await ctx.answerCbQuery('Categoría actualizada 🏷️');
+    try {
+      await ctx.editMessageText(formatResponseCard(updated), {
+        parse_mode: 'HTML',
+        ...noteActionsKeyboard(updated),
+      });
+    } catch (err) {
+      logger.debug('telegram.recategorize_edit_noop', errorContext(err));
+    }
   });
 
   // Red de seguridad: cualquier error no capturado en un handler (incluido un

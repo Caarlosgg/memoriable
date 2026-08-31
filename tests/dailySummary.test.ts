@@ -35,6 +35,8 @@ function fakeRepo(pending: StoredMessage[], saved: StoredMessage[]) {
     search: vi.fn(),
     pending: vi.fn().mockResolvedValue(pending),
     savedBetween: vi.fn().mockResolvedValue(saved),
+    markDone: vi.fn(),
+    recategorize: vi.fn(),
   } satisfies MessageRepository;
 }
 

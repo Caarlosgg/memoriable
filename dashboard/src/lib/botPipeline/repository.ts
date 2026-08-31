@@ -2,7 +2,7 @@
 // interfaces (sin InMemoryMessageRepository, que el dashboard no usa). Ver
 // botPipeline/README.md.
 
-import type { Analysis, IncomingMessage } from './types';
+import type { Analysis, Category, IncomingMessage } from './types';
 
 /** Registro tal como queda persistido (incluye id y fecha). */
 export interface StoredMessage extends IncomingMessage, Analysis {
@@ -33,4 +33,6 @@ export interface MessageRepository {
   search(userId: string, query: string, limit?: number): Promise<StoredMessage[]>;
   pending(userId: string, limit?: number): Promise<StoredMessage[]>;
   savedBetween(userId: string, from: Date, to: Date): Promise<StoredMessage[]>;
+  markDone(userId: string, messageId: string): Promise<StoredMessage | null>;
+  recategorize(userId: string, messageId: string, categoria: Category): Promise<StoredMessage | null>;
 }

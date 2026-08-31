@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // dentro del método) — se mockea el módulo entero para no depender de una
 // base de datos real, con un `findMany` espía compartido entre tests.
 const findMany = vi.fn();
+const findFirst = vi.fn();
+const updateMany = vi.fn();
 vi.mock('@prisma/client', () => ({
   PrismaClient: class {
-    message = { create: vi.fn(), findMany };
+    message = { create: vi.fn(), findMany, findFirst, updateMany };
     user = { findUnique: vi.fn() };
     $executeRaw = vi.fn();
   },
@@ -17,6 +19,8 @@ describe('PrismaMessageRepository.pending', () => {
     vi.resetModules();
     vi.unstubAllEnvs();
     findMany.mockReset();
+    findFirst.mockReset();
+    updateMany.mockReset();
   });
 
   it('pide las propias Y las asignadas por otros en un equipo del que se sigue siendo miembro ACTIVO', async () => {
@@ -85,5 +89,77 @@ describe('PrismaMessageRepository.pending', () => {
     // El objeto `user` del include no debe quedarse colgando en el
     // resultado — StoredMessage no lo declara, solo `asignadaPor`.
     expect(result[0]).not.toHaveProperty('user');
+  });
+});
+
+describe('PrismaMessageRepository.markDone', () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    findFirst.mockReset();
+    updateMany.mockReset();
+  });
+
+  it('pone hecho Y estado a la vez — nunca uno sin el otro', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    updateMany.mockResolvedValue({ count: 1 });
+    findFirst.mockResolvedValue({ id: 'm1', userId: 'u1', hecho: true, categoria: 'tarea' });
+    const { PrismaMessageRepository } = await import('../src/db/prismaRepository.js');
+    const repo = new PrismaMessageRepository();
+
+    await repo.markDone('u1', 'm1');
+
+    // El schema exige `hecho = (estado == HECHO)` — si el bot solo tocara
+    // `hecho`, el tablero kanban del dashboard seguiría mostrando la
+    // tarjeta como "por hacer" mientras el bot ya la da por cerrada.
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: 'm1', userId: 'u1' },
+      data: { hecho: true, estado: 'HECHO' },
+    });
+  });
+
+  it('con un id ajeno o inventado no toca nada y devuelve null', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    updateMany.mockResolvedValue({ count: 0 });
+    const { PrismaMessageRepository } = await import('../src/db/prismaRepository.js');
+    const repo = new PrismaMessageRepository();
+
+    await expect(repo.markDone('u1', 'ajeno')).resolves.toBeNull();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('PrismaMessageRepository.recategorize', () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    findFirst.mockReset();
+    updateMany.mockReset();
+  });
+
+  it('cambia solo la categoría, filtrando por dueño', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    updateMany.mockResolvedValue({ count: 1 });
+    findFirst.mockResolvedValue({ id: 'm1', userId: 'u1', categoria: 'tarea' });
+    const { PrismaMessageRepository } = await import('../src/db/prismaRepository.js');
+    const repo = new PrismaMessageRepository();
+
+    const result = await repo.recategorize('u1', 'm1', 'tarea');
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: 'm1', userId: 'u1' },
+      data: { categoria: 'tarea' },
+    });
+    expect(result?.categoria).toBe('tarea');
+  });
+
+  it('con un id ajeno o inventado no toca nada y devuelve null', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    updateMany.mockResolvedValue({ count: 0 });
+    const { PrismaMessageRepository } = await import('../src/db/prismaRepository.js');
+    const repo = new PrismaMessageRepository();
+
+    await expect(repo.recategorize('u2', 'm1', 'idea')).resolves.toBeNull();
+    expect(findFirst).not.toHaveBeenCalled();
   });
 });

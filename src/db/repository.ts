@@ -1,4 +1,4 @@
-import type { Analysis, IncomingMessage } from '../ai/types.js';
+import type { Analysis, Category, IncomingMessage } from '../ai/types.js';
 import { searchMessages } from './search.js';
 import { pendingMessages } from './pending.js';
 
@@ -56,6 +56,22 @@ export interface MessageRepository {
    * más recientes primero. Lo usa el resumen diario para "lo de ayer".
    */
   savedBetween(userId: string, from: Date, to: Date): Promise<StoredMessage[]>;
+  /**
+   * Marca un mensaje como hecho (botón inline "✅ Hecho" en Telegram — Fase
+   * 3 del roadmap). También pone `estado: 'HECHO'`, no solo `hecho: true`:
+   * el propio schema exige que los dos vayan sincronizados (`hecho = estado
+   * == HECHO`), o el tablero kanban del dashboard mostraría la tarjeta como
+   * "por hacer" mientras el bot ya la da por terminada. `null` si el id no
+   * existe o no es de este usuario (nunca lanza por un id ajeno/inventado).
+   */
+  markDone(userId: string, messageId: string): Promise<StoredMessage | null>;
+  /**
+   * Cambia SOLO la categoría de un mensaje ya guardado (botón inline
+   * "🏷️ Recategorizar" — Fase 3 del roadmap). No vuelve a categorizar con
+   * IA ni toca el resumen: es una corrección manual puntual, no un
+   * recálculo. `null` si el id no existe o no es de este usuario.
+   */
+  recategorize(userId: string, messageId: string, categoria: Category): Promise<StoredMessage | null>;
 }
 
 /**
@@ -90,6 +106,24 @@ export class InMemoryMessageRepository implements MessageRepository {
     return this.forUser(userId)
       .filter((m) => m.fecha.getTime() >= from.getTime() && m.fecha.getTime() < to.getTime())
       .sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+  }
+
+  async markDone(userId: string, messageId: string): Promise<StoredMessage | null> {
+    const item = this.findOwn(userId, messageId);
+    if (!item) return null;
+    item.hecho = true;
+    return item;
+  }
+
+  async recategorize(userId: string, messageId: string, categoria: Category): Promise<StoredMessage | null> {
+    const item = this.findOwn(userId, messageId);
+    if (!item) return null;
+    item.categoria = categoria;
+    return item;
+  }
+
+  private findOwn(userId: string, messageId: string): StoredMessage | undefined {
+    return this.items.find((m) => m.id === messageId && m.userId === userId);
   }
 
   private forUser(userId: string): StoredMessage[] {

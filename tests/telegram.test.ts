@@ -99,7 +99,7 @@ describe('createBot', () => {
 describe('handleTextMessage', () => {
   it('categoriza, persiste y devuelve la respuesta formateada', async () => {
     const repository = new InMemoryMessageRepository();
-    const { reply, followUp } = await handleTextMessage('Comprar pan y leche', 'u1', {
+    const { reply, followUp, saved } = await handleTextMessage('Comprar pan y leche', 'u1', {
       categorizer: new OfflineCategorizer(),
       repository,
     });
@@ -109,11 +109,17 @@ describe('handleTextMessage', () => {
     expect(followUp).toBeUndefined();
     expect(repository.all()).toHaveLength(1);
     expect(repository.all()[0]!.contenido).toBe('Comprar pan y leche');
+    // `saved` es lo que usa bot.ts para pintar los botones inline (Fase 3
+    // del roadmap) — sin esto, la tarjeta se mandaría sin "Hecho"/
+    // "Recategorizar" aunque la nota se guardara bien.
+    expect(saved).toEqual({ id: repository.all()[0]!.id, categoria: 'tarea', hecho: false });
   });
 
   it('responde con un mensaje amable si el texto está vacío', async () => {
-    const { reply } = await handleTextMessage('   ', 'u1', pipeline());
+    const { reply, saved } = await handleTextMessage('   ', 'u1', pipeline());
     expect(reply).toBe(REPLIES.empty);
+    // Sin nota guardada, no hay nada sobre lo que pintar botones.
+    expect(saved).toBeUndefined();
   });
 
   it('nunca lanza: ante un fallo interno responde y lo registra', async () => {
@@ -285,6 +291,8 @@ describe('handleSearchCommand', () => {
       search: vi.fn().mockRejectedValue(new Error('db caída')),
       pending: vi.fn(),
       savedBetween: vi.fn(),
+      markDone: vi.fn(),
+      recategorize: vi.fn(),
     };
 
     const reply = await handleSearchCommand(
@@ -324,6 +332,8 @@ describe('handlePendingCommand', () => {
       search: vi.fn(),
       pending: vi.fn().mockRejectedValue(new Error('db caída')),
       savedBetween: vi.fn(),
+      markDone: vi.fn(),
+      recategorize: vi.fn(),
     };
 
     const reply = await handlePendingCommand(
@@ -407,6 +417,8 @@ describe('handleBriefingCommand', () => {
       search: vi.fn(),
       pending: vi.fn().mockRejectedValue(new Error('db caída')),
       savedBetween: vi.fn(),
+      markDone: vi.fn(),
+      recategorize: vi.fn(),
     };
 
     const reply = await handleBriefingCommand(

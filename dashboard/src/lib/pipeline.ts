@@ -56,7 +56,7 @@ function toVectorLiteral(embedding: number[]): string {
  * a `captureMessage` construye una instancia nueva con el workspace
  * activo de esa petición (ver más abajo).
  */
-class DashboardMessageRepository implements MessageRepository {
+export class DashboardMessageRepository implements MessageRepository {
   constructor(private readonly workspaceId: string) {}
 
   async save(userId: string, record: NewMessage): Promise<StoredMessage> {
@@ -122,6 +122,33 @@ class DashboardMessageRepository implements MessageRepository {
       orderBy: { fecha: "desc" },
     });
     return rows.map(toStoredMessage);
+  }
+
+  // Sin uso real hoy (`captureMessage` solo llama a `save`; el dashboard
+  // marca hecho/recategoriza por su propia vía — updateTaskStatus,
+  // MessageDetailDialog), pero forman parte de `MessageRepository` (Fase 3
+  // del roadmap del bot: botones inline) y una implementación a medias que
+  // lanzara sería una trampa para quien los use más adelante. Mismo
+  // criterio de sincronización que src/db/prismaRepository.ts del bot:
+  // `hecho` y `estado` van SIEMPRE juntos.
+  async markDone(userId: string, messageId: string): Promise<StoredMessage | null> {
+    const { count } = await prisma.message.updateMany({
+      where: { id: messageId, userId },
+      data: { hecho: true, estado: "HECHO" },
+    });
+    if (count === 0) return null;
+    const row = await prisma.message.findFirst({ where: { id: messageId, userId } });
+    return row ? toStoredMessage(row) : null;
+  }
+
+  async recategorize(userId: string, messageId: string, categoria: Category): Promise<StoredMessage | null> {
+    const { count } = await prisma.message.updateMany({
+      where: { id: messageId, userId },
+      data: { categoria },
+    });
+    if (count === 0) return null;
+    const row = await prisma.message.findFirst({ where: { id: messageId, userId } });
+    return row ? toStoredMessage(row) : null;
   }
 }
 
