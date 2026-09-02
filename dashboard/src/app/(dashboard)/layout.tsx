@@ -11,7 +11,6 @@ import { CurrentTaskBar } from "@/components/CurrentTaskBar";
 import { getDailyBriefing } from "@/lib/dailyBriefing";
 import { getActiveWorkspace, getPersonalWorkspaceId, listWorkspaceMembers } from "@/lib/workspace";
 import { listMyWorkspaces } from "@/app/(dashboard)/equipo/actions";
-import { hasUnreadChat as checkHasUnreadChat } from "@/app/(dashboard)/chat/actions";
 import { listNotifications, getUnreadCount } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 
@@ -79,7 +78,7 @@ export default async function DashboardLayout({
   // visual (Sidebar/MobileHeader se ven de inmediato, sin skeleton) —
   // el resumen del día y "en curso ahora" ya NO están aquí, ver
   // `PeripheralWidgets` arriba.
-  const [{ workspaceId: activeWorkspaceId, isPersonal }, workspaces, notifications, unreadCount, currentUser, hasUnreadChat] =
+  const [{ workspaceId: activeWorkspaceId, isPersonal }, workspaces, notifications, unreadCount, currentUser] =
     await Promise.all([
       getActiveWorkspace(userId),
       listMyWorkspaces(),
@@ -88,12 +87,6 @@ export default async function DashboardLayout({
       // Best-effort: solo decide si se muestra el enlace "Admin" en el
       // Sidebar, no es un dato imprescindible para poder entrar.
       prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }).catch(() => null),
-      // Best-effort: solo enciende el punto de "no leído" del menú, no es un
-      // dato imprescindible para poder entrar. Se queda en esta ola (no en
-      // `PeripheralWidgets`) porque Sidebar/BottomTabs la necesitan ya
-      // resuelta — no está pensada para reaccionar a un valor que llegue
-      // más tarde por streaming.
-      checkHasUnreadChat().catch(() => false),
     ]);
   const isSuperAdmin = currentUser?.isSuperAdmin ?? false;
 
@@ -120,7 +113,6 @@ export default async function DashboardLayout({
             isPersonal={isPersonal}
             notifications={notifications}
             unreadCount={unreadCount}
-            hasUnreadChat={hasUnreadChat}
             isSuperAdmin={isSuperAdmin}
           />
           <div className="flex min-w-0 flex-1 flex-col">
@@ -141,8 +133,8 @@ export default async function DashboardLayout({
             >
               {children}
             </main>
+            <BottomTabs isPersonal={isPersonal} />
           </div>
-          <BottomTabs isPersonal={isPersonal} hasUnreadChat={hasUnreadChat} />
           <CommandPalette />
           <Suspense fallback={null}>
             <PeripheralWidgets userId={userId} activeWorkspaceId={activeWorkspaceId} isPersonal={isPersonal} />

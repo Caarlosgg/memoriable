@@ -35,7 +35,7 @@ export async function TodayView() {
       </div>
 
       {isPersonal ? (
-        <PersonalToday workspaceId={workspaceId} userId={userId} />
+        <PersonalToday workspaceId={workspaceId} />
       ) : (
         <TeamToday workspaceId={workspaceId} userId={userId} role={role} />
       )}

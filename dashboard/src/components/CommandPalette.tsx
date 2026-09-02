@@ -11,7 +11,6 @@ import {
   PiggyBank,
   User,
   Users,
-  MessagesSquare,
   Bell,
   PenLine,
   type LucideIcon,
@@ -36,19 +35,16 @@ const NAV_ENTRIES: PaletteItem[] = [
   { key: "nav-notas", label: "Notas", Icon: StickyNote, onSelect: (r) => r.push("/categorias") },
   { key: "nav-tablero", label: "Tablero", Icon: ListTodo, onSelect: (r) => r.push("/pendientes") },
   { key: "nav-calendario", label: "Calendario", Icon: CalendarDays, onSelect: (r) => r.push("/calendario") },
-  // Chat y Equipo faltaban: estaban en el menú lateral pero no se podía
-  // llegar a ellos desde la paleta, que es justo la vía rápida de teclado.
-  { key: "nav-chat", label: "Chat", sublabel: "tus conversaciones y grupos", Icon: MessagesSquare, onSelect: (r) => r.push("/chat") },
+  // Equipo faltaba: estaba en el menú lateral pero no se podía llegar a él
+  // desde la paleta, que es justo la vía rápida de teclado.
   { key: "nav-equipo", label: "Equipo", sublabel: "miembros e invitaciones", Icon: Users, onSelect: (r) => r.push("/equipo") },
   { key: "nav-notificaciones", label: "Notificaciones", Icon: Bell, onSelect: (r) => r.push("/notificaciones") },
-  { key: "nav-ahorros", label: "Ahorros", Icon: PiggyBank, onSelect: (r) => r.push("/ahorros") },
   { key: "nav-cuenta", label: "Cuenta", Icon: User, onSelect: (r) => r.push("/cuenta") },
 ];
 
 const CREATE_ENTRIES: PaletteItem[] = [
   { key: "crear-nota", label: "Anotar algo nuevo", sublabel: "nota, tarea o recordatorio", Icon: PenLine, onSelect: (r) => r.push("/categorias") },
   { key: "crear-evento", label: "Nuevo evento", sublabel: "en el calendario", Icon: CalendarDays, onSelect: (r) => r.push("/calendario") },
-  { key: "crear-ahorro", label: "Nueva cuenta de ahorro", Icon: PiggyBank, onSelect: (r) => r.push("/ahorros") },
 ];
 
 const TIPO_ICON: Record<QuickSearchResult["tipo"], LucideIcon> = {

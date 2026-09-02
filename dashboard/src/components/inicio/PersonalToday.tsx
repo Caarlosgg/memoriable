@@ -1,9 +1,7 @@
 import Link from "next/link";
-import { TriangleAlert, CalendarDays, ListTodo, Clock, PenLine, Sparkles, CircleCheckBig, PiggyBank } from "lucide-react";
+import { TriangleAlert, CalendarDays, ListTodo, Clock, PenLine, Sparkles, CircleCheckBig } from "lucide-react";
 import { getTodayOverview } from "@/lib/todayOverview";
-import { getCuentasConSaldo } from "@/lib/ahorros";
 import { formatEventTime } from "@/lib/format";
-import { formatCentimos } from "@/lib/money";
 import { StatTile } from "./StatTile";
 import { TareaAccionable } from "./TareaAccionable";
 import { Bloque } from "./Bloque";
@@ -12,16 +10,13 @@ import { Bloque } from "./Bloque";
  * Inicio en modo PERSONAL: tu día, sin rastro de equipo. Antes esta pantalla
  * era la misma en los dos modos y llevaba una ficha "Tu equipo: 0" que no
  * medía nada estando aquí — el problema de fondo era mezclar dos públicos
- * en una sola vista. Esta es solo tuya: lo que vence, lo de hoy, y el rasgo
- * que define el modo personal — tus ahorros, que hasta ahora no aparecían
- * en Inicio pese a ser la función más "personal" de toda la aplicación.
+ * en una sola vista. Esta es solo tuya: lo que vence y lo de hoy.
  */
-export async function PersonalToday({ workspaceId, userId }: { workspaceId: string; userId: string }) {
-  const [overview, cuentas] = await Promise.all([getTodayOverview(workspaceId), getCuentasConSaldo(userId)]);
+export async function PersonalToday({ workspaceId }: { workspaceId: string }) {
+  const overview = await getTodayOverview(workspaceId);
 
   const nadaHoy = overview.hoyEventos.length === 0 && overview.hoyTareas.length === 0;
   const todoEnOrden = nadaHoy && overview.vencidasTotal === 0;
-  const totalAhorrado = cuentas.reduce((sum, c) => sum + c.saldoCentimos, 0);
 
   return (
     <>
@@ -96,22 +91,6 @@ export async function PersonalToday({ workspaceId, userId }: { workspaceId: stri
           <Sparkles aria-hidden size={16} className="text-accent" /> Preguntar al Asistente
         </Link>
       </div>
-
-      {/* El rasgo del modo personal, pero ya no lo primero que se ve: cifra
-          en euros, no un contador, así que va aparte en vez de forzarla en
-          la fila de arriba — y va AL FINAL para no competir con capturar y
-          preguntar al Asistente, el bucle que de verdad define el producto. */}
-      <Link
-        href="/ahorros"
-        className="flex items-center justify-between gap-3 rounded-2xl border border-paper-line bg-paper-raised p-4 transition-colors hover:border-accent hover:bg-accent-soft/40"
-      >
-        <span className="flex items-center gap-2 text-sm font-medium text-ink">
-          <PiggyBank aria-hidden size={16} className="text-accent" /> Ahorrado en total
-        </span>
-        <span className="font-display text-xl font-semibold text-accent-strong tabular-nums">
-          {formatCentimos(totalAhorrado)}
-        </span>
-      </Link>
     </>
   );
 }

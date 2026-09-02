@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TriangleAlert, CalendarDays, Clock, Loader2, Inbox, Sparkles, MessagesSquare } from "lucide-react";
+import { TriangleAlert, CalendarDays, Clock, Loader2, Inbox, Sparkles, ListTodo } from "lucide-react";
 import { getTodayOverview } from "@/lib/todayOverview";
 import { listWorkspaceMembers, canWrite } from "@/lib/workspace";
 import type { WorkspaceRole } from "@prisma/client";
@@ -61,7 +61,7 @@ export async function TeamToday({ workspaceId, userId, role }: { workspaceId: st
         />
         <StatTile href="/calendario" label="Hoy" value={overview.hoyTareasTotal + overview.hoyEventos.length} Icon={CalendarDays} />
         <StatTile
-          href="/chat"
+          href="/equipo"
           label="En curso"
           value={overview.enCurso.length}
           Icon={Loader2}
@@ -134,10 +134,10 @@ export async function TeamToday({ workspaceId, userId, role }: { workspaceId: st
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Link
-          href="/chat"
+          href="/pendientes"
           className="flex items-center gap-2 rounded-xl border border-paper-line bg-paper p-3 text-sm font-medium text-ink transition-colors hover:border-accent hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
         >
-          <MessagesSquare aria-hidden size={16} className="text-accent" /> Escribir al equipo
+          <ListTodo aria-hidden size={16} className="text-accent" /> Ver el tablero
         </Link>
         <Link
           href="/asistente"

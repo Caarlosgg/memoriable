@@ -52,7 +52,6 @@ export function Sidebar({
   isPersonal,
   notifications,
   unreadCount,
-  hasUnreadChat = false,
   isSuperAdmin = false,
 }: {
   workspaces: WorkspaceSummary[];
@@ -60,8 +59,6 @@ export function Sidebar({
   isPersonal: boolean;
   notifications: Notification[];
   unreadCount: number;
-  /** Hay mensajes de chat de equipo posteriores a tu última visita — ver chat/actions.ts hasUnreadChat. */
-  hasUnreadChat?: boolean;
   /** Muestra el enlace "Admin" (panel global, fuera del alcance de un OWNER/ADMIN normal de workspace) — ver lib/dal.ts requireSuperAdmin. */
   isSuperAdmin?: boolean;
 }) {
@@ -155,10 +152,9 @@ export function Sidebar({
               >
                 <span className="relative shrink-0">
                   <item.Icon aria-hidden size={18} />
-                  {((item.href === "/asistente" && assistantBusy) || (item.href === "/chat" && hasUnreadChat)) &&
-                    !active && (
+                  {item.href === "/asistente" && assistantBusy && !active && (
                       <span
-                        aria-label={item.href === "/asistente" ? "El Asistente está pensando" : "Hay mensajes de chat sin leer"}
+                        aria-label="El Asistente está pensando"
                         className="absolute -right-0.5 -top-0.5 flex h-2 w-2"
                       >
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />

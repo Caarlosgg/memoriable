@@ -1,4 +1,4 @@
-import { House, MessageCircle, MessagesSquare, StickyNote, ListTodo, CalendarDays, PiggyBank, Users, User, type LucideIcon } from "lucide-react";
+import { House, MessageCircle, StickyNote, ListTodo, CalendarDays, Users, User, type LucideIcon } from "lucide-react";
 import type { Modo } from "@/lib/modo";
 
 export interface NavItem {
@@ -22,8 +22,8 @@ export interface NavItem {
   /**
    * Sin marcar = núcleo (captura, asistente, notas/búsqueda, calendario).
    * "secundario" agrupa lo que no lidera la promoción del producto (tablero,
-   * chat, ahorros, equipo) — siguen íntegros y a un clic, solo después de un
-   * separador en Sidebar (ver ese componente) en vez de al mismo nivel.
+   * equipo) — siguen íntegros y a un clic, solo después de un separador en
+   * Sidebar (ver ese componente) en vez de al mismo nivel.
    */
   grupo?: "secundario";
 }
@@ -50,12 +50,9 @@ export const NAV_ITEMS: NavItem[] = [
   // pestaña de móvil te siga marcando dónde estás — ver "activoFuera" en
   // BottomTabs.tsx), pero ya no ocupa uno de los 4 huecos fijos.
   { href: "/pendientes", label: "Tablero", Icon: ListTodo, modos: AMBOS, enMovil: true, grupo: "secundario" },
-  // El chat dejó de estar atado al workspace (conversaciones y grupos son de
-  // la persona, ver ChatConversation en el schema), así que vive en los dos.
-  { href: "/chat", label: "Chat", Icon: MessagesSquare, modos: AMBOS, enMovil: true, grupo: "secundario" },
-  // Ahorros es SOLO personal: el dinero ahorrado cuelga del usuario, no del
-  // workspace (ver getPersonalWorkspaceId en lib/workspace.ts).
-  { href: "/ahorros", label: "Ahorros", Icon: PiggyBank, modos: ["personal"], enMovil: true, grupo: "secundario" },
+  // Ahorros ya NO está en el menú: no encaja en "la memoria de trabajo de tu
+  // equipo" (ver el plan de producto). La ruta y los datos siguen intactos —
+  // se llega por URL directa — pero deja de ser producto.
   // Equipo es SOLO de equipo: en personal no hay plantilla que gestionar. Se
   // sigue llegando desde el selector de espacios para crear el primero.
   { href: "/equipo", label: "Equipo", Icon: Users, modos: ["equipo"], grupo: "secundario" },

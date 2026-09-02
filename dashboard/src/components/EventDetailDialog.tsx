@@ -15,6 +15,7 @@ import {
 } from "@/app/(dashboard)/calendario/actions";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { AssigneeControl } from "./AssigneeControl";
+import { ComentariosThread } from "./comentarios/ComentariosThread";
 import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -238,6 +239,9 @@ export function EventDetailDialog({
                 {error}
               </p>
             )}
+
+            {/* Mismo hilo de equipo que en las notas — ver ComentariosThread. */}
+            <ComentariosThread eventoId={evento.id} />
 
             <DialogFooter className="mt-0 justify-between sm:justify-between">
               <Button

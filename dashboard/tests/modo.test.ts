@@ -24,11 +24,12 @@ describe("MODO_PRESENTATION", () => {
 });
 
 describe("navItemsDeModo", () => {
-  it("Ahorros solo en personal: el dinero cuelga del usuario, no del workspace", () => {
-    const personal = navItemsDeModo("personal").map((i) => i.href);
-    const equipo = navItemsDeModo("equipo").map((i) => i.href);
-    expect(personal).toContain("/ahorros");
-    expect(equipo).not.toContain("/ahorros");
+  it("Ahorros ya no está en el menú: no encaja en «la memoria de trabajo de tu equipo»", () => {
+    // La ruta y los datos siguen intactos (se llega por URL directa), pero
+    // deja de ser producto — ver el plan de producto. Este test lo fija para
+    // que no vuelva a colarse en el menú por error.
+    expect(navItemsDeModo("personal").map((i) => i.href)).not.toContain("/ahorros");
+    expect(navItemsDeModo("equipo").map((i) => i.href)).not.toContain("/ahorros");
   });
 
   it("Equipo solo en modo equipo: en personal no hay plantilla que gestionar", () => {
@@ -36,9 +37,11 @@ describe("navItemsDeModo", () => {
     expect(navItemsDeModo("personal").map((i) => i.href)).not.toContain("/equipo");
   });
 
-  it("el chat vive en los dos modos — dejó de estar atado al workspace", () => {
-    expect(navItemsDeModo("personal").map((i) => i.href)).toContain("/chat");
-    expect(navItemsDeModo("equipo").map((i) => i.href)).toContain("/chat");
+  it("el chat ya no es un destino: la comunicación del equipo vive en los comentarios", () => {
+    // Se retiró del producto (ver el modelo Comentario en schema.prisma) —
+    // este test lo fija para que no vuelva a colarse por error.
+    expect(navItemsDeModo("personal").map((i) => i.href)).not.toContain("/chat");
+    expect(navItemsDeModo("equipo").map((i) => i.href)).not.toContain("/chat");
   });
 
   it("los cuatro básicos están siempre, se esté donde se esté", () => {

@@ -13,6 +13,7 @@ import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtr
 import { checklistToArray, checklistToJson, type ChecklistItem } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
 import { AssigneeControl } from "./AssigneeControl";
+import { ComentariosThread } from "./comentarios/ComentariosThread";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { useUndoToast } from "./UndoToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "./ui/dialog";
@@ -417,6 +418,12 @@ export function MessageDetailDialog({
                 </>
               )}
             </div>
+
+            {/* El hilo del equipo, sobre la nota — no en un canal aparte
+                (ver el modelo Comentario en schema.prisma). Solo en modo
+                vista: mientras editas, el foco es el formulario. */}
+            <ComentariosThread messageId={message.id} />
+
             <DialogFooter className="mt-0 justify-between sm:justify-between">
               <Button type="button" variant="outline" onClick={handleDelete} className="text-danger">
                 <Trash2 aria-hidden size={15} /> Borrar

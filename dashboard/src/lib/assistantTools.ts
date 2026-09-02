@@ -20,10 +20,7 @@ import {
   listWorkspaceMembers,
   isOnline,
 } from "./workspace";
-import {
-  postChatMessage,
-  ensureDefaultGroupConversation,
-} from "@/app/(dashboard)/chat/actions";
+import { createComentario } from "./comentarios";
 import { saveAssistantMemory, forgetAssistantMemory } from "./assistantMemory";
 import { normalizeForMatch, matchPersonaPorEmail } from "./textMatch";
 import {
@@ -1395,47 +1392,41 @@ export function createAssistantTools(
         }
       },
     }),
-    enviarMensajeChat: tool({
+    comentarEnTarea: tool({
       description:
-        'Envía un mensaje al chat de equipo en nombre del usuario ("dile al equipo que llego tarde", "escribe en el chat que ya está listo"). Llámala directamente cuando pida avisar, decir o escribir algo al equipo — no preguntes primero si quiere que lo hagas. Solo en un workspace de equipo.',
+        'Deja un comentario del usuario SOBRE una tarea o nota concreta ("comenta en la tarea del informe que ya está revisado", "apunta en la nota del cliente que llamó ayer"). El comentario queda en la propia tarea, con su contexto, donde el equipo lo verá al abrirla. Usa @nombre dentro del texto para avisar a alguien del equipo.',
       inputSchema: z.object({
+        tarea: z
+          .string()
+          .min(1)
+          .describe("Descripción de la tarea o nota sobre la que comentar, tal como la nombró el usuario."),
         texto: z
           .string()
           .min(1)
-          .describe("El mensaje tal como debe aparecer en el chat."),
+          .describe("El comentario tal como debe quedar escrito."),
       }),
-      execute: async ({ texto }) => {
-        if (members.length === 0) {
-          // El chat SÍ existe en el espacio personal desde que dejó de estar
-          // atado al workspace (conversaciones y grupos propios) — lo que no
-          // hay aquí es un grupo "de equipo" al que escribir. Decir "no hay
-          // chat" a secas sería mentira y confundiría a quien lo tiene
-          // delante en el menú.
+      execute: async ({ tarea, texto }) => {
+        // Mismo buscador (y mismo umbral estricto) que usan completarTarea y
+        // aplazarTarea — comentar en la tarea equivocada confunde igual que
+        // completarla.
+        const encontrada = await encontrarTareaPendiente(workspaceId, tarea);
+        if (!encontrada) {
           throw new Error(
-            "Ahora mismo estás en tu espacio personal, así que no hay ningún equipo al que escribir. Cámbiate al equipo desde el selector y vuelve a pedírmelo (tus conversaciones personales siguen en el Chat).",
+            `No he encontrado ninguna tarea que encaje con "${tarea}". Dime su nombre más exacto y lo intento otra vez.`,
           );
         }
-        // "El equipo" en boca del usuario es el grupo por defecto, no una
-        // conversación individual/otro grupo concreto — el Asistente no
-        // tiene forma de saber a cuál de varios grupos se refiere, así que
-        // siempre escribe al que agrupa a todo el workspace (ver
-        // ensureDefaultGroupConversation).
-        const conversationId = await ensureDefaultGroupConversation(
-          workspaceId,
-          userId,
-        );
-        const result = await postChatMessage(
-          conversationId,
+        const result = await createComentario({
+          target: { messageId: encontrada.id },
           workspaceId,
           userId,
           texto,
-        );
-        if (result.error || !result.message) {
-          throw new Error(
-            result.error || "No se ha podido enviar el mensaje al chat.",
-          );
+          contexto: encontrada.resumen,
+          link: `/notas?mensaje=${encontrada.id}`,
+        });
+        if (result.error || !result.comentario) {
+          throw new Error(result.error || "No se ha podido publicar el comentario.");
         }
-        return { texto: result.message.texto };
+        return { tarea: encontrada.resumen, texto: result.comentario.texto };
       },
     }),
     recordarPreferencia: tool({
@@ -1542,7 +1533,7 @@ export function createAssistantTools(
     "asignarTarea",
     "consultarEquipo",
     "analizarEquipo",
-    "enviarMensajeChat",
+    "comentarEnTarea",
   ] as const;
   const excluidas = new Set<string>(enEquipo ? [] : REQUIEREN_EQUIPO);
   return Object.fromEntries(

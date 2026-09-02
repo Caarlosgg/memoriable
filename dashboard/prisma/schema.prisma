@@ -90,6 +90,7 @@ model User {
   chatParticipations       ChatConversationParticipant[]
   pushSubscriptions PushSubscription[]
   customCategories  CustomCategory[]
+  comentarios       Comentario[]
 
   @@map("users")
 }
@@ -115,6 +116,7 @@ model Workspace {
   assistantMemories AssistantMemory[]
   activityLogs   ActivityLog[]
   boardStatuses  BoardStatus[]
+  comentarios    Comentario[]
   personalOf     User?    @relation("PersonalWorkspace")
 
   @@map("workspaces")
@@ -460,7 +462,8 @@ model Message {
   embedding Unsupported("vector(768)")?
 
   /// Ver ../../prisma/schema.prisma: eventos del calendario (Fase I).
-  eventos Evento[]
+  eventos     Evento[]
+  comentarios Comentario[]
 
   @@index([categoria])
   @@index([fecha])
@@ -495,6 +498,35 @@ model CustomCategory {
   @@map("custom_categories")
 }
 
+/// Ver ../../prisma/schema.prisma: comentario sobre una nota o un evento —
+/// la comunicación del equipo vive DENTRO del trabajo, no en un canal
+/// aparte (sustituyó al chat interno, retirado del producto).
+model Comentario {
+  id        String    @id @default(cuid())
+  texto     String
+  createdAt DateTime  @default(now())
+  editadoAt DateTime?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  /// Uno de los dos, nunca ambos — se valida en la Server Action.
+  messageId String?
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  eventoId String?
+  evento   Evento? @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, createdAt])
+  @@index([eventoId, createdAt])
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("comentarios")
+}
+
 /// Ver ../../prisma/schema.prisma: evento del calendario (Fase I).
 model Evento {
   id            String    @id @default(cuid())
@@ -520,6 +552,8 @@ model Evento {
 
   messageId String?
   message   Message? @relation(fields: [messageId], references: [id])
+
+  comentarios Comentario[]
 
   @@index([userId])
   @@index([fechaInicio])

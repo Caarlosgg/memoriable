@@ -137,6 +137,7 @@ model User {
   chatConversationsCreated ChatConversation[]            @relation("ChatConversationCreator")
   chatParticipations       ChatConversationParticipant[]
   customCategories         CustomCategory[]
+  comentarios              Comentario[]
 
   @@map("users")
 }
@@ -176,6 +177,7 @@ model Workspace {
   assistantMemories AssistantMemory[]
   activityLogs    ActivityLog[]
   boardStatuses   BoardStatus[]
+  comentarios     Comentario[]
   /// Reverso de User.personalWorkspaceId — como máximo un usuario por
   /// workspace personal (impuesto por el @unique del otro lado).
   personalOf  User?    @relation("PersonalWorkspace")
@@ -709,6 +711,10 @@ model Message {
   /// vacío: la mayoría de notas no generan un evento.
   eventos Evento[]
 
+  /// Hilo de comentarios del equipo sobre esta nota — ver el modelo
+  /// Comentario para por qué esto sustituyó al chat interno.
+  comentarios Comentario[]
+
   @@index([categoria])
   @@index([fecha])
   @@index([fechaLimite])
@@ -755,6 +761,52 @@ model CustomCategory {
   @@map("custom_categories")
 }
 
+/// Comentario sobre una nota o un evento — la forma en que un equipo se
+/// comunica DENTRO del trabajo, no en un canal aparte.
+///
+/// Sustituye al chat interno que había antes (ChatConversation/ChatMessage,
+/// retirado del producto; el código vive en la rama `archive/chat`). El
+/// razonamiento: un mensajero suelto compite con WhatsApp/Telegram, donde
+/// el equipo ya está, y siempre pierde. Comentar SOBRE la tarea —como hacen
+/// Notion, Linear o Asana— vale más que ese mismo mensaje perdido en un
+/// hilo, porque llega con su contexto puesto.
+///
+/// Cuelga de una nota O de un evento, nunca de ambos ni de ninguno: se
+/// valida en la Server Action (Prisma no expresa un "exactamente uno de
+/// estos dos" a nivel de esquema).
+model Comentario {
+  id        String    @id @default(cuid())
+  texto     String
+  createdAt DateTime  @default(now())
+  /// Marca de edición: null mientras no se haya editado nunca. Se enseña
+  /// como "(editado)" junto a la fecha, igual que en cualquier hilo.
+  editadoAt DateTime?
+
+  /// Quién lo escribió. Se borra con la cuenta (Cascade): un comentario
+  /// huérfano sin autor no aporta nada a un hilo.
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Denormalizado desde la nota/evento comentado — evita pasar por la
+  /// entidad padre en las consultas que ya filtran por workspace (mismo
+  /// criterio que tenía ChatMessage.workspaceId).
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  /// Uno de los dos, nunca ambos (ver comentario del modelo).
+  messageId String?
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  eventoId String?
+  evento   Evento? @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, createdAt])
+  @@index([eventoId, createdAt])
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("comentarios")
+}
+
 /// Evento del calendario (Fase I): cita/recordatorio con fecha y hora,
 /// creado a mano desde /calendario o por el Asistente cuando el usuario
 /// describe algo con fecha clara ("quedar el jueves a las 5"). Distinto
@@ -790,6 +842,10 @@ model Evento {
   /// una de tus notas). Null si se creó directamente desde /calendario.
   messageId String?
   message   Message? @relation(fields: [messageId], references: [id])
+
+  /// Hilo de comentarios del equipo sobre este evento — ver el modelo
+  /// Comentario.
+  comentarios Comentario[]
 
   @@index([userId])
   @@index([fechaInicio])

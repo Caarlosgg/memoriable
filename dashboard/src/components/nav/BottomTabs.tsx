@@ -15,18 +15,17 @@ import { modoDe } from "@/lib/modo";
 /** Con más de 4 pestañas + "Más", las etiquetas dejan de caber en un móvil normal. */
 const MAX_TABS_MOVIL = 4;
 
-export function BottomTabs({ isPersonal, hasUnreadChat = false }: { isPersonal: boolean; hasUnreadChat?: boolean }) {
+export function BottomTabs({ isPersonal }: { isPersonal: boolean }) {
   const pathname = usePathname();
   // Mismo criterio de modo que el menú de escritorio (ver navItemsDeModo),
   // filtrado además por lo que cabe en una barra de móvil. Antes la regla de
   // modo estaba duplicada aquí y en Sidebar, y divergieron.
   const candidatos = navItemsDeModo(modoDe(isPersonal)).filter((item) => item.enMovil);
-  // TOPE DURO de 4 + "Más". Al dejar de filtrar el chat por workspace, en
-  // modo personal pasaban a caber 6 pestañas más "Más": en una pantalla de
-  // teléfono eso son ~7 columnas de 50px, con las etiquetas partidas o
-  // recortadas. El corte se hace aquí y no quitando destinos de NAV_ITEMS
-  // porque en escritorio sí caben todos — y lo que se queda fuera no se
-  // pierde, sigue estando en "Más" (la paleta lista TODOS los destinos).
+  // TOPE DURO de 4 + "Más": en una pantalla de teléfono, más columnas
+  // dejarían las etiquetas partidas o recortadas. El corte se hace aquí y no
+  // quitando destinos de NAV_ITEMS porque en escritorio sí caben todos — y
+  // lo que se queda fuera no se pierde, sigue estando en "Más" (la paleta
+  // lista TODOS los destinos).
   const items = candidatos.slice(0, MAX_TABS_MOVIL);
   // Estar EN una pantalla que se ha quedado fuera del corte (p. ej. Ahorros
   // en personal) sin que nada en la barra aparezca activo se siente roto:
@@ -55,10 +54,9 @@ export function BottomTabs({ isPersonal, hasUnreadChat = false }: { isPersonal: 
           >
             <span className="relative">
               <item.Icon aria-hidden size={20} />
-              {((item.href === "/asistente" && assistantBusy) || (item.href === "/chat" && hasUnreadChat)) &&
-                !active && (
+              {item.href === "/asistente" && assistantBusy && !active && (
                   <span
-                    aria-label={item.href === "/asistente" ? "El Asistente está pensando" : "Hay mensajes de chat sin leer"}
+                    aria-label="El Asistente está pensando"
                     className="absolute -right-0.5 -top-0.5 flex h-2 w-2"
                   >
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />

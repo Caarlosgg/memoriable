@@ -169,7 +169,7 @@ describe("createAssistantTools — poda por modo", () => {
     "asignarTarea",
     "consultarEquipo",
     "analizarEquipo",
-    "enviarMensajeChat",
+    "comentarEnTarea",
   ];
 
   it("en personal no incluye las que necesitan compañeros de equipo", () => {
