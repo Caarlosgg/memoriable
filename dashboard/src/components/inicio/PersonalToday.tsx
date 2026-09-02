@@ -79,7 +79,7 @@ export async function PersonalToday({ workspaceId }: { workspaceId: string }) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Link
-          href="/categorias"
+          href="/notas"
           className="flex items-center gap-2 rounded-xl border border-paper-line bg-paper p-3 text-sm font-medium text-ink transition-colors hover:border-accent hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
         >
           <PenLine aria-hidden size={16} className="text-accent" /> Apuntar algo

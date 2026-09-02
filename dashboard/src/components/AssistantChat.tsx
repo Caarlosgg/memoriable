@@ -678,7 +678,7 @@ export function AssistantChat({ puedeGrabar }: { puedeGrabar: boolean }) {
                             return (
                               <li key={s.id}>
                                 <Link
-                                  href={`/categorias?mensaje=${s.id}#mensaje-${s.id}`}
+                                  href={`/notas?mensaje=${s.id}#mensaje-${s.id}`}
                                   className="block rounded-lg border border-paper-line bg-paper p-2.5 transition-colors hover:border-accent hover:bg-accent-soft"
                                 >
                                   <p className="flex items-center gap-1.5 font-medium text-ink">

@@ -24,6 +24,24 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
+  /**
+   * La pantalla se llama "Notas" en todo el producto, pero la ruta seguía
+   * siendo `/categorias` (y `/buscador` era una redirección de cuando eran
+   * dos pantallas distintas, antes de unificarlas en `NotesExplorer`). La URL
+   * mentía sobre lo que había al otro lado.
+   *
+   * `permanent: true` (308) y no una página con `redirect()`: es la
+   * semántica correcta para una URL que ya no vuelve, y así lo entienden
+   * navegadores y buscadores en vez de reintentar la vieja cada vez. Se
+   * mantienen indefinidamente porque hay enlaces antiguos en marcadores y en
+   * notificaciones ya enviadas.
+   */
+  async redirects() {
+    return [
+      { source: "/categorias", destination: "/notas", permanent: true },
+      { source: "/buscador", destination: "/notas", permanent: true },
+    ];
+  },
 };
 
 // Sentry (observabilidad, ver instrumentation.ts/sentry.*.config.ts): solo

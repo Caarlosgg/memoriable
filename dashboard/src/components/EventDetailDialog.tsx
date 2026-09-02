@@ -227,7 +227,7 @@ export function EventDetailDialog({
             )}
             {evento.messageId && (
               <Link
-                href={`/categorias?mensaje=${evento.messageId}#mensaje-${evento.messageId}`}
+                href={`/notas?mensaje=${evento.messageId}#mensaje-${evento.messageId}`}
                 className="text-sm text-accent hover:text-accent-strong hover:underline"
               >
                 Ver la nota que originó este evento →

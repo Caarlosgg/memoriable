@@ -48,30 +48,34 @@ comprometido hasta que tenga uso real detrás.
 - Exportar los mensajes guardados: Markdown/Obsidian (un `.md` por nota,
   con front matter) y CSV/JSON.
 
-## El dashboard creció más allá de lo que promociona el proyecto
+## El producto, y lo que quedó fuera de él
 
-Lo de arriba es lo que este proyecto **enseña primero**: le escribes al bot
-de Telegram, categoriza y resume con IA, lo buscas (texto + semántico) y le
-preguntas al Asistente sobre tus notas — todo autoalojado. Es el núcleo, y
-es lo que sigue definiendo el producto.
+El bucle que define MemorIAble: **capturas** donde estés (Telegram, web,
+voz) → **la IA organiza sola** → **recuperas** (búsqueda híbrida +
+Asistente que cita sus fuentes) → **actúas** (tareas, calendario) — y todo
+en tu propio servidor.
 
-Por el camino, el dashboard fue creciendo con funciones reales y
-terminadas que van más allá de ese núcleo — no son un experimento a medio
-hacer, pero tampoco es lo que se lidera al presentar el proyecto:
+Alrededor de ese núcleo, el dashboard tiene:
 
 - **Equipos**: workspaces compartidos, roles, invitaciones.
 - **Tablero** (`/pendientes`): vista kanban de tus tareas/recordatorios,
   con columnas personalizables.
-- **Chat**: mensajería entre usuarios (personal y de equipo), en tiempo
-  real vía Supabase Realtime si está configurado.
 - **Calendario**: vista de eventos y tareas con fecha.
-- **Ahorros**: seguimiento de cuentas y movimientos, solo en modo
-  personal.
+- **Comentarios** sobre cada nota o tarea, con menciones `@` que avisan.
 - Notificaciones push, login con Google, instalación como PWA.
 
-Todo esto sigue en el código, sin planes de quitarlo — simplemente no es
-con lo que este README ni la landing abren la conversación. El detalle de
-cada función vive en [`dashboard/README.md`](./dashboard/README.md).
+### Lo que se retiró del producto, y por qué
+
+- **Chat interno** (mensajería entre usuarios): la intención —comunicación
+  del equipo— era buena, pero la forma competía de frente con WhatsApp y
+  Telegram, donde el equipo ya está. Sustituido por **comentarios en
+  contexto**: comentar *sobre la tarea* llega con su contexto puesto, que
+  es justo lo que un mensaje suelto en un hilo pierde. Mismo criterio que
+  Notion, Linear o Asana, que tampoco envían un mensajero aparte. El código
+  vive en la rama `archive/chat`.
+- **Ahorros** (cuentas y movimientos): no encaja en "la memoria de trabajo
+  de tu equipo". La ruta, el código y los datos siguen intactos — solo sale
+  de la navegación y del Asistente.
 
 ## Fuera de alcance por ahora
 

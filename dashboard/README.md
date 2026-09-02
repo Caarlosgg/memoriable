@@ -15,10 +15,12 @@ Tailwind, con su propio despliegue en Vercel, independiente del bot.
 - **Navegación** con sidebar colapsable en desktop y barra de pestañas en
   móvil (ver [Navegación](#navegación)). El núcleo — mismo que el del bot —
   es Inicio, Asistente, Notas (búsqueda híbrida + captura) y Calendario.
-  A mayores, el dashboard incluye un tablero kanban, chat entre usuarios,
-  equipos (workspaces compartidos) y ahorros (modo personal) — funciones
-  completas, pero que no son el foco de este documento; el propio menú las
-  agrupa aparte del núcleo.
+  A mayores, el dashboard incluye un tablero kanban y equipos (workspaces
+  compartidos), agrupados aparte del núcleo en el propio menú.
+- **Comentarios en contexto**: el equipo se comunica SOBRE la nota o la
+  tarea, no en un chat aparte — con menciones `@` que avisan. Sustituyó al
+  mensajero interno que hubo antes (ver el modelo `Comentario` en
+  `prisma/schema.prisma` para el razonamiento).
 - **Asistente conversacional**: preguntas en lenguaje
   natural sobre tus notas guardadas, respondidas por Groq en streaming a
   partir de lo que encuentra por similitud semántica, citando de qué notas
@@ -111,9 +113,8 @@ muestra), compartida por ambos componentes.
 
 Los destinos se agrupan en dos niveles, marcados con un separador en el
 sidebar: el **núcleo** (Inicio, Asistente, Notas, Calendario) va primero;
-Tablero, Chat, Ahorros y Equipo van después — siguen a un clic, solo que
-no son lo que el proyecto lidera al presentarse (ver
-[ROADMAP.md](../ROADMAP.md)).
+Tablero y Equipo van después — siguen a un clic, solo que no son lo que el
+proyecto lidera al presentarse (ver [ROADMAP.md](../ROADMAP.md)).
 
 El colapso del sidebar es la única animación de Framer Motion del
 dashboard (import dinámico vía `next/dynamic`, para no meterlo en el
@@ -122,9 +123,11 @@ CSS no reproduce bien. Todo lo demás (`fade-in`, transiciones de color,
 skeletons) es CSS/Tailwind puro, y respeta `prefers-reduced-motion`.
 
 `/` redirige a `/inicio`. Las rutas viven en
-`src/app/(dashboard)/{inicio,asistente,categorias,pendientes,calendario,ahorros,chat,equipo,cuenta}/page.tsx`
-(`categorias` es la ruta de "Notas" en el menú — el nombre de carpeta no
-cambió al fusionarse con el antiguo Buscador).
+`src/app/(dashboard)/{inicio,asistente,notas,pendientes,calendario,equipo,cuenta}/page.tsx`.
+
+`/categorias` y `/buscador` (los nombres antiguos de lo que hoy es `/notas`)
+se mantienen como redirecciones permanentes 308 en `next.config.ts`, por los
+enlaces que quedan en marcadores y en notificaciones ya enviadas.
 
 ## Asistente y búsqueda semántica
 
@@ -303,7 +306,7 @@ dashboard/
 ├── src/
 │   ├── app/
 │   │   ├── (dashboard)/
-│   │   │   ├── inicio|asistente|categorias|pendientes|calendario|.../page.tsx  # una carpeta por sección (ver Navegación)
+│   │   │   ├── inicio|asistente|notas|pendientes|calendario|.../page.tsx  # una carpeta por sección (ver Navegación)
 │   │   │   ├── layout.tsx  # verifySession() + Sidebar/BottomTabs/MobileHeader
 │   │   │   └── page.tsx    # redirect("/inicio")
 │   │   ├── login/          # público

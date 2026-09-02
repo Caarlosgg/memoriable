@@ -405,11 +405,10 @@ Tailwind para consultar, buscar y gestionar tus mensajes desde el navegador
 El núcleo del dashboard es el mismo que el del bot: **Inicio** (tu día de
 un vistazo), **Asistente** (chat en lenguaje natural sobre tus notas, con
 fuentes citadas y streaming), **Notas** (búsqueda híbrida — texto exacto +
-semántica — y captura rápida) y **Calendario**. A partir de ahí, el
-dashboard creció con funciones propias que no son el foco de este README
-pero están completas y en uso: un **tablero** kanban de tus tareas, **chat**
-entre usuarios, **equipos** (workspaces compartidos) y **ahorros** (en modo
-personal) — detalladas en [`dashboard/README.md`](./dashboard/README.md).
+semántica — y captura rápida) y **Calendario**. A mayores, un **tablero**
+kanban de tus tareas, **equipos** (workspaces compartidos) y **comentarios**
+sobre cada nota o tarea, con menciones — detallados en
+[`dashboard/README.md`](./dashboard/README.md).
 
 Es **un proyecto aparte, con despliegue independiente** del bot:
 

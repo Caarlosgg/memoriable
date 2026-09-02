@@ -65,7 +65,7 @@ export async function searchAcrossAll(
         tipo: "nota",
         titulo: m.resumen,
         subtitulo: m.categoria,
-        href: `/categorias?mensaje=${m.id}#mensaje-${m.id}`,
+        href: `/notas?mensaje=${m.id}#mensaje-${m.id}`,
       }),
     ),
     ...eventos.map(

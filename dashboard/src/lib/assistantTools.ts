@@ -378,7 +378,7 @@ export function createAssistantTools(
         // la versión cacheada de antes; el chat vive en otra pestaña.)
         try {
           revalidatePath("/pendientes");
-          revalidatePath("/categorias");
+          revalidatePath("/notas");
         } catch (err) {
           console.error(
             "No se pudo invalidar la caché tras crear la nota (no crítico):",
@@ -581,7 +581,7 @@ export function createAssistantTools(
 
         try {
           revalidatePath("/pendientes");
-          revalidatePath("/categorias");
+          revalidatePath("/notas");
         } catch (err) {
           console.error(
             "No se pudo invalidar la caché tras completar la tarea (no crítico):",

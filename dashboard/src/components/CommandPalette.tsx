@@ -32,7 +32,7 @@ interface PaletteItem {
 
 const NAV_ENTRIES: PaletteItem[] = [
   { key: "nav-asistente", label: "Asistente", Icon: MessageCircle, onSelect: (r) => r.push("/asistente") },
-  { key: "nav-notas", label: "Notas", Icon: StickyNote, onSelect: (r) => r.push("/categorias") },
+  { key: "nav-notas", label: "Notas", Icon: StickyNote, onSelect: (r) => r.push("/notas") },
   { key: "nav-tablero", label: "Tablero", Icon: ListTodo, onSelect: (r) => r.push("/pendientes") },
   { key: "nav-calendario", label: "Calendario", Icon: CalendarDays, onSelect: (r) => r.push("/calendario") },
   // Equipo faltaba: estaba en el menú lateral pero no se podía llegar a él
@@ -43,7 +43,7 @@ const NAV_ENTRIES: PaletteItem[] = [
 ];
 
 const CREATE_ENTRIES: PaletteItem[] = [
-  { key: "crear-nota", label: "Anotar algo nuevo", sublabel: "nota, tarea o recordatorio", Icon: PenLine, onSelect: (r) => r.push("/categorias") },
+  { key: "crear-nota", label: "Anotar algo nuevo", sublabel: "nota, tarea o recordatorio", Icon: PenLine, onSelect: (r) => r.push("/notas") },
   { key: "crear-evento", label: "Nuevo evento", sublabel: "en el calendario", Icon: CalendarDays, onSelect: (r) => r.push("/calendario") },
 ];
 

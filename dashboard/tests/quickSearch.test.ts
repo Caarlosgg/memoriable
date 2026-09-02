@@ -63,7 +63,7 @@ describe("searchAcrossAll", () => {
     const result = await searchAcrossAll("u1", "ws1", true, "fontanero");
 
     expect(result).toEqual([
-      { id: "m1", tipo: "nota", titulo: "Llamar al fontanero", subtitulo: "tarea", href: "/categorias?mensaje=m1#mensaje-m1" },
+      { id: "m1", tipo: "nota", titulo: "Llamar al fontanero", subtitulo: "tarea", href: "/notas?mensaje=m1#mensaje-m1" },
       { id: "e1", tipo: "evento", titulo: "Cita con el fontanero", subtitulo: "Evento", href: "/calendario" },
       { id: "c1", tipo: "ahorro", titulo: "Fondo fontanero", subtitulo: "Cuenta de ahorro", href: "/ahorros" },
     ]);

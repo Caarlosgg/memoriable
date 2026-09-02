@@ -287,7 +287,7 @@ describe("createAssistantTools", () => {
       resumen: "Llamar al banco",
     });
     expect(revalidatePath).toHaveBeenCalledWith("/pendientes");
-    expect(revalidatePath).toHaveBeenCalledWith("/categorias");
+    expect(revalidatePath).toHaveBeenCalledWith("/notas");
   });
 
   it("crearNota con asignadoA resuelve el miembro real y actualiza la nota ya guardada con su assigneeId", async () => {

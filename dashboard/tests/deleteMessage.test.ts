@@ -43,7 +43,7 @@ describe("deleteMessage", () => {
 
     expect(messageDeleteMany).toHaveBeenCalledWith({ where: { id: "m1", workspaceId: "ws1" } });
     expect(result.error).toBeUndefined();
-    expect(revalidatePath).toHaveBeenCalledWith("/categorias");
+    expect(revalidatePath).toHaveBeenCalledWith("/notas");
     expect(revalidatePath).toHaveBeenCalledWith("/pendientes");
   });
 

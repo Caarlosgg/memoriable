@@ -28,9 +28,9 @@ beforeEach(() => {
 describe("createNotification", () => {
   it("crea la notificación con los datos dados", async () => {
     const { createNotification } = await import("../src/lib/notifications");
-    await createNotification({ userId: "u2", type: "ASSIGNED_MESSAGE", title: "Te han asignado una tarea", body: "Llamar al fontanero", link: "/categorias?mensaje=m1" });
+    await createNotification({ userId: "u2", type: "ASSIGNED_MESSAGE", title: "Te han asignado una tarea", body: "Llamar al fontanero", link: "/notas?mensaje=m1" });
     expect(notificationCreate).toHaveBeenCalledWith({
-      data: { userId: "u2", type: "ASSIGNED_MESSAGE", title: "Te han asignado una tarea", body: "Llamar al fontanero", link: "/categorias?mensaje=m1" },
+      data: { userId: "u2", type: "ASSIGNED_MESSAGE", title: "Te han asignado una tarea", body: "Llamar al fontanero", link: "/notas?mensaje=m1" },
     });
   });
 

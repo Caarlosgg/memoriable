@@ -43,7 +43,7 @@ const AMBOS: readonly Modo[] = ["personal", "equipo"];
 export const NAV_ITEMS: NavItem[] = [
   { href: "/inicio", label: "Inicio", Icon: House, modos: AMBOS, enMovil: true },
   { href: "/asistente", label: "Asistente", Icon: MessageCircle, modos: AMBOS, enMovil: true },
-  { href: "/categorias", label: "Notas", Icon: StickyNote, modos: AMBOS, enMovil: true },
+  { href: "/notas", label: "Notas", Icon: StickyNote, modos: AMBOS, enMovil: true },
   { href: "/calendario", label: "Calendario", Icon: CalendarDays, modos: AMBOS, enMovil: true },
   // A partir de aquí, secundario: sigue en el menú y en "Más" del móvil
   // (enMovil se mantiene para que, si estás EN una de estas pantallas, la

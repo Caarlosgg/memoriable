@@ -76,7 +76,7 @@ export interface CrearEnColumnaResult {
  * Crea una tarea DIRECTAMENTE en una columna del tablero.
  *
  * Hasta ahora el tablero solo se podía llenar desde otra pantalla
- * (`/categorias`) o desde el bot: un kanban en el que no se puede añadir
+ * (`/notas`) o desde el bot: un kanban en el que no se puede añadir
  * una tarjeta obliga a irse justo cuando estás organizando. Pasa por el
  * MISMO pipeline que la captura rápida (categorización + resumen), así que
  * no es un atajo que cree notas de segunda: solo añade en qué columna cae.
@@ -360,7 +360,7 @@ async function notifyMessageAssignment(assigneeId: string, messageId: string): P
     type: "ASSIGNED_MESSAGE",
     title: "Te han asignado una tarea",
     body: message.resumen,
-    link: `/categorias?mensaje=${messageId}#mensaje-${messageId}`,
+    link: `/notas?mensaje=${messageId}#mensaje-${messageId}`,
   });
 }
 
@@ -440,7 +440,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
     });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
 
-    revalidatePath("/categorias");
+    revalidatePath("/notas");
     revalidatePath("/pendientes");
     return {};
   } catch (err) {
@@ -492,7 +492,7 @@ export async function deleteMessage(id: string): Promise<DeleteMessageResult> {
   try {
     const result = await prisma.message.deleteMany({ where: { id, workspaceId } });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
-    revalidatePath("/categorias");
+    revalidatePath("/notas");
     revalidatePath("/pendientes");
     return {};
   } catch (err) {

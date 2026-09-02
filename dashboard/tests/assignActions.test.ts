@@ -107,7 +107,7 @@ describe("assignMessage", () => {
       type: "ASSIGNED_MESSAGE",
       title: "Te han asignado una tarea",
       body: "Llamar al fontanero",
-      link: "/categorias?mensaje=m1#mensaje-m1",
+      link: "/notas?mensaje=m1#mensaje-m1",
     });
   });
 
