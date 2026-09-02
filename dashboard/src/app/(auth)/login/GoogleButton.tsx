@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 /** Logo oficial de Google en 4 colores — lucide-react no trae logos de marca. */
@@ -27,10 +28,10 @@ function GoogleLogo() {
 export function GoogleButton() {
   return (
     <Button asChild variant="secondary" className="w-full">
-      <a href="/api/auth/google">
+      <Link href="/api/auth/google">
         <GoogleLogo />
         Entrar con Google
-      </a>
+      </Link>
     </Button>
   );
 }
