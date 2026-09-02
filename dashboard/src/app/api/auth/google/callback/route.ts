@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { NextResponse, type NextRequest } from "next/server";
 import { exchangeCodeForIdentity, findOrCreateGoogleUser } from "@/lib/googleOAuth";
 import { createSession } from "@/lib/session";
+import { statesMatch } from "@/lib/timingSafeEqual";
 import { OAUTH_STATE_COOKIE } from "../route";
 
 function loginWithError(origin: string, code: string): NextResponse {
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
   const state = req.nextUrl.searchParams.get("state");
   const cookieState = req.cookies.get(OAUTH_STATE_COOKIE)?.value;
 
-  if (!code || !state || !cookieState || state !== cookieState) {
+  if (!code || !state || !cookieState || !statesMatch(state, cookieState)) {
     return loginWithError(origin, "oauth");
   }
 

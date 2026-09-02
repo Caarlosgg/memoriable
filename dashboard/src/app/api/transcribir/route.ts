@@ -2,6 +2,11 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { isSessionActive } from "@/lib/sessionRevocation";
 import { transcribeAudio, isVoiceConfigured } from "@/lib/transcriber";
+import { checkRateLimit } from "@/lib/rateLimit";
+
+/** Por usuario, no por IP: ya está autenticado, y varios usuarios detrás del mismo NAT/proxy no deben compartir cupo. */
+const TRANSCRIBE_LIMIT = 20;
+const TRANSCRIBE_WINDOW_MS = 60 * 60 * 1000;
 
 /**
  * Transcribe una nota de voz grabada en el navegador. Route Handler, no
@@ -31,6 +36,11 @@ export async function POST(req: Request): Promise<Response> {
   const session = await verifySessionToken(token);
   if (!session || !(await isSessionActive(session.userId, session.issuedAt))) {
     return errorResponse("No autenticado", 401);
+  }
+
+  const limit = await checkRateLimit(`transcribir:${session.userId}`, TRANSCRIBE_LIMIT, TRANSCRIBE_WINDOW_MS);
+  if (!limit.allowed) {
+    return errorResponse(`Demasiadas transcripciones seguidas. Espera ${limit.retryAfterSeconds}s e inténtalo de nuevo.`, 429);
   }
 
   if (!isVoiceConfigured()) {

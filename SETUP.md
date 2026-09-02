@@ -116,6 +116,22 @@ Para pararlo: `Ctrl+C`.
   vaya a tocar código).
 - **[ROADMAP.md](./ROADMAP.md)** — hacia dónde va esto.
 
+## Backups y recuperación
+
+El proyecto no gestiona sus propios backups — depende de lo que retenga tu
+proveedor de PostgreSQL. Con Supabase: revisa **Project Settings → Database
+→ Backups** para ver el periodo de retención de tu plan (el plan Free tiene
+uno limitado; los planes de pago añaden Point-in-Time Recovery con una
+ventana mayor). Si tus notas te importan, vale la pena comprobarlo antes de
+depender del proyecto a diario.
+
+Importante: el esquema no tiene borrado blando (`onDelete: Cascade` en las
+relaciones) — borrar un workspace, una cuenta o un mensaje desde la app es
+**irreversible** salvo que lo recuperes desde el backup de tu proveedor. No
+hay una "papelera" a la que volver dentro de la propia aplicación (con la
+excepción puntual del margen de deshacer de unos segundos al borrar una
+nota desde el dashboard).
+
 ## ¿Algo no funciona?
 
 - **"Falta la variable de entorno..."** — el mensaje de error te dice
