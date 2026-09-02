@@ -2,10 +2,32 @@
 
 import { useState } from "react";
 import { Download } from "lucide-react";
-import { exportData } from "@/app/(dashboard)/cuenta/actions";
+import { exportData, type ExportFormat } from "@/app/(dashboard)/cuenta/actions";
 import type { ExportScope } from "@/lib/exportData";
 import { CATEGORIES, CATEGORY_PRESENTATION, isCategory } from "@/lib/categories";
 import { Button } from "./ui/button";
+
+/** Tipo MIME por formato — el de Obsidian es el único binario (un .zip). */
+const MIME_BY_FORMAT: Record<ExportFormat, string> = {
+  markdown: "text/markdown",
+  json: "application/json",
+  csv: "text/csv",
+  obsidian: "application/zip",
+};
+
+/**
+ * `atob` da una string binaria (un byte por carácter) — hace falta pasarla
+ * a bytes de verdad para el Blob. `new ArrayBuffer(...)` explícito (en vez
+ * de dejar que `Uint8Array` reserve el suyo) para que el `.buffer` resultante
+ * tipe como `ArrayBuffer` y no como el `ArrayBufferLike` más laxo que
+ * `BlobPart` rechaza.
+ */
+function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 const SELECT_CLASSNAME =
   "rounded-lg border border-paper-line bg-paper px-3 py-2.5 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
@@ -20,13 +42,15 @@ function toExportScope(value: ScopeValue): ExportScope | null {
 
 /**
  * Exportación de datos (casi obligatoria de cara a RGPD): alcance
- * seleccionable, Markdown o JSON, descarga directa en el navegador — sin
- * fichero temporal en el servidor, el contenido viaja como texto y se
- * convierte en un Blob aquí mismo.
+ * seleccionable, en Markdown/JSON (todo lo que quepa en el alcance), CSV
+ * (notas, para hoja de cálculo) o un vault de Obsidian en .zip (un archivo
+ * por nota, con front matter). Descarga directa en el navegador — sin
+ * fichero temporal en el servidor, el contenido viaja como texto (o base64
+ * para el .zip) y se convierte en un Blob aquí mismo.
  */
 export function ExportSection() {
   const [scope, setScope] = useState<ScopeValue>("todo");
-  const [format, setFormat] = useState<"markdown" | "json">("markdown");
+  const [format, setFormat] = useState<ExportFormat>("markdown");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successFilename, setSuccessFilename] = useState<string | null>(null);
@@ -52,9 +76,11 @@ export function ExportSection() {
       return;
     }
 
-    const blob = new Blob([result.content], {
-      type: format === "json" ? "application/json" : "text/markdown",
-    });
+    // El .zip de Obsidian viaja en base64 (contenido binario) — el resto
+    // son texto tal cual. `binary` es lo que distingue los dos caminos.
+    const blob = result.binary
+      ? new Blob([base64ToBytes(result.content)], { type: MIME_BY_FORMAT[format] })
+      : new Blob([result.content], { type: MIME_BY_FORMAT[format] });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -92,7 +118,7 @@ export function ExportSection() {
         <select
           value={format}
           onChange={(e) => {
-            setFormat(e.target.value as "markdown" | "json");
+            setFormat(e.target.value as ExportFormat);
             resetFeedback();
           }}
           aria-label="Formato de exportación"
@@ -100,6 +126,8 @@ export function ExportSection() {
         >
           <option value="markdown">Markdown</option>
           <option value="json">JSON</option>
+          <option value="csv">CSV (hoja de cálculo)</option>
+          <option value="obsidian">Vault de Obsidian (.zip)</option>
         </select>
         <Button type="button" onClick={handleExport} disabled={pending}>
           {pending ? (
@@ -111,6 +139,13 @@ export function ExportSection() {
           )}
         </Button>
       </div>
+      {(format === "csv" || format === "obsidian") && (
+        <p className="mt-2 text-xs text-muted">
+          {format === "csv"
+            ? "El CSV cubre solo notas y tareas — para calendario o ahorros usa Markdown o JSON."
+            : "Un archivo .md por nota, listo para arrastrar a tu vault — cubre solo notas y tareas."}
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="mt-2 text-sm text-danger">

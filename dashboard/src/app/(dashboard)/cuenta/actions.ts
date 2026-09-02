@@ -8,8 +8,25 @@ import { validarPassword } from "@/lib/passwordPolicy";
 import { createSession } from "@/lib/session";
 import { revokeAllSessions } from "@/lib/sessionRevocation";
 import { prisma } from "@/lib/prisma";
-import { buildExportData, toExportJson, toExportMarkdown, isExportScope, type ExportScope } from "@/lib/exportData";
+import {
+  buildExportData,
+  toExportJson,
+  toExportMarkdown,
+  toExportCsv,
+  buildObsidianVaultZip,
+  isExportScope,
+  type ExportScope,
+} from "@/lib/exportData";
+import {
+  listCustomCategories as libListCustomCategories,
+  createCustomCategory as libCreateCustomCategory,
+  deleteCustomCategory as libDeleteCustomCategory,
+  type CustomCategoryView,
+  type CreateCustomCategoryResult,
+} from "@/lib/customCategories";
 import type { NotificationType } from "@prisma/client";
+
+export type { CustomCategoryView, CreateCustomCategoryResult };
 
 export interface GenerateLinkCodeState {
   code?: string;
@@ -113,28 +130,44 @@ export async function closeOtherSessions(): Promise<{ error?: string; ok?: boole
   }
 }
 
+export type ExportFormat = "markdown" | "json" | "csv" | "obsidian";
+
 export interface ExportResult {
   content?: string;
   filename?: string;
   error?: string;
+  /** Si es true, `content` viene en base64 (el .zip de Obsidian) — el cliente debe decodificarlo antes de crear el Blob, en vez de usarlo como texto tal cual. */
+  binary?: boolean;
 }
 
 /**
  * Exportación completa de datos del usuario (casi obligatoria de cara a
- * RGPD): todo / solo notas / una categoría, en Markdown o JSON. Devuelve
- * el contenido como texto — el cliente lo convierte en descarga con un
- * Blob, no hay ningún fichero temporal en el servidor.
+ * RGPD): todo / solo notas / una categoría, en Markdown, JSON, CSV o un
+ * vault de Obsidian (.zip). Devuelve el contenido como texto (o base64 para
+ * el .zip) — el cliente lo convierte en descarga con un Blob, no hay ningún
+ * fichero temporal en el servidor.
  */
-export async function exportData(scope: ExportScope, format: "markdown" | "json"): Promise<ExportResult> {
+export async function exportData(scope: ExportScope, format: ExportFormat): Promise<ExportResult> {
   const userId = await verifySession();
   if (!isExportScope(scope)) return { error: "Alcance de exportación no válido." };
 
   try {
     const payload = await buildExportData(userId, scope);
-    const content = format === "json" ? toExportJson(payload) : toExportMarkdown(payload);
     const scopeSlug = scope.type === "categoria" ? scope.categoria : scope.type;
     const dateSlug = payload.generatedAt.slice(0, 10);
-    const extension = format === "json" ? "json" : "md";
+
+    if (format === "obsidian") {
+      const zip = await buildObsidianVaultZip(payload);
+      return {
+        content: zip.toString("base64"),
+        filename: `memoriable-obsidian-${scopeSlug}-${dateSlug}.zip`,
+        binary: true,
+      };
+    }
+
+    const content =
+      format === "json" ? toExportJson(payload) : format === "csv" ? toExportCsv(payload) : toExportMarkdown(payload);
+    const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
     return { content, filename: `memoriable-${scopeSlug}-${dateSlug}.${extension}` };
   } catch (err) {
     console.error("Error al exportar los datos:", err);
@@ -211,4 +244,31 @@ export async function dismissOnboarding(): Promise<void> {
     console.error("No se pudo cerrar «primeros pasos»:", err);
   });
   revalidatePath("/asistente");
+}
+
+/**
+ * Categorías propias del usuario (Fase 3 del roadmap del bot: "categorías
+ * configurables") — APARTE de las 6 fijas, nunca las sustituyen. Se
+ * asignan desde el bot de Telegram o desde el modal de detalle de una nota
+ * (`updateMessage` en `app/(dashboard)/actions.ts`). Lógica real en
+ * `lib/customCategories.ts` (mismo patrón que `lib/ahorros.ts`); aquí solo
+ * la sesión y el `revalidatePath`.
+ */
+export async function listCustomCategories(): Promise<CustomCategoryView[]> {
+  const userId = await verifySession();
+  return libListCustomCategories(userId);
+}
+
+export async function createCustomCategory(nombre: string, emoji: string): Promise<CreateCustomCategoryResult> {
+  const userId = await verifySession();
+  const result = await libCreateCustomCategory(userId, nombre, emoji);
+  if (!result.error) revalidatePath("/cuenta");
+  return result;
+}
+
+export async function deleteCustomCategory(id: string): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  const result = await libDeleteCustomCategory(userId, id);
+  if (!result.error) revalidatePath("/cuenta");
+  return result;
 }

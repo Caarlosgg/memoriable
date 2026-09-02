@@ -13,7 +13,16 @@ vi.mock("../src/lib/prisma", () => ({
   },
 }));
 
-import { toExportJson, toExportMarkdown, isExportScope, buildExportData, type ExportPayload } from "../src/lib/exportData";
+import {
+  toExportJson,
+  toExportMarkdown,
+  toExportCsv,
+  buildObsidianVaultZip,
+  isExportScope,
+  buildExportData,
+  type ExportPayload,
+} from "../src/lib/exportData";
+import JSZip from "jszip";
 
 function fakeMessage(overrides: Partial<ExportPayload["notas"][number]> = {}): ExportPayload["notas"][number] {
   return {
@@ -35,6 +44,7 @@ function fakeMessage(overrides: Partial<ExportPayload["notas"][number]> = {}): E
     fecha: new Date("2026-08-01T10:00:00.000Z"),
     fechaLimite: null,
     boardStatusId: null,
+    customCategoryId: null,
     enProgresoPorId: null,
     enProgresoDesde: null,
     userId: "u1",
@@ -200,5 +210,92 @@ describe("buildExportData", () => {
         movimientos: [{ id: "mv1", centimos: 1000, concepto: null, fecha: expect.any(Date), cuentaId: "c1" }],
       },
     ]);
+  });
+});
+
+describe("toExportCsv", () => {
+  it("una fila por nota, con cabecera, sin importar el alcance de eventos/ahorros", () => {
+    const payload = fakePayload({
+      notas: [fakeMessage({ id: "m1", resumen: "Llamar al fontanero", categoria: "tarea", etiquetas: ["casa", "urgente"] })],
+    });
+
+    const csv = toExportCsv(payload);
+    const [header, row] = csv.split("\n");
+
+    expect(header).toBe("fecha,categoria,resumen,contenido,estado,prioridad,etiquetas");
+    expect(row).toContain("tarea");
+    expect(row).toContain("Llamar al fontanero");
+    expect(row).toContain("casa; urgente");
+  });
+
+  it("escapa comas, comillas y saltos de línea dentro de una celda (RFC 4180)", () => {
+    const payload = fakePayload({
+      notas: [fakeMessage({ resumen: 'Con "comillas", coma y\nsalto' })],
+    });
+
+    const csv = toExportCsv(payload);
+
+    // El campo entero queda entre comillas, y las internas se doblan — el
+    // propio salto de línea de dentro del campo hace que un `split("\n")`
+    // ingenuo lo trocee mal, así que se comprueba sobre el CSV completo.
+    expect(csv).toContain('"Con ""comillas"", coma y\nsalto"');
+  });
+
+  it("sin notas, deja solo la cabecera", () => {
+    const csv = toExportCsv(fakePayload({ notas: [] }));
+    expect(csv).toBe("fecha,categoria,resumen,contenido,estado,prioridad,etiquetas");
+  });
+});
+
+describe("buildObsidianVaultZip", () => {
+  it("un archivo .md por nota, con front matter y el contenido como cuerpo", async () => {
+    const payload = fakePayload({
+      notas: [
+        fakeMessage({
+          id: "abc123def456",
+          resumen: "Llamar al fontanero",
+          contenido: "Llamar al fontanero para revisar la caldera",
+          categoria: "tarea",
+          estado: "POR_HACER",
+          prioridad: "ALTA",
+          etiquetas: ["casa"],
+          fecha: new Date("2026-08-01T10:00:00.000Z"),
+        }),
+      ],
+    });
+
+    const buffer = await buildObsidianVaultZip(payload);
+    const zip = await JSZip.loadAsync(buffer);
+    const filenames = Object.keys(zip.files);
+
+    // Nombre legible (fecha + resumen) Y el cuid al final — nunca colisiona
+    // aunque dos notas tengan resúmenes parecidos.
+    expect(filenames).toHaveLength(1);
+    expect(filenames[0]).toMatch(/^2026-08-01-llamar-al-fontanero-.*def456\.md$/);
+
+    const content = await zip.file(filenames[0]!)!.async("string");
+    expect(content).toContain("---\n");
+    expect(content).toContain("fecha: 2026-08-01T10:00:00.000Z");
+    expect(content).toContain('prioridad: "ALTA"');
+    expect(content).toContain("etiquetas: [\"casa\"]");
+    expect(content).toContain("# Llamar al fontanero");
+    expect(content).toContain("Llamar al fontanero para revisar la caldera");
+  });
+
+  it("una nota sin etiquetas deja el front matter con una lista vacía, no un campo roto", async () => {
+    const payload = fakePayload({ notas: [fakeMessage({ etiquetas: [] })] });
+
+    const buffer = await buildObsidianVaultZip(payload);
+    const zip = await JSZip.loadAsync(buffer);
+    const content = await zip.file(Object.keys(zip.files)[0]!)!.async("string");
+
+    expect(content).toContain("etiquetas: []");
+  });
+
+  it("un vault vacío es un zip válido sin archivos", async () => {
+    const buffer = await buildObsidianVaultZip(fakePayload({ notas: [] }));
+    const zip = await JSZip.loadAsync(buffer);
+
+    expect(Object.keys(zip.files)).toHaveLength(0);
   });
 });

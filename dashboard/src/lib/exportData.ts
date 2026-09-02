@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import type { Message, Evento, CuentaAhorro, MovimientoAhorro } from "@prisma/client";
 import { prisma } from "./prisma";
 import { presentCategory, isCategory, type Category } from "./categories";
@@ -125,4 +126,99 @@ export function toExportMarkdown(payload: ExportPayload): string {
   }
 
   return lines.join("\n");
+}
+
+/** Escapa un valor para una celda CSV (RFC 4180): comillas dobladas, envuelto en comillas si hace falta. */
+function csvCell(value: string): string {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+/**
+ * CSV de las notas — pensado para abrir en una hoja de cálculo, no para
+ * archivar todo (eventos y ahorros tienen columnas distintas entre sí y con
+ * las notas; mezclarlos en una tabla no tendría filas coherentes). Por eso
+ * exporta SIEMPRE `payload.notas`, sea cual sea el alcance pedido — con
+ * alcance "todo" el CSV cubre notas/tareas, y para eventos/ahorros hace
+ * falta Markdown o JSON (se lo dice el propio ExportSection al usuario).
+ */
+export function toExportCsv(payload: ExportPayload): string {
+  const header = ["fecha", "categoria", "resumen", "contenido", "estado", "prioridad", "etiquetas"];
+  const rows = payload.notas.map((nota) =>
+    [
+      nota.fecha.toISOString(),
+      nota.categoria,
+      nota.resumen,
+      nota.contenido,
+      nota.estado,
+      nota.prioridad,
+      nota.etiquetas.join("; "),
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+  return [header.join(","), ...rows].join("\n");
+}
+
+// Rango Unicode de marcas diacríticas combinadas (U+0300–U+036F) — lo que
+// queda de una tilde tras `normalize("NFD")" (é -> e + ´). Escape numérico
+// explícito, no un carácter literal, para que no dependa de la codificación
+// con la que se abra este archivo en otro editor.
+const COMBINING_MARKS = /[̀-ͯ]/g;
+
+/** Recorta y sanea un texto para que sirva de nombre de archivo en cualquier sistema operativo. */
+function slugify(text: string, maxLength: number): string {
+  const slug = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(COMBINING_MARKS, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return (slug || "nota").slice(0, maxLength);
+}
+
+/** Escapa un valor de texto para un scalar YAML entre comillas dobles. */
+function yamlString(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Una nota → un archivo `.md` con front matter YAML (categoría, fecha,
+ * estado, prioridad, etiquetas). Es justo lo que distingue "compatible con
+ * Obsidian" de un volcado en Markdown cualquiera: Obsidian indexa, enlaza y
+ * filtra por NOTA, no por sección de un documento — el volcado de
+ * `toExportMarkdown` (un solo archivo con todo dentro) no le sirve de vault,
+ * aunque también sea texto en Markdown.
+ */
+function noteToObsidianFile(nota: Message): string {
+  const { label } = presentCategory(nota.categoria);
+  const frontMatter = [
+    "---",
+    `categoria: ${yamlString(label)}`,
+    `fecha: ${nota.fecha.toISOString()}`,
+    `estado: ${yamlString(nota.estado)}`,
+    `prioridad: ${yamlString(nota.prioridad)}`,
+    nota.etiquetas.length > 0 ? `etiquetas: [${nota.etiquetas.map(yamlString).join(", ")}]` : "etiquetas: []",
+    "---",
+    "",
+  ].join("\n");
+  const titulo = nota.resumen.trim() || "(sin resumen)";
+  return `${frontMatter}# ${titulo}\n\n${nota.contenido}\n`;
+}
+
+/**
+ * Vault de Obsidian en un .zip: un archivo por nota, con nombres únicos (el
+ * cuid de la nota va al final del nombre — nunca puede colisionar, aunque
+ * dos resúmenes se parezcan). Devuelve el zip como buffer, listo para
+ * mandar al cliente en base64 (ver `exportData` en cuenta/actions.ts).
+ */
+export async function buildObsidianVaultZip(payload: ExportPayload): Promise<Buffer> {
+  const zip = new JSZip();
+  for (const nota of payload.notas) {
+    const dateSlug = nota.fecha.toISOString().slice(0, 10);
+    const nombreSlug = slugify(nota.resumen || nota.contenido, 60);
+    const filename = `${dateSlug}-${nombreSlug}-${nota.id.slice(-6)}.md`;
+    zip.file(filename, noteToObsidianFile(nota));
+  }
+  return zip.generateAsync({ type: "nodebuffer" });
 }

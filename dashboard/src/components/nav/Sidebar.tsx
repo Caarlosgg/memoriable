@@ -81,6 +81,9 @@ export function Sidebar({
   const items = isSuperAdmin
     ? [...baseItems, { href: "/admin", label: "Admin", Icon: ShieldCheck, modos: [modo] }]
     : baseItems;
+  // Primer destino "secundario" (ver navItems.ts) — dónde pintar el
+  // separador que los distingue del núcleo, sin fijar un href a mano.
+  const primerSecundarioHref = items.find((item) => item.grupo === "secundario")?.href;
 
   return (
     <MotionAside
@@ -133,6 +136,11 @@ export function Sidebar({
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <div key={item.href}>
+              {/* Separador antes del primer destino secundario: distingue el
+                  núcleo (captura, asistente, notas, calendario) de lo que no
+                  lidera la promoción del producto (tablero, chat, ahorros,
+                  equipo) — siguen a un clic, solo después de este corte. */}
+              {item.href === primerSecundarioHref && <hr className="my-2 border-paper-line" />}
               {/* Separador antes de "Cuenta": distingue el contenido (notas,
                   tablero...) de la gestión de la cuenta, sin necesitar dos
                   <nav> aparte. */}

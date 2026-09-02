@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import type { Category } from '../ai/types.js';
 import type { MessageRepository, NewMessage, StoredMessage } from './repository.js';
 import { DEFAULT_SEARCH_LIMIT } from './search.js';
 import { ACTIONABLE_CATEGORIES, DEFAULT_PENDING_LIMIT } from './pending.js';
@@ -25,9 +26,19 @@ export class PrismaMessageRepository implements MessageRepository {
       // pide (con `include`), para saber el email de quien creó una tarea
       // asignada a otra persona — ver `asignadaPor` en repository.ts.
       findMany(args: unknown): Promise<(StoredMessage & { user?: { email: string } | null })[]>;
+      findFirst(args: unknown): Promise<StoredMessage | null>;
+      // `updateMany` (no `update`) para markDone/recategorize: el `where`
+      // combina id + userId, que Prisma no acepta en `update` sin una
+      // restricción única compuesta — así de paso el `count` devuelto sirve
+      // para saber si el id era ajeno/inventado, sin una consulta aparte.
+      updateMany(args: unknown): Promise<{ count: number }>;
     };
     user: {
       findUnique(args: unknown): Promise<{ personalWorkspaceId: string | null } | null>;
+    };
+    // Solo para verificar propiedad en setCustomCategory — ver su comentario.
+    customCategory: {
+      findFirst(args: unknown): Promise<{ id: string } | null>;
     };
     $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
   }> | null = null;
@@ -159,5 +170,51 @@ export class PrismaMessageRepository implements MessageRepository {
       where: { userId, fecha: { gte: from, lt: to } },
       orderBy: { fecha: 'desc' },
     });
+  }
+
+  async markDone(userId: string, messageId: string): Promise<StoredMessage | null> {
+    const client = await this.getClient();
+    // `estado: 'HECHO'` junto con `hecho: true`, nunca uno sin el otro — ver
+    // el comentario de `markDone` en repository.ts sobre por qué deben ir
+    // sincronizados con el tablero kanban del dashboard.
+    const { count } = await client.message.updateMany({
+      where: { id: messageId, userId },
+      data: { hecho: true, estado: 'HECHO' },
+    });
+    if (count === 0) return null;
+    return client.message.findFirst({ where: { id: messageId, userId } });
+  }
+
+  async recategorize(userId: string, messageId: string, categoria: Category): Promise<StoredMessage | null> {
+    const client = await this.getClient();
+    const { count } = await client.message.updateMany({
+      where: { id: messageId, userId },
+      data: { categoria },
+    });
+    if (count === 0) return null;
+    return client.message.findFirst({ where: { id: messageId, userId } });
+  }
+
+  async setCustomCategory(
+    userId: string,
+    messageId: string,
+    customCategoryId: string | null,
+  ): Promise<StoredMessage | null> {
+    const client = await this.getClient();
+    // La clave foránea de Postgres solo garantiza que la fila EXISTA, no
+    // que sea de este usuario — sin esta comprobación, alguien podría
+    // etiquetar su propia nota con el id de la categoría propia de OTRO
+    // usuario y acabar enseñando su nombre. Se verifica la propiedad antes
+    // de escribir, no después.
+    if (customCategoryId !== null) {
+      const owned = await client.customCategory.findFirst({ where: { id: customCategoryId, userId } });
+      if (!owned) return null;
+    }
+    const { count } = await client.message.updateMany({
+      where: { id: messageId, userId },
+      data: { customCategoryId },
+    });
+    if (count === 0) return null;
+    return client.message.findFirst({ where: { id: messageId, userId } });
   }
 }

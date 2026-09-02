@@ -19,6 +19,13 @@ export interface NavItem {
    * comandos, donde están TODOS los destinos).
    */
   enMovil?: boolean;
+  /**
+   * Sin marcar = núcleo (captura, asistente, notas/búsqueda, calendario).
+   * "secundario" agrupa lo que no lidera la promoción del producto (tablero,
+   * chat, ahorros, equipo) — siguen íntegros y a un clic, solo después de un
+   * separador en Sidebar (ver ese componente) en vez de al mismo nivel.
+   */
+  grupo?: "secundario";
 }
 
 const AMBOS: readonly Modo[] = ["personal", "equipo"];
@@ -29,23 +36,29 @@ const AMBOS: readonly Modo[] = ["personal", "equipo"];
  * (Buscador y Categorías) — ver NotesExplorer.tsx.
  *
  * El orden importa: es el que se ve de arriba abajo, y en móvil decide qué
- * entra en la barra y qué se va a "Más".
+ * entra en la barra y qué se va a "Más". Núcleo primero (a Notas se le dio
+ * `enMovil` para que quepa en los 4 huecos fijos; antes se quedaba fuera y
+ * Tablero sí entraba, justo al revés de lo que pesa cada uno en el producto).
  */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/inicio", label: "Inicio", Icon: House, modos: AMBOS, enMovil: true },
   { href: "/asistente", label: "Asistente", Icon: MessageCircle, modos: AMBOS, enMovil: true },
-  { href: "/categorias", label: "Notas", Icon: StickyNote, modos: AMBOS },
-  { href: "/pendientes", label: "Tablero", Icon: ListTodo, modos: AMBOS, enMovil: true },
+  { href: "/categorias", label: "Notas", Icon: StickyNote, modos: AMBOS, enMovil: true },
   { href: "/calendario", label: "Calendario", Icon: CalendarDays, modos: AMBOS, enMovil: true },
-  // Ahorros es SOLO personal: el dinero ahorrado cuelga del usuario, no del
-  // workspace (ver getPersonalWorkspaceId en lib/workspace.ts).
-  { href: "/ahorros", label: "Ahorros", Icon: PiggyBank, modos: ["personal"], enMovil: true },
+  // A partir de aquí, secundario: sigue en el menú y en "Más" del móvil
+  // (enMovil se mantiene para que, si estás EN una de estas pantallas, la
+  // pestaña de móvil te siga marcando dónde estás — ver "activoFuera" en
+  // BottomTabs.tsx), pero ya no ocupa uno de los 4 huecos fijos.
+  { href: "/pendientes", label: "Tablero", Icon: ListTodo, modos: AMBOS, enMovil: true, grupo: "secundario" },
   // El chat dejó de estar atado al workspace (conversaciones y grupos son de
   // la persona, ver ChatConversation en el schema), así que vive en los dos.
-  { href: "/chat", label: "Chat", Icon: MessagesSquare, modos: AMBOS, enMovil: true },
+  { href: "/chat", label: "Chat", Icon: MessagesSquare, modos: AMBOS, enMovil: true, grupo: "secundario" },
+  // Ahorros es SOLO personal: el dinero ahorrado cuelga del usuario, no del
+  // workspace (ver getPersonalWorkspaceId en lib/workspace.ts).
+  { href: "/ahorros", label: "Ahorros", Icon: PiggyBank, modos: ["personal"], enMovil: true, grupo: "secundario" },
   // Equipo es SOLO de equipo: en personal no hay plantilla que gestionar. Se
   // sigue llegando desde el selector de espacios para crear el primero.
-  { href: "/equipo", label: "Equipo", Icon: Users, modos: ["equipo"] },
+  { href: "/equipo", label: "Equipo", Icon: Users, modos: ["equipo"], grupo: "secundario" },
   { href: "/cuenta", label: "Cuenta", Icon: User, modos: AMBOS },
 ];
 
