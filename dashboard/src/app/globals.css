@@ -6,192 +6,119 @@
  * colores por defecto de Tailwind — es la paleta propia del producto
  * ("memoria/notas personales"), la misma en la landing y en el dashboard.
  */
+/*
+ * UN SOLO SITIO POR TOKEN, claro y oscuro juntos: `light-dark()` elige según
+ * el `color-scheme` efectivo del elemento. Antes cada valor oscuro estaba
+ * escrito DOS veces — dentro de `@media (prefers-color-scheme: dark)` y otra
+ * vez en `:root[data-theme="dark"]` — porque son dos condiciones distintas
+ * que ninguna declara sola. El comentario que había aquí lo daba por
+ * inevitable "sin una capa de preprocesado"; `light-dark()` lo resuelve en
+ * CSS puro, y de paso hace que añadir un token nuevo sea una línea y no tres.
+ *
+ * La elección manual de tema (ver ThemeSettings.tsx) ya no reescribe 30
+ * variables: solo cambia `color-scheme`, y todos los tokens le siguen.
+ *
+ * Los valores no cambian respecto a antes — el contraste sigue medido con
+ * script de luminancia relativa, todos los pares de texto por encima del
+ * 4.5:1 de WCAG AA.
+ */
 :root {
-  --paper: #faf6ef;
-  --paper-raised: #ffffff;
-  --paper-line: #e4ddcf;
-  --ink: #1c1b18;
-  --muted: #6b6558;
-  /* Verde bosque, otro escalón más saturado (85% vs 70% antes, L=26% vs
-     28%): más presencia sin perder el aire profesional. Contraste
-     recomprobado (script de luminancia relativa) contra --paper (4.87:1),
-     --paper-raised (5.24:1) y --accent-ink (4.71:1) — todos por encima del
-     4.5:1 de WCAG AA con margen similar o mejor que antes. */
-  --accent: #0a7b5d;
-  --accent-strong: #0d5e47;
-  --accent-ink: #eef4f1;
-  --accent-soft: #dcece5;
-  /* Ámbar con más punch, sigue leyéndose como "resalte cálido". El brillante
-     (--highlight) es para rellenos/bordes/fondos, NUNCA texto pequeño (por
-     eso no necesita pasar 4.5:1 por sí solo); el -strong es el que se usa
-     como TEXTO pequeño, así que se mantiene sin tocar: ya pasa WCAG AA
-     (4.5:1) sobre --highlight-soft y sobre papel. */
-  --highlight: #da8c0b;
-  --highlight-strong: #8f5a06;
-  --highlight-soft: #fbead0;
-  --danger: #b3261e;
-  --danger-soft: #fbeceb;
+  /* Sin esto `light-dark()` no funciona: es lo que define qué esquema está
+     "activo". `light dark` = respeta la preferencia del sistema. */
+  color-scheme: light dark;
+
+  --paper: light-dark(#faf6ef, #080b09);
+  --paper-raised: light-dark(#ffffff, #222b26);
+  --paper-line: light-dark(#e4ddcf, #3a4841);
+  --ink: light-dark(#1c1b18, #eef3f0);
+  --muted: light-dark(#6b6558, #9aa8a1);
+
+  /* Verde bosque. En oscuro sube a un verde más vivo para que la aplicación
+     no parezca apagada, sin irse a un tono infantil. */
+  --accent: light-dark(#0a7b5d, #3ddba4);
+  --accent-strong: light-dark(#0d5e47, #7defc6);
+  --accent-ink: light-dark(#eef4f1, #042019);
+  --accent-soft: light-dark(#dcece5, #153a2e);
+
+  /* Ámbar de resalte. El brillante (--highlight) es para rellenos/bordes/
+     fondos, NUNCA texto pequeño (por eso no necesita pasar 4.5:1 por sí
+     solo); el -strong es el que se usa como TEXTO pequeño y sí lo pasa. */
+  --highlight: light-dark(#da8c0b, #f9c065);
+  --highlight-strong: light-dark(#8f5a06, #fcd694);
+  --highlight-soft: light-dark(#fbead0, #3d2f17);
+
+  --danger: light-dark(#b3261e, #f28a82);
+  --danger-soft: light-dark(#fbeceb, #40201e);
 
   /* Color propio del MODO EQUIPO (ver lib/modo.ts) — a propósito NO
      reutiliza --highlight (ámbar): ese ya significa "prioridad media" e
      "idea" en el resto de la app, así que usarlo también para "estás en un
-     equipo" era ambiguo Y quedaba mal — un ámbar cálido al lado del verde
-     vivo del acento leía como colores sueltos, no como una paleta pensada.
-     Índigo-violeta: de la misma familia "fría" que el verde (no complementa
-     en choque como el ámbar), y se distingue bien de --cat-pregunta (azul
-     más apagado, #3a66a6) para que no se confundan. Medido con el mismo
-     script de contraste que el resto de la paleta — todos los pares que se
-     pintan de verdad pasan 4.5:1. */
-  --modo-equipo: #5b45d1;
-  --modo-equipo-strong: #4633a8;
-  --modo-equipo-soft: #e9e5fb;
-  --modo-equipo-ink: #f5f3fd;
+     equipo" era ambiguo Y quedaba mal. Índigo-violeta: de la misma familia
+     "fría" que el verde, y se distingue bien de --cat-pregunta. */
+  --modo-equipo: light-dark(#5b45d1, #a394f5);
+  --modo-equipo-strong: light-dark(#4633a8, #c3b8fa);
+  --modo-equipo-soft: light-dark(#e9e5fb, #241c47);
+  --modo-equipo-ink: light-dark(#f5f3fd, #150f2e);
 
   /* Color propio por ESTADO del tablero: el borde izquierdo de cada tarjeta
      lo usa para que la fase se lea de un vistazo sin contar columnas (ver
-     KanbanCard.tsx). Ámbar para lo que está en curso porque es el estado que
-     de verdad hay que vigilar; neutro para lo que ni ha empezado; verde para
-     lo cerrado. Deliberadamente NO son colores nuevos: reutilizan los tokens
-     que ya existen, así que siguen cumpliendo contraste sin recomprobar. */
+     KanbanCard.tsx). Deliberadamente NO son colores nuevos: reutilizan los
+     tokens de arriba, así que heredan su claro/oscuro sin repetirlos. */
   --estado-por-hacer: var(--paper-line);
   --estado-en-progreso: var(--highlight);
   --estado-hecho: var(--accent);
 
-  /* Color propio por categoría (Fase 4): el icono lo hereda, nunca lleva
-     color fijo en sí mismo — así una categoría se reconoce por color
-     incluso sin leer la etiqueta. */
-  --cat-tarea: #0a7b5d;
-  --cat-tarea-soft: #dcece5;
-  /* Ámbar oscurecido: como etiqueta de categoría es texto pequeño, necesita
-     4.5:1 sobre blanco/papel (el brillante #dd9012 se quedaba en 2.6). */
-  --cat-idea: #8f5a06;
-  --cat-idea-soft: #fbead0;
-  --cat-pregunta: #3a66a6;
-  --cat-pregunta-soft: #e3ebf7;
-  --cat-recordatorio: #c2542f;
-  --cat-recordatorio-soft: #f7e5dd;
-  --cat-nota: #7a5a34;
-  --cat-nota-soft: #ede4d6;
-  --cat-otro: #6b6558;
-  --cat-otro-soft: #e9e5db;
-}
+  /* Color propio por categoría: el icono lo hereda, nunca lleva color fijo
+     en sí mismo — así una categoría se reconoce por color incluso sin leer
+     la etiqueta. Como etiqueta es texto pequeño, todos pasan 4.5:1. */
+  --cat-tarea: light-dark(#0a7b5d, #4fceac);
+  --cat-tarea-soft: light-dark(#dcece5, #1c3830);
+  --cat-idea: light-dark(#8f5a06, #f3b84e);
+  --cat-idea-soft: light-dark(#fbead0, #3a2c17);
+  --cat-pregunta: light-dark(#3a66a6, #7ea6e0);
+  --cat-pregunta-soft: light-dark(#e3ebf7, #1e2c40);
+  --cat-recordatorio: light-dark(#c2542f, #e58b62);
+  --cat-recordatorio-soft: light-dark(#f7e5dd, #3a2318);
+  --cat-nota: light-dark(#7a5a34, #c9a876);
+  --cat-nota-soft: light-dark(#ede4d6, #33291a);
+  --cat-otro: light-dark(#6b6558, #a99f8d);
+  --cat-otro-soft: light-dark(#e9e5db, #2b291f);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Rediseñado con un medidor de contraste, no a ojo: el problema no era
-       que fuese "oscuro" (el texto ya pasaba WCAG AA de sobra) sino que
-       estaba PLANO — las tarjetas no se despegaban del fondo. Medido:
-       --paper-raised sobre --paper daba 1.10, prácticamente el mismo tono.
-       Ahora el fondo baja y la superficie sube hasta 1.36, y los bordes
-       pasan de 1.39 a 2.06: hay profundidad de verdad. Verde algo más vivo
-       para que la aplicación no parezca apagada, sin irse a un tono
-       infantil. Todos los pares de texto siguen por encima de 4.5:1. */
-    --paper: #080b09;
-    --paper-raised: #222b26;
-    --paper-line: #3a4841;
-    --ink: #eef3f0;
-    --muted: #9aa8a1;
-    --accent: #3ddba4;
-    --accent-strong: #7defc6;
-    --accent-ink: #042019;
-    --accent-soft: #153a2e;
-    --highlight: #f9c065;
-    --highlight-strong: #fcd694;
-    --highlight-soft: #3d2f17;
-    --danger: #f28a82;
-    --danger-soft: #40201e;
-    --modo-equipo: #a394f5;
-    --modo-equipo-strong: #c3b8fa;
-    --modo-equipo-soft: #241c47;
-    --modo-equipo-ink: #150f2e;
+  /*
+   * FORMA. Hasta ahora la app tenía 33 tokens de color y CERO de forma: los
+   * radios, sombras y duraciones iban a mano en cada componente, y por eso
+   * convivían cuatro radios distintos para superficies equivalentes y cuatro
+   * sombras con rgb() fijo que no se adaptaban al modo oscuro.
+   */
 
-    --cat-tarea: #4fceac;
-    --cat-tarea-soft: #1c3830;
-    --cat-idea: #f3b84e;
-    --cat-idea-soft: #3a2c17;
-    --cat-pregunta: #7ea6e0;
-    --cat-pregunta-soft: #1e2c40;
-    --cat-recordatorio: #e58b62;
-    --cat-recordatorio-soft: #3a2318;
-    --cat-nota: #c9a876;
-    --cat-nota-soft: #33291a;
-    --cat-otro: #a99f8d;
-    --cat-otro-soft: #2b291f;
-  }
+  /* Base de la escala de radios — cambiarla reescala toda la app. La escala
+     en sí vive en el @theme de más abajo (los nombres `--radius-*` son el
+     espacio de nombres de Tailwind: declararlos también aquí crearía una
+     referencia circular). */
+  --radius: 0.75rem;
+
+  /* Color y fuerza de sombra, dependientes del tema: en oscuro una sombra
+     negra sobre fondo casi negro no se ve, así que la opacidad sube. Antes
+     había cuatro sombras con rgb() fijo que no se adaptaban. */
+  --shadow-color: light-dark(28 27 24, 0 0 0);
+  --shadow-strength: light-dark(1, 2.2);
 }
 
 /*
  * Tema elegido a mano desde "Cuenta" (ver ThemeSettings.tsx), guardado en
- * localStorage — gana siempre sobre `prefers-color-scheme`: un selector de
- * atributo (`[data-theme=...]`) tiene más especificidad que el `:root`
- * simple de dentro de la media query de arriba, así que estas reglas
- * ganan pase lo que pase, esté o no el sistema en oscuro. Sin elección
- * manual (sin el atributo), no se aplica ninguna de las dos y manda el
- * `prefers-color-scheme` de siempre — "sistema" es el valor por defecto,
- * no hace falta una tercera variante aparte.
+ * localStorage — gana siempre sobre `prefers-color-scheme` porque un
+ * selector de atributo tiene más especificidad que el `:root` simple.
+ *
+ * Con `light-dark()` esto ya no repite ni un solo color: basta con fijar
+ * qué esquema está activo y todos los tokens de arriba le siguen solos.
  */
-:root[data-theme="dark"] {
-  /* Rediseñado con un medidor de contraste, no a ojo: el problema no era
-     que fuese "oscuro" (el texto ya pasaba WCAG AA de sobra) sino que
-     estaba PLANO — las tarjetas no se despegaban del fondo. Medido:
-     --paper-raised sobre --paper daba 1.10, prácticamente el mismo tono.
-     Ahora el fondo baja y la superficie sube hasta 1.36, y los bordes
-     pasan de 1.39 a 2.06: hay profundidad de verdad. Verde algo más vivo
-     para que la aplicación no parezca apagada, sin irse a un tono
-     infantil. Todos los pares de texto siguen por encima de 4.5:1. */
-  --paper: #080b09;
-  --paper-raised: #222b26;
-  --paper-line: #3a4841;
-  --ink: #eef3f0;
-  --muted: #9aa8a1;
-  --accent: #3ddba4;
-  --accent-strong: #7defc6;
-  --accent-ink: #042019;
-  --accent-soft: #153a2e;
-  --highlight: #f9c065;
-  --highlight-strong: #fcd694;
-  --highlight-soft: #3d2f17;
-  --danger: #f28a82;
-  --danger-soft: #40201e;
-  --modo-equipo: #a394f5;
-  --modo-equipo-strong: #c3b8fa;
-  --modo-equipo-soft: #241c47;
-  --modo-equipo-ink: #150f2e;
-
-  --cat-tarea: #4fceac;
-  --cat-tarea-soft: #1c3830;
-  --cat-idea: #f3b84e;
-  --cat-idea-soft: #3a2c17;
-  --cat-pregunta: #7ea6e0;
-  --cat-pregunta-soft: #1e2c40;
-  --cat-recordatorio: #e58b62;
-  --cat-recordatorio-soft: #3a2318;
-  --cat-nota: #c9a876;
-  --cat-nota-soft: #33291a;
-  --cat-otro: #a99f8d;
-  --cat-otro-soft: #2b291f;
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
-/*
- * `:root[data-theme="light"]` NO existe como bloque propio — se comprobó
- * programáticamente (comparando el conjunto de declaraciones) que sería
- * un calco byte a byte de la base `:root` de arriba. La cascada ya
- * resuelve "tema claro elegido a mano" sola: la regla oscura de abajo
- * excluye `[data-theme="light"]` con `:not()`, así que cuando se elige
- * claro a mano, ninguna regla de tema oscuro aplica y gana la base
- * `:root` — que ya son los valores claros. Un bloque explícito aquí solo
- * repetiría 30 líneas sin cambiar nada.
- *
- * Lo que SÍ es inevitable en CSS puro (sin Sass/PostCSS): los valores
- * OSCUROS sí tienen que escribirse dos veces — una vez para "el sistema
- * prefiere oscuro y no se ha elegido nada distinto" (dentro del
- * `@media` de abajo) y otra para "se ha elegido oscuro a mano, da igual
- * lo que prefiera el sistema" (`:root[data-theme="dark"]`, fuera de
- * cualquier media query). Son dos condiciones distintas que ninguna
- * declara sola — no es descuido, es el límite de custom properties sin
- * una capa de preprocesado, que aquí no se ha querido añadir solo por
- * esto.
- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
 
 /* Tamaño de texto (accesibilidad): escala TODO lo que use rem (la mayoría
    de clases de Tailwind), sin tocar layout ni contenedores de tamaño fijo. */
@@ -235,6 +162,38 @@
   --color-cat-otro-soft: var(--cat-otro-soft);
   --font-display: var(--font-fraunces);
   --font-sans: var(--font-inter);
+
+  /*
+   * FORMA. Hasta ahora la app tenía 33 tokens de color y CERO de forma: los
+   * radios, sombras y duraciones iban a mano en cada componente, y por eso
+   * convivían cuatro radios distintos para superficies equivalentes y cuatro
+   * sombras con rgb() fijo que no se adaptaban al modo oscuro.
+   *
+   * Se declaran aquí y NO en `:root` a propósito: `--radius-*`, `--shadow-*`
+   * y `--ease-*` son los espacios de nombres de Tailwind (generan
+   * `rounded-md`, `shadow-md`, `ease-out`…), así que declararlos también
+   * arriba sería una referencia circular.
+   */
+
+  /* Escala de radios, derivada de la base --radius. */
+  --radius-sm: calc(var(--radius) - 0.25rem);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 0.25rem);
+  --radius-xl: calc(var(--radius) + 0.5rem);
+
+  /* Sombras: el color y la fuerza salen de --shadow-color/--shadow-strength,
+     que sí dependen del tema (ver :root). */
+  --shadow-xs: 0 1px 2px rgb(var(--shadow-color) / calc(0.06 * var(--shadow-strength)));
+  --shadow-sm: 0 2px 6px -2px rgb(var(--shadow-color) / calc(0.1 * var(--shadow-strength)));
+  --shadow-md: 0 8px 20px -8px rgb(var(--shadow-color) / calc(0.16 * var(--shadow-strength)));
+  --shadow-lg: 0 20px 40px -24px rgb(var(--shadow-color) / calc(0.28 * var(--shadow-strength)));
+  /* Halo de acento para lo que "llama": CTA principal, elemento activo. */
+  --shadow-accent: 0 10px 24px -12px color-mix(in srgb, var(--accent) 55%, transparent);
+
+  /* Duraciones y curvas. Una app que solo anima el color de fondo al hover
+     se siente muerta; estos son los tiempos de la capa de movimiento. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 body {
