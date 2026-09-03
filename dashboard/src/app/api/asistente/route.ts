@@ -8,7 +8,7 @@ import { isSessionActive } from "@/lib/sessionRevocation";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import type { AssistantSource } from "@/lib/assistantContext";
 import type { AssistantTools } from "@/lib/assistantTools";
-import { prepararAsistente } from "@/lib/assistantRun";
+import { prepararAsistente, construirConsultaRAG } from "@/lib/assistantRun";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
 import { getActiveWorkspace } from "@/lib/workspace";
 
@@ -45,15 +45,18 @@ function errorResponse(message: string, status: number): Response {
   return new Response(message, { status });
 }
 
-/** Texto del último mensaje del usuario (los `parts` de tipo texto, unidos). */
-function lastUserQuestion(messages: UIMessage[]): string {
-  const last = [...messages].reverse().find((m) => m.role === "user");
-  if (!last) return "";
-  return last.parts
+/** Texto plano de un mensaje (sus `parts` de tipo texto, unidos). */
+function textoDe(message: UIMessage): string {
+  return message.parts
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
     .map((p) => p.text)
     .join(" ")
     .trim();
+}
+
+/** Todas las preguntas del usuario en orden — las necesita `construirConsultaRAG`. */
+function preguntasDelUsuario(messages: UIMessage[]): string[] {
+  return messages.filter((m) => m.role === "user").map(textoDe).filter(Boolean);
 }
 
 // Fuera del matcher de proxy.ts (las rutas de API comprueban su propia
@@ -102,7 +105,8 @@ export async function POST(req: Request) {
     return errorResponse("La petición no es válida.", 400);
   }
   const { messages, conversationId: requestedConversationId } = body;
-  const question = lastUserQuestion(messages ?? []);
+  const preguntas = preguntasDelUsuario(messages ?? []);
+  const question = preguntas.at(-1) ?? "";
 
   // El cliente genera el id al empezar un chat nuevo (una conversación es
   // "suya" desde el primer mensaje); aquí solo se confirma que existe y que
@@ -136,7 +140,16 @@ export async function POST(req: Request) {
   // tiene hilos.
   const [conversationId, preparado] = await Promise.all([
     resolveConversationId(),
-    prepararAsistente({ userId, pregunta: question, workspaceId, isPersonal, role, yaCitadas: alreadyCitedIds }),
+    prepararAsistente({
+      userId,
+      // Para BUSCAR se usa la pregunta con su contexto: un "¿y el jueves?"
+      // suelto no se parece a ninguna nota (ver construirConsultaRAG).
+      pregunta: construirConsultaRAG(preguntas),
+      workspaceId,
+      isPersonal,
+      role,
+      yaCitadas: alreadyCitedIds,
+    }),
   ]);
   const { system, tools, sources } = preparado;
 

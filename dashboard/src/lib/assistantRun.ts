@@ -31,6 +31,41 @@ export const SOURCES_PER_ANSWER = 5;
  */
 export const SOURCE_MAX_DISTANCE = 0.6;
 
+/**
+ * Por debajo de esto, una pregunta se considera de SEGUIMIENTO y no se
+ * busca sola. "¿y el jueves?" son 14 caracteres; "¿qué reuniones tengo esta
+ * semana con el equipo de diseño?" son 60 y se basta sola.
+ */
+const LARGO_PREGUNTA_AUTONOMA = 40;
+
+/**
+ * Con qué texto se buscan las notas relevantes de un turno.
+ *
+ * Se embebía SOLO la última pregunta, y eso rompía cualquier conversación
+ * normal: tras "¿qué tengo esta semana?", un "¿y el jueves?" se convertía
+ * en un vector de "y el jueves" — que no se parece a ninguna nota concreta,
+ * así que el Asistente recuperaba ruido justo cuando el usuario estaba
+ * profundizando.
+ *
+ * La regla es deliberadamente simple: si la última pregunta es corta,
+ * arrastra la anterior como contexto. No se usa un LLM para reescribir la
+ * consulta —sería una llamada más antes de poder empezar a responder, y la
+ * latencia del primer token es lo que se nota— y una pregunta larga ya
+ * lleva dentro sus propias palabras clave.
+ *
+ * Función pura: toda la política vive aquí y se puede probar sin red.
+ */
+export function construirConsultaRAG(preguntasDelUsuario: readonly string[]): string {
+  const limpias = preguntasDelUsuario.map((p) => p.trim()).filter(Boolean);
+  const ultima = limpias.at(-1);
+  if (!ultima) return "";
+  if (ultima.length >= LARGO_PREGUNTA_AUTONOMA) return ultima;
+
+  const anterior = limpias.at(-2);
+  // La anterior va DELANTE: es el tema, y la última lo matiza.
+  return anterior ? `${anterior} ${ultima}` : ultima;
+}
+
 export interface PrepararAsistenteParams {
   userId: string;
   /** La pregunta de este turno, ya en texto plano. Vacía = no se buscan fuentes. */

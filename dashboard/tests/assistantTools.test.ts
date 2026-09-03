@@ -183,6 +183,14 @@ describe("createAssistantTools — poda por modo", () => {
     for (const nombre of REQUIEREN_EQUIPO) expect(tools).toHaveProperty(nombre);
   });
 
+  it("buscarNotas está en los DOS modos: era el hueco más grave que tenía el Asistente", () => {
+    // Si el RAG inicial no traía la nota buena, el modelo NO PODÍA volver a
+    // buscar: se quedaba respondiendo de memoria o admitiendo que no sabía,
+    // teniendo el dato guardado a un query de distancia.
+    expect(createAssistantTools("u1", "w1", "MEMBER")).toHaveProperty("buscarNotas");
+    expect(createAssistantTools("u1", "w1", "VIEWER", TEAM_MEMBERS)).toHaveProperty("buscarNotas");
+  });
+
   // Regresión real: una poda anterior se llevó por delante estas cuatro
   // creyéndolas "de equipo" o "de personal", y el Asistente se quedaba sin
   // nada que llamar ante "¿qué lleva Carlos?" o "¿cuánto he ahorrado?".

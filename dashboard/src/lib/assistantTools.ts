@@ -12,6 +12,7 @@ import {
 } from "./assistantContext";
 import { ACTIONABLE_CATEGORIES } from "./categories";
 import { findSimilarMessages } from "./vectorSearch";
+import { searchMessages } from "./data";
 import { getCuentasConSaldo } from "./ahorros";
 import { FRECUENCIAS, fechaRepeticion } from "./calendar";
 import {
@@ -298,6 +299,25 @@ async function encontrarEvento(
  * tools que admiten `asignadoA` lo reciben tal cual en vez de volver a
  * consultarlo cada una por su cuenta. Vacío en modo personal.
  */
+/**
+ * Cuántas notas devuelve `buscarNotas` como mucho.
+ *
+ * Más corto que en la pantalla de búsqueda a propósito: esto entra en la
+ * ventana de contexto del modelo. Veinte notas de relleno no le hacen
+ * responder mejor, le hacen perder de vista la pregunta.
+ */
+const BUSCAR_NOTAS_LIMITE = 8;
+
+export interface BuscarNotasResult {
+  notas: {
+    id: string;
+    resumen: string;
+    categoria: string;
+    hecho: boolean;
+    fecha: string;
+  }[];
+}
+
 export function createAssistantTools(
   userId: string,
   workspaceId: string,
@@ -1082,6 +1102,46 @@ export function createAssistantTools(
           titulo: evento.titulo,
         };
         return result;
+      },
+    }),
+    buscarNotas: tool({
+      description:
+        'Busca en las notas, tareas y recordatorios del usuario por PALABRAS o por SIGNIFICADO. Úsala siempre que necesites información suya que no esté ya en el contexto de arriba, o cuando el contexto no traiga lo que hace falta para responder: "¿qué apunté sobre el presupuesto?", "busca lo de la reunión con el cliente". De solo lectura. Es preferible buscar y no encontrar nada (y decirlo) a responder de memoria.',
+      inputSchema: z.object({
+        consulta: z
+          .string()
+          .min(2)
+          .describe(
+            "Qué buscar, en lenguaje natural. Usa las palabras del usuario; no hace falta que coincidan literalmente con lo escrito en la nota.",
+          ),
+        categoria: z
+          .enum(["tarea", "idea", "pregunta", "recordatorio", "nota", "otro"])
+          .optional()
+          .describe("Filtra por categoría solo si el usuario la ha pedido explícitamente."),
+      }),
+      execute: async ({ consulta, categoria }) => {
+        try {
+          const { messages } = await searchMessages(
+            workspaceId,
+            consulta,
+            categoria ? { categoria } : {},
+            BUSCAR_NOTAS_LIMITE,
+          );
+          const result: BuscarNotasResult = {
+            notas: messages.map((m) => ({
+              id: m.id,
+              resumen: m.resumen,
+              categoria: m.categoria,
+              hecho: m.hecho,
+              fecha: m.fecha.toISOString(),
+            })),
+          };
+          return result;
+        } catch (err) {
+          console.error("La tool buscarNotas no pudo buscar:", err);
+          Sentry.captureException(err);
+          throw new Error("No he podido buscar en tus notas. Inténtalo de nuevo en un momento.");
+        }
       },
     }),
     consultarAhorros: tool({
