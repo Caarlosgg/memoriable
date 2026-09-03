@@ -5,7 +5,7 @@ import * as Sentry from "@sentry/nextjs";
 import type { EstadoTarea, Prioridad, Prisma, Message } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { captureMessage } from "@/lib/pipeline";
+import { captureMessage, refrescarEmbedding } from "@/lib/pipeline";
 import { isCategory, esAccionable } from "@/lib/categories";
 import { shouldClearEnProgreso, ESTADOS_TABLERO } from "@/lib/kanban";
 import { resolverColumnas } from "@/lib/boardColumns";
@@ -439,6 +439,15 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
       },
     });
     if (result.count === 0) return { error: "No se ha encontrado la nota." };
+
+    // Si cambió el TEXTO, hay que recalcular el embedding: si no, la
+    // búsqueda por significado seguiría encontrando esta nota por lo que
+    // decía antes de editarla, para siempre. Se hace después del update y
+    // sin bloquear la respuesta (`void`): la nota ya está guardada, y la
+    // edición no puede quedarse esperando a Gemini.
+    if (contenido !== undefined || resumen !== undefined) {
+      void refrescarEmbedding(id, [contenido, resumen].filter(Boolean).join(" "));
+    }
 
     revalidatePath("/notas");
     revalidatePath("/pendientes");

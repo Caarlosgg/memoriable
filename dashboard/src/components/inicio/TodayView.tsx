@@ -1,16 +1,10 @@
 import { verifySession } from "@/lib/dal";
 import { getActiveWorkspace } from "@/lib/workspace";
+import { prisma } from "@/lib/prisma";
+import { displayName } from "@/lib/format";
 import { PersonalToday } from "./PersonalToday";
 import { TeamToday } from "./TeamToday";
-
-const SALUDO_FORMATTER = new Intl.DateTimeFormat("es-ES", { weekday: "long", day: "numeric", month: "long" });
-
-function saludoSegunHora(hora: number): string {
-  if (hora < 6) return "Buenas noches";
-  if (hora < 14) return "Buenos días";
-  if (hora < 21) return "Buenas tardes";
-  return "Buenas noches";
-}
+import { Saludo } from "./Saludo";
 
 /**
  * Pantalla de inicio: despacha a la vista de SU modo.
@@ -20,19 +14,24 @@ function saludoSegunHora(hora: number): string {
  * a mostrar "Tu equipo: 0" estando en personal, un número que no medía
  * nada. Ahora cada modo tiene su propia pantalla (PersonalToday/TeamToday);
  * lo único que comparten es el saludo y el layout de esta cabecera.
+ *
+ * El saludo se calcula en el CLIENTE (ver `Saludo`): el servidor está en
+ * UTC, así que a la 01:30 en España daba las "buenas noches" con la fecha
+ * de ayer.
  */
 export async function TodayView() {
   const userId = await verifySession();
   const { workspaceId, isPersonal, role } = await getActiveWorkspace(userId);
-  const ahora = new Date();
+
+  // El nombre no es crítico: si falla, se saluda sin él en vez de romper la
+  // pantalla de inicio entera.
+  const usuario = await prisma.user
+    .findUnique({ where: { id: userId }, select: { nombre: true, email: true } })
+    .catch(() => null);
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-ink">{saludoSegunHora(ahora.getHours())}</h1>
-        {/* first-letter:uppercase: Intl da el día en minúscula ("lunes, 18 de agosto"). */}
-        <p className="text-sm text-muted first-letter:uppercase">{SALUDO_FORMATTER.format(ahora)}</p>
-      </div>
+      <Saludo nombre={usuario ? displayName(usuario) : undefined} />
 
       {isPersonal ? (
         <PersonalToday workspaceId={workspaceId} />

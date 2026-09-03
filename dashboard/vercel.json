@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/purge-assistant-history",
       "schedule": "0 3 * * 0"
+    },
+    {
+      "path": "/api/cron/avisos",
+      "schedule": "0 7 * * *"
     }
   ]
 }

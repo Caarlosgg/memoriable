@@ -201,6 +201,33 @@ export function resolveEmbedder(): Embedder {
 }
 
 /**
+ * Recalcula el embedding de una nota cuyo texto ha cambiado.
+ *
+ * Sin esto, la búsqueda por significado seguía encontrando la nota por lo
+ * que decía ANTES de editarla, para siempre: corregías "llamar a Juan" por
+ * "llamar a la gestoría" y buscar "gestoría" no la encontraba, mientras que
+ * buscar "Juan" sí — el índice se quedaba clavado en una versión de la nota
+ * que ya no existía.
+ *
+ * Best-effort de verdad: la nota YA está guardada cuando esto corre. Sin
+ * GEMINI_API_KEY, o si Gemini falla, el texto nuevo se conserva igual y solo
+ * queda el embedding viejo (que es exactamente la situación de antes, no una
+ * regresión). Nunca lanza.
+ */
+export async function refrescarEmbedding(messageId: string, texto: string): Promise<void> {
+  const limpio = texto.trim();
+  if (!limpio) return;
+
+  try {
+    const embedding = await resolveEmbedder().embedDocument(limpio);
+    if (!embedding || embedding.length === 0) return;
+    await prisma.$executeRaw`UPDATE "messages" SET "embedding" = ${toVectorLiteral(embedding)}::vector WHERE "id" = ${messageId}`;
+  } catch (err) {
+    console.error("No se pudo recalcular el embedding tras editar (no crítico):", err);
+  }
+}
+
+/**
  * Punto de entrada de la captura rápida: mismo pipeline que usa el bot
  * (sanea → categoriza → embebe → guarda), con el categorizador, embedder y
  * repositorio propios del dashboard inyectados. `workspaceId` es siempre

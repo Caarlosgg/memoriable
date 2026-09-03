@@ -11,6 +11,7 @@ import {
   Users,
   ShieldCheck,
   MessagesSquare,
+  AlarmClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +25,7 @@ const TYPE_ICON: Record<Notification["type"], typeof StickyNote> = {
   ASSIGNED_EVENTO: CalendarDays,
   ADDED_TO_TEAM: Users,
   ROLE_CHANGED: ShieldCheck,
+  DUE_SOON: AlarmClock,
   // El chat se retiró del producto (ver el modelo Comentario en
   // schema.prisma), pero el valor del enum sigue en la base de datos y
   // puede haber notificaciones antiguas con él — se siguen pintando, solo
@@ -31,13 +33,19 @@ const TYPE_ICON: Record<Notification["type"], typeof StickyNote> = {
   CHAT_INVITE: MessagesSquare,
 };
 
+/**
+ * Sin `timeZone` a propósito: se usa la del NAVEGADOR, que es la del
+ * usuario. Estaba fijada a "UTC", así que toda notificación salía una o dos
+ * horas desfasada — "te asignaron esto a las 9:15" cuando fue a las 11:15.
+ * Este componente es de cliente, así que aquí sí se puede saber la zona
+ * real de quien mira.
+ */
 const DATE_FORMATTER = new Intl.DateTimeFormat("es-ES", {
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
-  timeZone: "UTC",
 });
 
 export function NotificationsList({

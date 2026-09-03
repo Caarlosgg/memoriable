@@ -352,6 +352,13 @@ enum NotificationType {
   /// ningún workspace tuyo — ver ChatParticipantStatus. Accionable desde la
   /// propia notificación (aceptar/rechazar), no solo un enlace.
   CHAT_INVITE
+  /// Una tarea o recordatorio tuyo vence hoy o mañana. Lo genera el cron
+  /// diario (ver dashboard/src/app/api/cron/avisos), no una acción de nadie
+  /// — es el único tipo que nace sin que ningún usuario haya hecho algo.
+  ///
+  /// Sin esto, clasificar algo como "recordatorio" no producía NINGÚN aviso
+  /// nunca: el producto prometía recordarte cosas y no lo hacía.
+  DUE_SOON
 }
 
 /// Notificación en la app (Fase Equipo). Sin canal externo (email/push)

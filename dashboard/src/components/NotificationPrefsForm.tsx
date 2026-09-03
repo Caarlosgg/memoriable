@@ -1,16 +1,22 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Bell, StickyNote, CalendarDays, Users, ShieldCheck, MessagesSquare } from "lucide-react";
+import { Bell, StickyNote, CalendarDays, Users, ShieldCheck, AlarmClock } from "lucide-react";
 import type { NotificationType } from "@prisma/client";
 import { setNotificationPref, type NotificationPrefs } from "@/app/(dashboard)/cuenta/actions";
 
 const TYPES: { type: NotificationType; label: string; Icon: typeof Bell }[] = [
+  // DUE_SOON va primero: es el único aviso que llega sin que nadie haya
+  // hecho nada, y el que más gente querrá ajustar.
+  { type: "DUE_SOON", label: "Algo tuyo vence hoy o mañana", Icon: AlarmClock },
   { type: "ASSIGNED_MESSAGE", label: "Te asignan una nota o tarea", Icon: StickyNote },
   { type: "ASSIGNED_EVENTO", label: "Te asignan un evento", Icon: CalendarDays },
   { type: "ADDED_TO_TEAM", label: "Te añaden a un equipo", Icon: Users },
   { type: "ROLE_CHANGED", label: "Te cambian el rol en un equipo", Icon: ShieldCheck },
-  { type: "CHAT_INVITE", label: "Te invitan a un grupo de chat", Icon: MessagesSquare },
+  // CHAT_INVITE ya no se ofrece: el chat dejó de ser producto en la Fase 1
+  // (pasó a comentarios en contexto). El valor sigue en el enum por las
+  // notificaciones antiguas que puedan quedar guardadas, pero no tiene
+  // sentido dejar un interruptor para algo que ya no puede ocurrir.
 ];
 
 /** Ausente en `prefs` = activado (comportamiento de siempre) — solo se guarda lo que se ha desactivado. */

@@ -233,6 +233,13 @@ enum NotificationType {
   ADDED_TO_TEAM
   ROLE_CHANGED
   CHAT_INVITE
+  /// Una tarea o recordatorio tuyo vence hoy o mañana. Lo genera el cron
+  /// diario (ver dashboard/src/app/api/cron/avisos), no una acción de nadie
+  /// — es el único tipo que nace sin que ningún usuario haya hecho algo.
+  ///
+  /// Sin esto, clasificar algo como "recordatorio" no producía NINGÚN aviso
+  /// nunca: el producto prometía recordarte cosas y no lo hacía.
+  DUE_SOON
 }
 
 /// Ver ../../prisma/schema.prisma: notificación en la app.
