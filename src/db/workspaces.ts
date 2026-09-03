@@ -27,9 +27,9 @@ type WorkspaceClient = {
   };
   membership: {
     findMany(args: unknown): Promise<
-      { workspaceId: string; workspace: { id: string; nombre: string; personal: boolean } }[]
+      { workspaceId: string; role: string; workspace: { id: string; nombre: string; personal: boolean } }[]
     >;
-    findUnique(args: unknown): Promise<{ status: string } | null>;
+    findUnique(args: unknown): Promise<{ status: string; role: string } | null>;
   };
   workspace: {
     findUnique(args: unknown): Promise<{ id: string; nombre: string } | null>;
@@ -56,6 +56,12 @@ export interface BotWorkspace {
   id: string;
   nombre: string;
   personal: boolean;
+  /**
+   * Rol del usuario en ese espacio. Lo necesita el Asistente para saber qué
+   * puede hacer (un VIEWER no crea ni asigna nada) — ver `/pregunta`. En el
+   * espacio personal siempre eres OWNER.
+   */
+  role: string;
 }
 
 /**
@@ -74,7 +80,7 @@ export async function listBotWorkspaces(userId: string): Promise<BotWorkspace[]>
     include: { workspace: { select: { id: true, nombre: true, personal: true } } },
     orderBy: { joinedAt: 'asc' },
   });
-  const espacios = memberships.map((m) => m.workspace);
+  const espacios = memberships.map((m) => ({ ...m.workspace, role: m.role }));
   return [...espacios.filter((w) => w.personal), ...espacios.filter((w) => !w.personal)];
 }
 
@@ -112,7 +118,8 @@ export async function resolveBotWorkspace(userId: string): Promise<BotWorkspace>
       where: { id: user.personalWorkspaceId! },
       select: { id: true, nombre: true },
     });
-    return { id: user.personalWorkspaceId!, nombre: personal?.nombre ?? 'Mi espacio', personal: true };
+    // OWNER siempre en el personal: es tuyo y solo tuyo.
+    return { id: user.personalWorkspaceId!, nombre: personal?.nombre ?? 'Mi espacio', personal: true, role: 'OWNER' };
   };
 
   if (!user.botWorkspaceId || user.botWorkspaceId === user.personalWorkspaceId) {
@@ -121,7 +128,7 @@ export async function resolveBotWorkspace(userId: string): Promise<BotWorkspace>
 
   const membership = await client.membership.findUnique({
     where: { userId_workspaceId: { userId, workspaceId: user.botWorkspaceId } },
-    select: { status: true },
+    select: { status: true, role: true },
   });
   if (membership?.status !== 'ACTIVE') return caerAlPersonal(true);
 
@@ -131,7 +138,7 @@ export async function resolveBotWorkspace(userId: string): Promise<BotWorkspace>
   });
   if (!workspace) return caerAlPersonal(true);
 
-  return { id: workspace.id, nombre: workspace.nombre, personal: false };
+  return { id: workspace.id, nombre: workspace.nombre, personal: false, role: membership.role };
 }
 
 export type SetBotWorkspaceResult = 'ok' | 'no_member' | 'no_database';

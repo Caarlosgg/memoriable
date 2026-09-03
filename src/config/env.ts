@@ -217,6 +217,13 @@ export const env = {
    * solo sin enlace — nunca con una URL inventada.
    */
   DASHBOARD_URL: readString('DASHBOARD_URL'),
+  /**
+   * Secreto compartido con el dashboard para poder preguntar al Asistente
+   * desde Telegram (ver ai/assistantClient.ts). Sin él, el bot avisa de que
+   * no puede preguntar en vez de fallar en silencio — nunca se salta la
+   * autenticación.
+   */
+  BOT_API_SECRET: readString('BOT_API_SECRET'),
   /** Fichero donde persiste la marca del último resumen diario enviado. */
   DAILY_SUMMARY_STATE_FILE: readString('DAILY_SUMMARY_STATE_FILE'),
   LOG_LEVEL: readString('LOG_LEVEL'),

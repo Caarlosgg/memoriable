@@ -184,7 +184,8 @@ npm run prisma:deploy
 | `DAILY_SUMMARY_HOUR`    | Hora local (0-23) del resumen diario (opcional)           | — (def. `9`)          |
 | `DAILY_SUMMARY_STATE_FILE` | Fichero donde persiste la marca del último resumen enviado, una por usuario (opcional) | — (def. `.daily-summary.json`) |
 | `BOT_TIMEZONE`          | Zona horaria (IANA) de las fechas que enseña el bot (opcional) | — (def. `Europe/Madrid`) |
-| `DASHBOARD_URL`         | Base del dashboard, para enlazar la nota desde la tarjeta (opcional) | — (sin ella, tarjeta sin enlace) |
+| `DASHBOARD_URL`         | Base del dashboard: enlaza la nota desde la tarjeta y es a donde llama `/pregunta` | `/pregunta` |
+| `BOT_API_SECRET`        | Secreto compartido con el dashboard para `/pregunta` (el mismo valor a los dos lados) | `/pregunta` |
 | `LOG_LEVEL`             | Nivel de log: `debug`\|`info`\|`warn`\|`error` (opcional) | — (def. `info`)       |
 
 Los secretos **nunca** se hardcodean: viven en `.env` (no versionado). El
@@ -239,13 +240,17 @@ con `setMyCommands`, sin tocar @BotFather):
 | -------------- | ------------------------------------------------------------------------ |
 | `/vincular <código>` | Vincula este chat a una cuenta del dashboard (el código se genera en "Cuenta"). Sin vincular, el bot no guarda ni consulta nada. |
 | `/espacio`     | Elige dónde guarda el bot lo que le mandas: tu espacio personal o uno de tus equipos. Por defecto, el personal. |
+| `/pregunta <texto>` | Pregunta al Asistente sobre tus notas, tareas y agenda — las mismas 17 herramientas que en la web. Necesita `DASHBOARD_URL` y `BOT_API_SECRET`. |
 | `/buscar <texto>` | Búsqueda híbrida: primero coincidencias literales en contenido y resumen, y si sobran huecos las completa por significado (embeddings). Sin `GEMINI_API_KEY` se queda solo con el texto. |
 | `/pendientes`  | Lista tus tareas y recordatorios que aún no están hechos.                |
 | `/resumen`, `/hoy` | Tu día en claro: misión principal, plan y avisos.                     |
 | `/start`       | Mensaje de bienvenida.                                                    |
 
 Además, cualquier mensaje normal se categoriza, se resume y se guarda — siempre
-que el chat ya esté vinculado a una cuenta (ver `/vincular` arriba).
+que el chat ya esté vinculado a una cuenta (ver `/vincular` arriba). Vale texto,
+**notas de voz** (se transcriben) y **fotos** (se leen con visión: un ticket, una
+pizarra, una nota a mano). Un documento que sea una imagen también; el resto de
+formatos se contestan explicando qué sí se puede hacer.
 
 Bajo cada tarjeta hay botones para marcarla hecha, **aplazarla** (hoy, mañana,
 en 3 días, en una semana, o quitar la fecha), recategorizarla y **borrarla**

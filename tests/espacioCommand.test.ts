@@ -3,8 +3,8 @@ import { createMemoryLogger } from '../src/logging/logger.js';
 import { handleEspacioCommand, handleEspacioChoice, REPLIES } from '../src/telegram/bot.js';
 import type { BotWorkspace } from '../src/db/workspaces.js';
 
-const PERSONAL: BotWorkspace = { id: 'ws-personal', nombre: 'Mi espacio', personal: true };
-const EQUIPO: BotWorkspace = { id: 'ws-equipo', nombre: 'Obrador', personal: false };
+const PERSONAL: BotWorkspace = { id: 'ws-personal', nombre: 'Mi espacio', personal: true, role: 'OWNER' };
+const EQUIPO: BotWorkspace = { id: 'ws-equipo', nombre: 'Obrador', personal: false, role: 'MEMBER' };
 
 describe('handleEspacioCommand', () => {
   it('con un solo espacio no monta un selector de un botón: explica lo que hay', async () => {

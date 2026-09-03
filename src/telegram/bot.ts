@@ -13,6 +13,7 @@ import { linkAttemptLimiter, type LinkAttemptLimiter } from './linkRateLimit.js'
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
+import { markdownToTelegramHtml } from './markdownToHtml.js';
 import {
   noteActionsKeyboard,
   categoryPickerKeyboard,
@@ -26,8 +27,10 @@ import { dayKey, buildDailySummary } from '../summary/dailySummary.js';
 import { FileFocusStateStore, type FocusStateStore } from '../summary/focusState.js';
 import { PrismaEventRepository, type EventRepository } from '../db/eventRepository.js';
 import type { BriefingGenerator } from '../ai/briefing.js';
-import { resolveTranscriber } from '../pipeline/factory.js';
+import { resolveTranscriber, resolveImageReader } from '../pipeline/factory.js';
 import type { Transcriber } from '../ai/transcriber.js';
+import type { ImageReader } from '../ai/imageReader.js';
+import { resolveAssistantClient, type AssistantClient } from '../ai/assistantClient.js';
 
 /** Respuestas al usuario, centralizadas para poder testearlas. */
 export const REPLIES = {
@@ -36,6 +39,10 @@ export const REPLIES = {
   error: '⚠️ No he podido procesar tu mensaje. Inténtalo de nuevo en un momento.',
   voiceFailed:
     '🎙️ No he podido entender el audio. Prueba a mandarlo otra vez, o escríbeme el mensaje directamente.',
+  photoFailed:
+    '🖼️ No he podido leer la imagen. Prueba con una foto más nítida, o escríbeme lo que pone.',
+  documentUnsupported:
+    '📎 De momento solo sé leer fotos. Mándame una captura del documento, o pégame el texto y lo guardo igual.',
   searchUsage: 'ℹ️ Escribe qué quieres buscar. Ejemplo: <code>/buscar factura luz</code>',
   noPending: '✅ No tienes nada pendiente. ¡Todo al día!',
   notLinked:
@@ -48,6 +55,10 @@ export const REPLIES = {
   espacioSolo:
     '🔒 Solo tienes tu espacio personal, así que todo lo que me mandes se guarda ahí. Crea un equipo en el dashboard y podrás elegir.',
   espacioNoMiembro: '⚠️ Ya no perteneces a ese equipo. Sigo escribiendo en tu espacio personal.',
+  preguntaUsage:
+    'ℹ️ Escribe tu pregunta después del comando. Ejemplo: <code>/pregunta ¿qué tengo pendiente esta semana?</code>',
+  preguntaNoDisponible:
+    '🤖 El Asistente no está disponible desde Telegram ahora mismo. Puedes preguntarle desde el dashboard.',
 } as const;
 
 /**
@@ -67,6 +78,7 @@ export const BOT_COMMANDS = [
   { command: 'start', description: 'Empezar y ver cómo funciona el bot' },
   { command: 'vincular', description: 'Vincular este chat a tu cuenta del dashboard' },
   { command: 'espacio', description: 'Elegir dónde guardo lo que me mandas (personal o equipo)' },
+  { command: 'pregunta', description: 'Preguntar al Asistente sobre tus notas, tareas y agenda' },
   { command: 'buscar', description: 'Buscar en tus mensajes guardados' },
   { command: 'pendientes', description: 'Ver tus tareas y recordatorios pendientes' },
   { command: 'resumen', description: 'Tu día en claro: misión principal, plan y avisos' },
@@ -208,6 +220,47 @@ export function plazoAFecha(plazo: string, ahora: Date = new Date()): Date | nul
   fecha.setDate(fecha.getDate() + dias);
   fecha.setHours(23, 59, 59, 999);
   return fecha;
+}
+
+/**
+ * Maneja `/pregunta <texto>`: le pasa la pregunta al Asistente del
+ * dashboard y devuelve su respuesta.
+ *
+ * El Asistente tenía 17 herramientas construidas y ninguna forma de
+ * llegar a ellas desde Telegram: se podía dictar al bot, pero no
+ * preguntarle nada — justo lo contrario de lo que promete el producto.
+ *
+ * Pregunta sobre el espacio donde el bot está escribiendo (ver `/espacio`),
+ * no sobre el personal a la fuerza: si estás dictando al equipo, preguntar
+ * por lo del equipo es lo que se espera. **Nunca lanza.**
+ */
+export async function handlePreguntaCommand(
+  pregunta: string,
+  userId: string,
+  client: AssistantClient,
+  logger?: Logger,
+  resolver: typeof resolveBotWorkspace = resolveBotWorkspace,
+): Promise<string> {
+  const q = pregunta.trim();
+  if (q === '') return REPLIES.preguntaUsage;
+
+  try {
+    const workspace = await resolver(userId);
+    const respuesta = await client.ask({
+      userId,
+      pregunta: q,
+      workspaceId: workspace.id,
+      isPersonal: workspace.personal,
+      role: workspace.role,
+    });
+    // El Asistente redacta en Markdown (es lo que renderiza la web); aquí
+    // hay que traducirlo o Telegram rechaza el mensaje entero al primer
+    // `<` suelto — ver markdownToHtml.ts.
+    return respuesta ? markdownToTelegramHtml(respuesta) : REPLIES.preguntaNoDisponible;
+  } catch (err) {
+    logger?.error('telegram.pregunta_failed', errorContext(err));
+    return REPLIES.error;
+  }
 }
 
 export interface EspacioCommandResult {
@@ -360,6 +413,32 @@ export async function handleTextMessage(
  * (falta GROQ_API_KEY, o Groq falla), responde con un aviso claro en vez de
  * dejar al usuario sin respuesta.
  */
+/**
+ * Handler de fotos: las lee con visión (ver `ImageReader`) y sigue el MISMO
+ * camino que un mensaje escrito — categorizar, resumir y guardar no
+ * distinguen si el texto vino del teclado, de la voz o de una foto.
+ *
+ * Hasta ahora las fotos se ignoraban **sin responder nada**: echabas una
+ * foto de un ticket o de una pizarra y no pasaba absolutamente nada, ni
+ * siquiera un aviso. Y es el gesto más natural desde el móvil.
+ *
+ * El pie de foto viaja como contexto, no como sustituto: quien escribe
+ * "factura de la luz" bajo la foto está diciendo qué es, no qué pone.
+ * **Nunca lanza.**
+ */
+export async function handlePhotoMessage(
+  imageUrl: string,
+  userId: string,
+  pipeline: Pipeline,
+  imageReader: ImageReader,
+  caption: string | undefined,
+  logger: Logger | undefined = pipeline.logger,
+): Promise<TextMessageResult> {
+  const text = await imageReader.read(imageUrl, caption);
+  if (!text) return { reply: REPLIES.photoFailed };
+  return handleTextMessage(text, userId, pipeline, logger);
+}
+
 export async function handleVoiceMessage(
   audioUrl: string,
   userId: string,
@@ -454,6 +533,10 @@ export function createBot(
   briefingGenerator?: BriefingGenerator,
   /** Transcripción de notas de voz — sin GROQ_API_KEY, NullTranscriber hace que se avise con REPLIES.voiceFailed en vez de fallar en silencio. */
   transcriber: Transcriber = resolveTranscriber(logger),
+  /** Lectura de fotos — mismo criterio: sin GROQ_API_KEY se avisa, no se ignora. */
+  imageReader: ImageReader = resolveImageReader(logger),
+  /** Asistente (vive en el dashboard, se consulta por HTTP) — sin DASHBOARD_URL/BOT_API_SECRET, /pregunta avisa de que no está disponible. */
+  assistantClient: AssistantClient = resolveAssistantClient(logger),
 ): Telegraf | null {
   if (!token) return null;
 
@@ -534,6 +617,21 @@ export function createBot(
     } catch (err) {
       logger.debug('telegram.espacio_edit_noop', errorContext(err));
     }
+  });
+
+  bot.command('pregunta', async (ctx) => {
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+    // El Asistente puede tardar varios segundos (encadena herramientas):
+    // sin esto el chat se queda mudo y parece que el comando no ha llegado.
+    await ctx.sendChatAction('typing').catch(() => {});
+    const reply = await handlePreguntaCommand(
+      commandArgument(ctx.message.text),
+      userId,
+      assistantClient,
+      logger,
+    );
+    await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 
   bot.command('buscar', async (ctx) => {
@@ -621,6 +719,86 @@ export function createBot(
     }
 
     const { reply, followUp, saved } = await handleVoiceMessage(audioUrl, userId, pipeline, transcriber, logger);
+    await ctx.reply(reply, { parse_mode: 'HTML', ...(saved ? noteActionsKeyboard(saved) : {}) });
+    if (followUp) await ctx.reply(followUp);
+  });
+
+  // Fotos: se leen con visión y siguen el mismo camino que un texto (ver
+  // handlePhotoMessage). Antes se ignoraban SIN RESPONDER NADA — echabas la
+  // foto de un ticket y no pasaba absolutamente nada.
+  bot.on(message('photo'), async (ctx) => {
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+
+    // Telegram manda varias resoluciones de la misma foto, de menor a
+    // mayor: la última es la más grande, y es la que da opción a leer un
+    // texto pequeño (un ticket, una pizarra de lejos).
+    const foto = ctx.message.photo.at(-1);
+    if (!foto) {
+      await ctx.reply(REPLIES.photoFailed);
+      return;
+    }
+
+    let imageUrl: string;
+    try {
+      const link = await ctx.telegram.getFileLink(foto.file_id);
+      imageUrl = link.toString();
+    } catch (err) {
+      logger.error('telegram.photo_link_failed', errorContext(err));
+      await ctx.reply(REPLIES.photoFailed);
+      return;
+    }
+
+    // Leer una imagen tarda más que guardar un texto: se avisa de que se
+    // está trabajando en vez de dejar el chat en silencio unos segundos.
+    await ctx.sendChatAction('typing').catch(() => {});
+
+    const { reply, followUp, saved } = await handlePhotoMessage(
+      imageUrl,
+      userId,
+      pipeline,
+      imageReader,
+      ctx.message.caption,
+      logger,
+    );
+    await ctx.reply(reply, { parse_mode: 'HTML', ...(saved ? noteActionsKeyboard(saved) : {}) });
+    if (followUp) await ctx.reply(followUp);
+  });
+
+  // Documentos: por ahora solo se aceptan los que SON imágenes (mandar una
+  // foto "como archivo" para que no se comprima es un gesto normal). El
+  // resto se contesta explicando qué sí se puede hacer — callar era el
+  // problema, no la falta de soporte.
+  bot.on(message('document'), async (ctx) => {
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+
+    const doc = ctx.message.document;
+    if (!doc.mime_type?.startsWith('image/')) {
+      await ctx.reply(REPLIES.documentUnsupported, { parse_mode: 'HTML' });
+      return;
+    }
+
+    let imageUrl: string;
+    try {
+      const link = await ctx.telegram.getFileLink(doc.file_id);
+      imageUrl = link.toString();
+    } catch (err) {
+      logger.error('telegram.document_link_failed', errorContext(err));
+      await ctx.reply(REPLIES.photoFailed);
+      return;
+    }
+
+    await ctx.sendChatAction('typing').catch(() => {});
+
+    const { reply, followUp, saved } = await handlePhotoMessage(
+      imageUrl,
+      userId,
+      pipeline,
+      imageReader,
+      ctx.message.caption,
+      logger,
+    );
     await ctx.reply(reply, { parse_mode: 'HTML', ...(saved ? noteActionsKeyboard(saved) : {}) });
     if (followUp) await ctx.reply(followUp);
   });

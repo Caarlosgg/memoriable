@@ -5,16 +5,12 @@ import type { ToolSet, UIMessage, InferUITools, UIDataTypes } from "ai";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { isSessionActive } from "@/lib/sessionRevocation";
-import { resolveEmbedder } from "@/lib/pipeline";
-import { findSimilarMessages } from "@/lib/vectorSearch";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
-import { toAssistantSources, buildContextBlock, buildSystemPrompt, buildWorkspaceContextLine, buildAmbientBlock, buildMemoryBlock, buildTeamsBlock, type AssistantSource, type AssistantWorkspaceMemberInfo } from "@/lib/assistantContext";
-import { resolveAmbientStats, resolveWorkspaceNombre, resolveWorkspaceMembers } from "@/lib/assistantAmbient";
-import { resolveMisEquipos } from "@/lib/assistantTeamContext";
-import { createAssistantTools, type AssistantTools } from "@/lib/assistantTools";
+import type { AssistantSource } from "@/lib/assistantContext";
+import type { AssistantTools } from "@/lib/assistantTools";
+import { prepararAsistente } from "@/lib/assistantRun";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
-import { listAssistantMemories } from "@/lib/assistantMemory";
-import { getActiveWorkspace, getPersonalWorkspaceId } from "@/lib/workspace";
+import { getActiveWorkspace } from "@/lib/workspace";
 
 // Verificado en vivo: una petición con dos llamadas a herramienta con
 // `repetir` (crearEvento + registrarAhorro, 5 repeticiones cada una) tardó
@@ -24,13 +20,6 @@ import { getActiveWorkspace, getPersonalWorkspaceId } from "@/lib/workspace";
 export const maxDuration = 60;
 
 const DEFAULT_MAX_QUESTIONS_PER_DAY = 30;
-const SOURCES_PER_ANSWER = 5;
-// Distancia coseno máxima para citar una nota como fuente automática — sin
-// esto, en un workspace con pocas notas el Asistente podía citar 3-4 que no
-// tenían nada que ver, solo por ser "las menos lejanas" de lo que había.
-// Mejor citar de menos que citar ruido; ver `encontrarTareaPendiente` en
-// assistantTools.ts para el umbral (más estricto) de las tools que ACTÚAN.
-const SOURCE_MAX_DISTANCE = 0.6;
 // Turnos de herramienta que se dejan encadenar antes de forzar la respuesta
 // final. Ya no es la defensa principal contra peticiones repetidas ("todos
 // los jueves durante 5 semanas") — para eso, crearEvento/registrarAhorro
@@ -140,117 +129,22 @@ export async function POST(req: Request) {
     messages.flatMap((m) => m.metadata?.sources?.map((s) => s.id) ?? []),
   );
 
-  // Nunca bloquea la respuesta: sin GEMINI_API_KEY (o si Gemini/BD fallan),
-  // el Asistente responde igual, solo que sin notas citadas — dice con
-  // naturalidad que no encontró nada relevante (ver el system prompt en
-  // assistantContext.ts).
-  async function resolveSources(): Promise<AssistantSource[]> {
-    if (!question) return [];
-    try {
-      const queryEmbedding = await resolveEmbedder().embedQuery(question);
-      if (!queryEmbedding) return [];
-      const similar = await findSimilarMessages(workspaceId, queryEmbedding, {
-        limit: SOURCES_PER_ANSWER,
-        maxDistance: SOURCE_MAX_DISTANCE,
-      });
-      return toAssistantSources(similar).filter((s) => !alreadyCitedIds.has(s.id));
-    } catch (err) {
-      console.error("No se pudieron recuperar notas relevantes (se responde sin fuentes):", err);
-      return [];
-    }
-  }
-
-  // Nombre + miembros del workspace activo, resueltos UNA sola vez y
-  // reutilizados tanto para la línea de contexto de abajo como para las
-  // tools (`asignadoA`, `asignarTarea`, ver createAssistantTools) — antes
-  // cada tool volvía a consultar `membership.findMany` por su cuenta, una
-  // ida y vuelta redundante a la BD en peticiones que, al encadenar varias
-  // llamadas a herramienta, ya son las más lentas (verificado en vivo:
-  // sumaba presión real al pool de conexiones). Nunca bloquea la
-  // respuesta ni la degrada de forma visible: si falla, el Asistente
-  // simplemente no menciona en qué equipo está trabajando el usuario.
-  async function resolveWorkspaceInfo(): Promise<{ nombre: string | undefined; members: AssistantWorkspaceMemberInfo[] }> {
-    if (isPersonal) return { nombre: undefined, members: [] };
-    try {
-      const [nombre, members] = await Promise.all([
-        resolveWorkspaceNombre(workspaceId),
-        resolveWorkspaceMembers(workspaceId, userId),
-      ]);
-      return { nombre, members };
-    } catch (err) {
-      console.error("No se pudo resolver el nombre/miembros del workspace activo (se continúa sin ellos):", err);
-      return { nombre: undefined, members: [] };
-    }
-  }
-
-  // Igual de no-crítico que resolveSources: si falla, el Asistente responde
-  // igual, solo sin el bloque de "cómo va la semana".
-  async function resolveAmbient(): Promise<string> {
-    try {
-      return buildAmbientBlock(await resolveAmbientStats(workspaceId));
-    } catch (err) {
-      console.error("No se pudieron calcular las cifras ambientales (se responde sin ellas):", err);
-      return "";
-    }
-  }
-
-  // TODOS los equipos del usuario (no solo el activo), para que el
-  // Asistente pueda diferenciarlos al hablar en vez de tratar "el equipo"
-  // como si solo hubiera uno. No crítico, como el resto del contexto.
-  async function resolveTeams(): Promise<string> {
-    try {
-      return buildTeamsBlock(await resolveMisEquipos(userId, workspaceId));
-    } catch (err) {
-      console.error("No se pudieron cargar los equipos del usuario (se responde sin ellos):", err);
-      return "";
-    }
-  }
-
-  // Para `consultarAgenda`, que mezcla lo de todos los equipos con lo
-  // personal (ver createAssistantTools). Si falla, se cae al workspace
-  // activo: la agenda saldrá sin la parte personal, pero nada se rompe.
-  async function resolvePersonalId(): Promise<string> {
-    try {
-      return await getPersonalWorkspaceId(userId);
-    } catch (err) {
-      console.error("No se pudo resolver el espacio personal (se usa el activo):", err);
-      return workspaceId;
-    }
-  }
-
-  // Igual de no-crítico: sin memoria, el Asistente responde igual, solo
-  // sin recordar hechos de conversaciones anteriores.
-  async function resolveMemory(): Promise<string> {
-    try {
-      const memories = await listAssistantMemories(userId, workspaceId);
-      return buildMemoryBlock(memories.map((m) => m.hecho));
-    } catch (err) {
-      console.error("No se pudo cargar la memoria del Asistente (se responde sin ella):", err);
-      return "";
-    }
-  }
-
-  // Independientes entre sí (ninguna depende del resultado de otra) — en
-  // paralelo en vez de en secuencia recorta el tiempo hasta el primer
-  // token de la respuesta. Cada una atrapa sus propios errores, así que
-  // Promise.all nunca rechaza por un fallo aislado de una de ellas.
-  const [conversationId, sources, workspaceInfo, ambientBlock, memoryBlock, teamsBlock, personalWorkspaceId] = await Promise.all([
+  // Todo el contexto del Asistente (fuentes, workspace, equipos, cifras,
+  // memoria) y sus herramientas se montan en `prepararAsistente`, compartido
+  // con la ruta del bot de Telegram — ver assistantRun.ts sobre por qué no
+  // vive aquí dentro. La conversación sí es propia de la web: Telegram no
+  // tiene hilos.
+  const [conversationId, preparado] = await Promise.all([
     resolveConversationId(),
-    resolveSources(),
-    resolveWorkspaceInfo(),
-    resolveAmbient(),
-    resolveMemory(),
-    resolveTeams(),
-    resolvePersonalId(),
+    prepararAsistente({ userId, pregunta: question, workspaceId, isPersonal, role, yaCitadas: alreadyCitedIds }),
   ]);
-  const { members } = workspaceInfo;
-  const workspaceLine = buildWorkspaceContextLine({ isPersonal, nombre: workspaceInfo.nombre, role, members });
+  const { system, tools, sources } = preparado;
 
   const result = streamText({
     model: groq("openai/gpt-oss-120b"),
-    system: buildSystemPrompt(buildContextBlock(sources), new Date(), { workspaceLine, ambientBlock, memoryBlock, teamsBlock }),
+    system,
     messages: await convertToModelMessages(messages),
-    tools: createAssistantTools(userId, workspaceId, role, members, personalWorkspaceId),
+    tools,
     // Permite encadenar la llamada a `crearNota` con la respuesta de texto
     // que la confirma, en el mismo turno (si no, el SDK se pararía justo
     // después de ejecutar la tool sin generar el mensaje final).

@@ -6,6 +6,7 @@ import { ResilientCategorizer } from '../ai/resilientCategorizer.js';
 import { GeminiEmbedder, NullEmbedder } from '../ai/embedder.js';
 import type { Categorizer, Embedder } from '../ai/types.js';
 import { GroqTranscriber, NullTranscriber, type Transcriber } from '../ai/transcriber.js';
+import { GroqImageReader, NullImageReader, type ImageReader, type GroqVisionClient } from '../ai/imageReader.js';
 import { GroqBriefingGenerator, OfflineBriefingGenerator, type BriefingGenerator } from '../ai/briefing.js';
 import { ResilientBriefingGenerator } from '../ai/resilientBriefing.js';
 import { BudgetedBriefingGenerator } from '../ai/budgetedBriefing.js';
@@ -68,6 +69,16 @@ export function resolveCategorizer(logger: Logger = rootLogger): Categorizer {
 export function resolveTranscriber(logger: Logger = rootLogger): Transcriber {
   if (!hasGroq()) return new NullTranscriber();
   return new GroqTranscriber(createGroqClient(), logger);
+}
+
+/**
+ * Lector de imágenes — mismo criterio que el transcriptor: mismo proveedor
+ * (Groq), así que `hasGroq()` decide, y sin fusible propio porque una foto
+ * es un mensaje más dentro del mismo `MAX_MESSAGES_PER_DAY`.
+ */
+export function resolveImageReader(logger: Logger = rootLogger): ImageReader {
+  if (!hasGroq()) return new NullImageReader();
+  return new GroqImageReader(createGroqClient() as unknown as GroqVisionClient, logger);
 }
 
 /**
