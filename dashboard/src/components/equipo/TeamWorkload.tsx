@@ -78,6 +78,7 @@ export async function TeamWorkload({ workspaceId }: { workspaceId: string }) {
               esWorkspaceActivo={esWorkspaceActivo}
               userId={member.userId}
               email={member.email}
+              nombre={member.nombre}
               esSelf={member.isSelf}
               abiertas={abiertas}
               vencidas={vencidas}

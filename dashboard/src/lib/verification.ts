@@ -22,7 +22,17 @@ export async function createVerificationToken(userId: string): Promise<string> {
   return token;
 }
 
-export type VerifyEmailResult = "ok" | "invalido" | "caducado";
+export type VerifyEmailStatus = "ok" | "invalido" | "caducado";
+
+/**
+ * `userId` solo viene cuando el estado es "ok" — es lo que permite iniciar
+ * sesión directamente tras confirmar, sin volver a pedir credenciales a
+ * alguien cuya identidad el propio token acaba de demostrar.
+ */
+export interface VerifyEmailResult {
+  status: VerifyEmailStatus;
+  userId?: string;
+}
 
 /**
  * Consume un token de verificación: si es válido y no ha caducado, marca la
@@ -31,16 +41,16 @@ export type VerifyEmailResult = "ok" | "invalido" | "caducado";
  */
 export async function verifyEmailToken(token: string): Promise<VerifyEmailResult> {
   const found = await prisma.verificationToken.findUnique({ where: { token } });
-  if (!found) return "invalido";
+  if (!found) return { status: "invalido" };
 
   if (found.expiresAt < new Date()) {
     await prisma.verificationToken.delete({ where: { id: found.id } }).catch(() => {});
-    return "caducado";
+    return { status: "caducado" };
   }
 
   await prisma.$transaction([
     prisma.user.update({ where: { id: found.userId }, data: { emailVerified: true } }),
     prisma.verificationToken.delete({ where: { id: found.id } }),
   ]);
-  return "ok";
+  return { status: "ok", userId: found.userId };
 }

@@ -5,8 +5,16 @@ import { requireSessionSecret } from "./env";
 
 export const SESSION_COOKIE_NAME = "memoria_ia_session";
 
-/** Duración de la sesión: 30 días. Pasado ese tiempo, hay que volver a entrar. */
+/** Duración de la sesión con "Recordarme": 30 días. */
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Duración sin "Recordarme": 12 horas. Suficiente para una jornada entera
+ * (que es el caso que importa: no querer que la sesión se caiga a media
+ * tarde) y corta para un ordenador compartido, que es de lo que protege la
+ * casilla.
+ */
+const SESSION_SHORT_DURATION_MS = 12 * 60 * 60 * 1000;
 
 function secretKey(): Uint8Array {
   return new TextEncoder().encode(requireSessionSecret());
@@ -17,9 +25,15 @@ function secretKey(): Uint8Array {
  * en una cookie httpOnly. Debe llamarse desde un Server Action o Route
  * Handler (no se puede escribir una cookie durante el renderizado de un
  * Server Component).
+ *
+ * `recordar` por defecto true: quien no dice nada (login con Google,
+ * confirmación de email) mantiene el comportamiento de siempre — solo el
+ * formulario de entrar, que sí tiene casilla, puede pedir la sesión corta.
+ * La caducidad va tanto en el JWT como en la cookie: borrar la cookie a mano
+ * para "alargar" la sesión no sirve de nada, el token también expira.
  */
-export async function createSession(userId: string): Promise<void> {
-  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+export async function createSession(userId: string, recordar = true): Promise<void> {
+  const expiresAt = new Date(Date.now() + (recordar ? SESSION_DURATION_MS : SESSION_SHORT_DURATION_MS));
   const token = await new SignJWT({ userId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()

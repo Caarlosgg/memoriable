@@ -2,6 +2,7 @@ import "server-only";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "./prisma";
 import { createNotification } from "./notifications";
+import { displayName } from "./format";
 
 export const COMENTARIO_MAX_LENGTH = 2000;
 
@@ -12,6 +13,8 @@ export interface ComentarioView {
   editadoAt: string | null;
   userId: string;
   email: string;
+  /** Nombre para mostrar ya resuelto en el servidor (cae al email si la cuenta no tiene). */
+  nombre: string;
   /** `true` si lo escribió quien está mirando — el cliente lo usa para decidir si enseña editar/borrar. */
   esMio: boolean;
 }
@@ -30,7 +33,7 @@ function toView(
     createdAt: Date;
     editadoAt: Date | null;
     userId: string;
-    user: { email: string };
+    user: { email: string; nombre: string | null };
   },
   currentUserId: string,
 ): ComentarioView {
@@ -41,6 +44,7 @@ function toView(
     editadoAt: c.editadoAt?.toISOString() ?? null,
     userId: c.userId,
     email: c.user.email,
+    nombre: displayName(c.user),
     esMio: c.userId === currentUserId,
   };
 }
@@ -59,7 +63,7 @@ export async function listComentarios(
   const rows = await prisma.comentario.findMany({
     where: targetWhere(target),
     orderBy: { createdAt: "asc" },
-    include: { user: { select: { email: true } } },
+    include: { user: { select: { email: true, nombre: true } } },
   });
   return rows.map((c) => toView(c, currentUserId));
 }
@@ -90,7 +94,7 @@ async function notificarMenciones(params: {
   texto: string;
   workspaceId: string;
   autorId: string;
-  autorEmail: string;
+  autorNombre: string;
   link: string;
   contexto: string;
 }): Promise<void> {
@@ -106,13 +110,12 @@ async function notificarMenciones(params: {
     .filter((m) => m.userId !== params.autorId)
     .filter((m) => menciones.includes(m.user.email.split("@")[0]!.toLowerCase()));
 
-  const autor = params.autorEmail.split("@")[0];
   await Promise.all(
     destinatarios.map((m) =>
       createNotification({
         userId: m.userId,
         type: "ASSIGNED_MESSAGE",
-        title: `${autor} te ha mencionado`,
+        title: `${params.autorNombre} te ha mencionado`,
         body: params.contexto,
         link: params.link,
       }),
@@ -143,7 +146,7 @@ export async function createComentario(params: {
         workspaceId: params.workspaceId,
         ...targetWhere(params.target),
       },
-      include: { user: { select: { email: true } } },
+      include: { user: { select: { email: true, nombre: true } } },
     });
 
     // `void` a propósito: el comentario ya está guardado y avisar no debe
@@ -152,7 +155,7 @@ export async function createComentario(params: {
       texto: trimmed,
       workspaceId: params.workspaceId,
       autorId: params.userId,
-      autorEmail: created.user.email,
+      autorNombre: displayName(created.user),
       link: params.link,
       contexto: params.contexto,
     }).catch((err) => {

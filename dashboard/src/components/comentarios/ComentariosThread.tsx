@@ -9,7 +9,6 @@ import {
   deleteComentario,
   type ComentarioView,
 } from "@/app/(dashboard)/comentarios/actions";
-import { shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -141,7 +140,7 @@ export function ComentariosThread({
               <Avatar email={c.email} size="sm" className="mt-0.5" />
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-baseline gap-x-2 text-xs">
-                  <span className="font-medium text-ink">{shortEmailName(c.email)}</span>
+                  <span className="font-medium text-ink">{c.nombre}</span>
                   <span className="text-muted">{haceCuanto(c.createdAt)}</span>
                   {c.editadoAt && <span className="text-muted">(editado)</span>}
                 </p>

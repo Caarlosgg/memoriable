@@ -36,7 +36,7 @@ function StepRow({ done, optional, href, children }: { done: boolean; optional?:
 }
 
 /**
- * Tarjeta "primeros pasos" en /asistente — solo se monta cuando de verdad
+ * Tarjeta "primeros pasos" de /inicio — solo se monta cuando de verdad
  * hace falta (ver OnboardingChecklist.tsx, que decide si mostrarla). Cierre
  * optimista: oculta al instante al pulsar la X, sin esperar a que la
  * Server Action confirme — reaparecer un instante si falla sería más
@@ -77,11 +77,15 @@ export function OnboardingChecklistCard({
         </button>
       </div>
       <ul className="flex flex-col gap-1 text-sm">
-        <StepRow done={telegramLinked} href="/cuenta">
-          Vincula tu Telegram para empezar a capturar notas, tareas y citas.
+        {/* La captura va PRIMERA y sin "(opcional)": es el paso que enseña
+            para qué sirve esto. Vincular Telegram antes de haber guardado
+            nada es pedir una configuración antes de haber visto el valor —
+            justo el orden que hace abandonar. */}
+        <StepRow done={hasFirstNote} href="/notas">
+          Escribe tu primera nota o tarea — la IA la clasifica sola.
         </StepRow>
-        <StepRow done={hasFirstNote}>
-          Mándale un mensaje al bot (o pídeselo al Asistente aquí abajo) — aparecerá aquí, categorizado.
+        <StepRow done={telegramLinked} optional href="/cuenta">
+          Vincula tu Telegram para capturar desde el móvil sin abrir la app.
         </StepRow>
         <StepRow done={hasTeam} optional href="/equipo">
           Invita a tu equipo para compartir el tablero y el calendario.

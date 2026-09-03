@@ -22,8 +22,10 @@ export function buildGoogleAuthorizeUrl(state: string, redirectUri: string): str
     redirect_uri: redirectUri,
     response_type: "code",
     // openid trae el id_token con el email ya verificado por Google — no
-    // hace falta pedir un endpoint de perfil aparte.
-    scope: "openid email",
+    // hace falta pedir un endpoint de perfil aparte. `profile` añade el
+    // nombre al mismo id_token: quien entra por Google no rellena el
+    // formulario de registro, así que sin esto su cuenta nace sin nombre.
+    scope: "openid email profile",
     // Evita volver a pedir consentimiento cada vez si ya se dio antes.
     prompt: "select_account",
     state,
@@ -34,6 +36,8 @@ export function buildGoogleAuthorizeUrl(state: string, redirectUri: string): str
 export interface GoogleIdentity {
   email: string;
   emailVerified: boolean;
+  /** Nombre del perfil de Google. Null si el usuario no autorizó `profile`. */
+  nombre: string | null;
 }
 
 /**
@@ -71,7 +75,13 @@ export async function exchangeCodeForIdentity(code: string, redirectUri: string)
   const email = typeof payload.email === "string" ? payload.email : null;
   if (!email) throw new Error("El id_token de Google no trae email.");
 
-  return { email: email.toLowerCase(), emailVerified: payload.email_verified === true };
+  const nombre = typeof payload.name === "string" ? payload.name.trim().slice(0, 60) : null;
+
+  return {
+    email: email.toLowerCase(),
+    emailVerified: payload.email_verified === true,
+    nombre: nombre || null,
+  };
 }
 
 /**
@@ -80,11 +90,17 @@ export async function exchangeCodeForIdentity(code: string, redirectUri: string)
  * nunca confirmada), Google ya certifica el mismo email — se marca
  * verificada también, no tiene sentido seguir bloqueándola.
  */
-export async function findOrCreateGoogleUser(email: string): Promise<string> {
+export async function findOrCreateGoogleUser(email: string, nombre?: string | null): Promise<string> {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    if (!existing.emailVerified) {
-      await prisma.user.update({ where: { id: existing.id }, data: { emailVerified: true } });
+    // El nombre solo se rellena si falta: si el usuario ya se puso uno en la
+    // app, entrar por Google no debe pisárselo.
+    const parche = {
+      ...(existing.emailVerified ? {} : { emailVerified: true }),
+      ...(!existing.nombre && nombre ? { nombre } : {}),
+    };
+    if (Object.keys(parche).length > 0) {
+      await prisma.user.update({ where: { id: existing.id }, data: parche });
     }
     return existing.id;
   }
@@ -92,7 +108,9 @@ export async function findOrCreateGoogleUser(email: string): Promise<string> {
   // transacción — mismo motivo que en registro/actions.ts: nunca debe
   // existir un User sin su espacio personal.
   return prisma.$transaction(async (tx) => {
-    const created = await tx.user.create({ data: { email, passwordHash: null, emailVerified: true } });
+    const created = await tx.user.create({
+      data: { email, nombre: nombre ?? null, passwordHash: null, emailVerified: true },
+    });
     await createPersonalWorkspace(tx, created.id);
     return created.id;
   });

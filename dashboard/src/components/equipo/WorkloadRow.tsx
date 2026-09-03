@@ -4,7 +4,6 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { TriangleAlert, Loader2 } from "lucide-react";
 import { setActiveWorkspace } from "@/app/(dashboard)/equipo/actions";
-import { shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 
 /**
@@ -22,6 +21,7 @@ export function WorkloadRow({
   esWorkspaceActivo,
   userId,
   email,
+  nombre,
   esSelf,
   abiertas,
   vencidas,
@@ -33,6 +33,8 @@ export function WorkloadRow({
   esWorkspaceActivo: boolean;
   userId: string;
   email: string;
+  /** Nombre para mostrar ya resuelto por el servidor (ver `displayName`). */
+  nombre: string;
   esSelf: boolean;
   abiertas: number;
   vencidas: number;
@@ -65,8 +67,8 @@ export function WorkloadRow({
         disabled={pending}
         title={
           esWorkspaceActivo
-            ? `Ver lo que lleva ${shortEmailName(email)}`
-            : `Cambiar a este equipo y ver lo que lleva ${shortEmailName(email)}`
+            ? `Ver lo que lleva ${nombre}`
+            : `Cambiar a este equipo y ver lo que lleva ${nombre}`
         }
         className="flex w-full items-center gap-3 rounded-lg p-1.5 text-left transition-colors hover:bg-paper focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-60"
       >
@@ -74,7 +76,7 @@ export function WorkloadRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
             <span className="truncate text-sm text-ink">
-              {shortEmailName(email)}
+              {nombre}
               {esSelf && <span className="ml-1 text-xs text-muted">(tú)</span>}
             </span>
             <span className="flex shrink-0 items-center gap-1 text-xs text-muted tabular-nums">

@@ -76,3 +76,16 @@ export function formatEventTime(fecha: Date | string | number | null | undefined
 export function shortEmailName(email: string): string {
   return email.split("@")[0] ?? email;
 }
+
+/**
+ * Cómo se llama alguien en pantalla. Prefiere el nombre real y se cae al
+ * email troceado cuando no lo hay — las cuentas creadas antes de que el
+ * registro pidiera nombre no tienen ninguno, y esas nunca deben mostrarse
+ * en blanco.
+ *
+ * Usar SIEMPRE esto en vez de `shortEmailName` cuando se tenga el usuario
+ * entero a mano; `shortEmailName` queda para donde solo llega el email.
+ */
+export function displayName(user: { nombre?: string | null; email: string }): string {
+  return user.nombre?.trim() || shortEmailName(user.email);
+}

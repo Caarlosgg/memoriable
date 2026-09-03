@@ -38,6 +38,9 @@ datasource db {
 model User {
   id    String @id @default(cuid())
   email String @unique
+  /// Ver ../../prisma/schema.prisma: nombre para mostrar, opcional (las
+  /// cuentas antiguas no lo tienen y se cae al email troceado).
+  nombre String?
   /// Opcional desde el login con Google: una cuenta creada solo por OAuth no
   /// tiene contraseña propia (ver login/actions.ts, caso passwordHash null).
   passwordHash String?

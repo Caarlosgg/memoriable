@@ -4,6 +4,7 @@ import { TodayView } from "@/components/inicio/TodayView";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { ActiveWorkspaceBadge } from "@/components/ActiveWorkspaceBadge";
+import { AutoRefresh } from "@/components/AutoRefresh";
 
 export const metadata: Metadata = { title: "Inicio · MemorIAble" };
 
@@ -25,10 +26,13 @@ export default function InicioPage() {
   return (
     <>
       <ActiveWorkspaceBadge />
-      {/* "Primeros pasos" se muestra aquí ADEMÁS de en el Asistente: ahora
-          esta es la primera pantalla, así que es donde de verdad la ve
-          alguien que acaba de registrarse. Se oculta sola en cuanto tiene
-          Telegram vinculado y su primera nota (ver OnboardingChecklist). */}
+      {/* Lo que llega por Telegram no puede revalidar esta pestaña: sin
+          esto, capturas desde el móvil, miras aquí y no ves nada (ver
+          AutoRefresh). */}
+      <AutoRefresh />
+      {/* "Primeros pasos" es lo primero que ve alguien que acaba de
+          registrarse — esta es la pantalla de entrada. Se oculta sola en
+          cuanto guarda su primera nota (ver OnboardingChecklist). */}
       <SectionErrorBoundary title="Primeros pasos">
         <Suspense fallback={null}>
           <OnboardingChecklist />

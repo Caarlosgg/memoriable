@@ -20,6 +20,7 @@ export interface RegisterState {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 254; // RFC 5321
+const MAX_NOMBRE_LENGTH = 60;
 
 // Alta de cuentas: más restrictivo que el login (5 por IP cada 15 minutos).
 const REGISTER_LIMIT = 5;
@@ -29,10 +30,15 @@ export async function register(
   _prevState: RegisterState,
   formData: FormData,
 ): Promise<RegisterState> {
+  const nombre = String(formData.get("nombre") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const passwordConfirm = String(formData.get("passwordConfirm") ?? "");
+  const acepta = formData.get("acepta") === "si";
 
+  if (nombre.length < 2 || nombre.length > MAX_NOMBRE_LENGTH) {
+    return { error: "Escribe tu nombre (entre 2 y 60 caracteres)." };
+  }
   if (!EMAIL_RE.test(email) || email.length > MAX_EMAIL_LENGTH) {
     return { error: "Escribe un email válido." };
   }
@@ -43,6 +49,12 @@ export async function register(
   if (passwordError) return { error: passwordError };
   if (password !== passwordConfirm) {
     return { error: "Las contraseñas no coinciden." };
+  }
+  // La casilla del formulario ya es `required`, pero el consentimiento no
+  // puede depender solo del cliente: sin esta comprobación, un POST directo
+  // crea la cuenta sin haber aceptado nada.
+  if (!acepta) {
+    return { error: "Tienes que aceptar los términos de uso y la política de privacidad." };
   }
 
   const limit = await checkRateLimit(`registro:${await clientIp()}`, REGISTER_LIMIT, REGISTER_WINDOW_MS);
@@ -57,7 +69,7 @@ export async function register(
     // transacción — nunca debe existir un User sin su espacio personal
     // (ver createPersonalWorkspace, mismo motivo que en googleOAuth.ts).
     userId = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({ data: { email, passwordHash } });
+      const user = await tx.user.create({ data: { email, nombre, passwordHash } });
       await createPersonalWorkspace(tx, user.id);
       return user.id;
     });

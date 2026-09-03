@@ -38,11 +38,31 @@ export function LinkTelegramForm() {
           <p className="text-muted">Caduca a las {formatDate(state.expiresAt)}.</p>
 
           {BOT_USERNAME ? (
-            <Button asChild className="w-fit">
-              <a href={`https://t.me/${BOT_USERNAME}?start=${state.code}`} target="_blank" rel="noopener noreferrer">
-                <Send aria-hidden size={15} /> Abrir Telegram y vincular
-              </a>
-            </Button>
+            // Botón Y QR, no uno u otro: el caso real es que estás en el
+            // ordenador y Telegram lo tienes en el móvil. El botón sirve a
+            // quien tiene Telegram de escritorio; el QR, a todos los demás,
+            // que si no tendrían que copiar el código a mano de una
+            // pantalla a otra.
+            <div className="flex flex-wrap items-center gap-4">
+              <Button asChild className="w-fit">
+                <a href={`https://t.me/${BOT_USERNAME}?start=${state.code}`} target="_blank" rel="noopener noreferrer">
+                  <Send aria-hidden size={15} /> Abrir Telegram y vincular
+                </a>
+              </Button>
+              {state.qrDataUrl && (
+                <figure className="flex flex-col items-center gap-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- data-URI generado al vuelo: next/image no puede optimizar lo que no tiene URL */}
+                  <img
+                    src={state.qrDataUrl}
+                    alt={`Código QR para vincular Telegram con el código ${state.code}`}
+                    width={110}
+                    height={110}
+                    className="rounded-lg border border-paper-line"
+                  />
+                  <figcaption className="text-xs text-muted">o escanéalo con el móvil</figcaption>
+                </figure>
+              )}
+            </div>
           ) : (
             <>
               <p className="text-muted">Envía este mensaje al bot de Telegram:</p>

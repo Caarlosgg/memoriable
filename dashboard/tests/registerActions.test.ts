@@ -47,6 +47,22 @@ function formData(fields: Record<string, string>): FormData {
   return fd;
 }
 
+/**
+ * Formulario válido al que cada test le cambia SOLO lo que está probando —
+ * así, cuando el registro gane otro campo obligatorio, no hay que tocar
+ * ocho tests que no van de eso.
+ */
+function validForm(overrides: Record<string, string> = {}): FormData {
+  return formData({
+    nombre: "Ana",
+    email: "ana@example.com",
+    password: "caldera8naranja",
+    passwordConfirm: "caldera8naranja",
+    acepta: "si",
+    ...overrides,
+  });
+}
+
 describe("register", () => {
   beforeEach(() => {
     checkRateLimit.mockReset();
@@ -69,7 +85,7 @@ describe("register", () => {
     const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
-      formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8distinta" }),
+      validForm({ passwordConfirm: "caldera8distinta" }),
     );
     expect(result.error).toMatch(/no coinciden/);
     expect(userCreate).not.toHaveBeenCalled();
@@ -79,7 +95,7 @@ describe("register", () => {
     const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
-      formData({ email: "ana@example.com", password: "password1", passwordConfirm: "password1" }),
+      validForm({ password: "password1", passwordConfirm: "password1" }),
     );
     expect(result.error).toMatch(/demasiado común/);
     expect(userCreate).not.toHaveBeenCalled();
@@ -89,7 +105,7 @@ describe("register", () => {
     const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
-      formData({ email: "benito@example.com", password: "benito12345", passwordConfirm: "benito12345" }),
+      validForm({ email: "benito@example.com", password: "benito12345", passwordConfirm: "benito12345" }),
     );
     expect(result.error).toMatch(/no puede parecerse a tu email/);
     expect(userCreate).not.toHaveBeenCalled();
@@ -99,7 +115,7 @@ describe("register", () => {
     const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
-      formData({ email: "no-es-un-email", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
+      validForm({ email: "no-es-un-email" }),
     );
     expect(result.error).toMatch(/email válido/);
   });
@@ -108,10 +124,12 @@ describe("register", () => {
     const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
-      formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
+      validForm(),
     );
 
-    expect(userCreate).toHaveBeenCalledWith({ data: { email: "ana@example.com", passwordHash: "hashed" } });
+    expect(userCreate).toHaveBeenCalledWith({
+      data: { email: "ana@example.com", nombre: "Ana", passwordHash: "hashed" },
+    });
     expect(createPersonalWorkspace).toHaveBeenCalledWith(expect.anything(), "u1");
     expect(createVerificationToken).toHaveBeenCalledWith("u1");
     expect(sendVerificationEmail).toHaveBeenCalledWith(
@@ -126,7 +144,7 @@ describe("register", () => {
     const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
-      formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
+      validForm(),
     );
     expect(userCreate).toHaveBeenCalled();
     expect(result).toEqual({ registered: true, emailSent: false });
@@ -142,10 +160,28 @@ describe("register", () => {
     const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
-      formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
+      validForm(),
     );
     expect(result.error).toMatch(/ya existe una cuenta/i);
     expect(createVerificationToken).not.toHaveBeenCalled();
+  });
+
+  it("rechaza si no se aceptan los términos, aunque todo lo demás sea válido", async () => {
+    const { register } = await import("../src/app/(auth)/registro/actions");
+    // Una casilla sin marcar simplemente no viaja en el FormData — es el
+    // caso real, no un valor "no".
+    const fd = validForm();
+    fd.delete("acepta");
+    const result = await register({}, fd);
+    expect(result.error).toMatch(/aceptar los términos/i);
+    expect(userCreate).not.toHaveBeenCalled();
+  });
+
+  it("rechaza un nombre vacío", async () => {
+    const { register } = await import("../src/app/(auth)/registro/actions");
+    const result = await register({}, validForm({ nombre: "   " }));
+    expect(result.error).toMatch(/tu nombre/i);
+    expect(userCreate).not.toHaveBeenCalled();
   });
 
   it("respeta el límite de intentos por IP", async () => {
@@ -153,7 +189,7 @@ describe("register", () => {
     const { register } = await import("../src/app/(auth)/registro/actions");
     const result = await register(
       {},
-      formData({ email: "ana@example.com", password: "caldera8naranja", passwordConfirm: "caldera8naranja" }),
+      validForm(),
     );
     expect(result.error).toMatch(/42s/);
     expect(userCreate).not.toHaveBeenCalled();

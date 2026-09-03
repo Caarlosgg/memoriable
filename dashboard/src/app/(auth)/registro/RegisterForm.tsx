@@ -49,7 +49,9 @@ function RegisteredConfirmation({ email, emailSent }: { email: string; emailSent
 
 export function RegisterForm() {
   const [state, formAction, pending] = useActionState(register, initialState);
+  const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
+  const [acepta, setAcepta] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   // Aviso en vivo de que no coinciden, en vez de descubrirlo al enviar —
@@ -63,6 +65,27 @@ export function RegisterForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
+      {/* Primero el nombre: sin él, el primer avatar que ve el usuario —y el
+          que ve su equipo— es su email troceado. Pedirlo aquí cuesta un
+          campo; arreglarlo después no lo hace nadie. */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="nombre" className="text-sm font-medium text-ink">
+          Nombre
+        </label>
+        <Input
+          id="nombre"
+          name="nombre"
+          type="text"
+          required
+          autoFocus
+          autoComplete="name"
+          maxLength={60}
+          placeholder="Cómo quieres que te llamemos"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+        />
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <label htmlFor="email" className="text-sm font-medium text-ink">
           Email
@@ -76,6 +99,7 @@ export function RegisterForm() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          aria-invalid={state?.error ? true : undefined}
         />
       </div>
 
@@ -119,13 +143,51 @@ export function RegisterForm() {
         )}
       </div>
 
+      {/* Consentimiento explícito, sin premarcar y sin enterrarlo en letra
+          pequeña bajo el botón: es lo que exige el RGPD y, además, los
+          enlaces abren en pestaña nueva para no perder lo ya escrito. */}
+      <label className="flex cursor-pointer items-start gap-2.5 text-sm text-muted">
+        <input
+          type="checkbox"
+          name="acepta"
+          value="si"
+          required
+          checked={acepta}
+          onChange={(e) => setAcepta(e.target.checked)}
+          className="mt-0.5 size-4 shrink-0 cursor-pointer rounded-sm accent-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+        />
+        <span>
+          He leído y acepto los{" "}
+          <Link
+            href="/terminos"
+            target="_blank"
+            className="font-medium text-accent underline underline-offset-2 hover:text-accent-strong"
+          >
+            términos de uso
+          </Link>{" "}
+          y la{" "}
+          <Link
+            href="/privacidad"
+            target="_blank"
+            className="font-medium text-accent underline underline-offset-2 hover:text-accent-strong"
+          >
+            política de privacidad
+          </Link>
+          .
+        </span>
+      </label>
+
       {state?.error && (
         <p id="register-error" role="alert" className="text-sm text-danger">
           {state.error}
         </p>
       )}
 
-      <Button type="submit" disabled={pending} className="mt-2 shadow-[0_10px_24px_-12px_rgba(21,122,95,0.55)]">
+      <Button
+        type="submit"
+        disabled={pending || !acepta}
+        className="mt-2 shadow-[0_10px_24px_-12px_rgba(21,122,95,0.55)]"
+      >
         {pending ? "Creando cuenta…" : "Crear cuenta"}
       </Button>
 

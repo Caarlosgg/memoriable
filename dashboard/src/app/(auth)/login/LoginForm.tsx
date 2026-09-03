@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { ResendVerification } from "@/components/ResendVerification";
+import { RetryCountdown } from "@/components/RetryCountdown";
 
 const initialState: LoginState = {};
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(login, initialState);
   const [email, setEmail] = useState("");
+  const [recordar, setRecordar] = useState(true);
 
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
@@ -55,9 +57,25 @@ export function LoginForm() {
         />
       </div>
 
+      {/* Marcada por defecto: es lo que quiere casi todo el mundo en su
+          propio ordenador. Desmarcarla es la excepción (equipo compartido),
+          y para eso tiene que estar VISIBLE, no escondida bajo el botón. */}
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
+        <input
+          type="checkbox"
+          name="recordar"
+          value="si"
+          checked={recordar}
+          onChange={(e) => setRecordar(e.target.checked)}
+          className="size-4 shrink-0 cursor-pointer rounded-sm accent-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+        />
+        No cerrar sesión
+      </label>
+
       {state?.error && (
         <p id="login-error" role="alert" className="text-sm text-danger">
           {state.error}
+          {state.retryAt !== undefined && <RetryCountdown retryAt={state.retryAt} />}
         </p>
       )}
 

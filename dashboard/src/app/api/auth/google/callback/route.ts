@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       return loginWithError(origin, "oauth_email_no_verificado");
     }
 
-    const userId = await findOrCreateGoogleUser(identity.email);
+    const userId = await findOrCreateGoogleUser(identity.email, identity.nombre);
     await createSession(userId);
   } catch (err) {
     console.error("Fallo en el login con Google:", err);

@@ -93,9 +93,19 @@ export function MemberRow({
     <li className="flex flex-col gap-1">
       <div className="flex items-center gap-2 rounded-lg px-1 py-1.5">
         <Avatar email={member.email} />
-        <span className="min-w-0 flex-1 truncate text-sm text-ink">
-          {member.email}
-          {member.isSelf && <span className="text-muted"> (tú)</span>}
+        {/* Nombre arriba, email debajo: en la pantalla de gestión el email
+            sigue haciendo falta (es como se invita y se identifica a
+            alguien), pero no es lo primero que hay que leer. Si la cuenta
+            no tiene nombre, `nombre` YA es el email troceado, así que la
+            segunda línea sobraría. */}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm text-ink">
+            {member.nombre}
+            {member.isSelf && <span className="text-muted"> (tú)</span>}
+          </span>
+          {member.nombre !== member.email.split("@")[0] && (
+            <span className="truncate text-xs text-muted">{member.email}</span>
+          )}
         </span>
 
         {member.status === "PENDING" && (

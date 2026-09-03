@@ -31,6 +31,17 @@ export type { CustomCategoryView, CreateCustomCategoryResult };
 export interface GenerateLinkCodeState {
   code?: string;
   expiresAt?: string;
+  /**
+   * QR del enlace profundo a Telegram, como data-URI PNG. Se genera en el
+   * servidor a propósito: hacerlo en el cliente metería la librería de QR
+   * (~50 KB) en el bundle de TODA la app para una pantalla que la mayoría
+   * de la gente abre una vez en la vida.
+   *
+   * Ausente si no hay `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (sin bot conocido
+   * no hay enlace que codificar) o si la generación falla — nunca es motivo
+   * para no dar el código.
+   */
+  qrDataUrl?: string;
   error?: string;
 }
 
@@ -50,8 +61,26 @@ export async function generateTelegramLinkCode(): Promise<GenerateLinkCodeState>
     return { error: "No se ha podido generar el código. Inténtalo de nuevo." };
   }
 
+  // El QR es un extra: si falla, el código y el botón siguen funcionando.
+  let qrDataUrl: string | undefined;
+  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
+  if (botUsername) {
+    try {
+      const { toDataURL } = await import("qrcode");
+      qrDataUrl = await toDataURL(`https://t.me/${botUsername}?start=${code}`, {
+        width: 220,
+        margin: 1,
+        // Negro sobre blanco literal, no los tokens del tema: un QR sobre
+        // fondo oscuro no lo lee media cámara.
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+    } catch (err) {
+      console.error("No se pudo generar el QR de vínculo (no crítico):", err);
+    }
+  }
+
   revalidatePath("/cuenta");
-  return { code, expiresAt: expiresAt.toISOString() };
+  return { code, expiresAt: expiresAt.toISOString(), qrDataUrl };
 }
 
 export interface ChangePasswordResult {

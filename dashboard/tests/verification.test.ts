@@ -59,7 +59,7 @@ describe("verifyEmailToken", () => {
   it("token inexistente devuelve 'invalido'", async () => {
     verificationTokenFindUnique.mockResolvedValue(null);
     const { verifyEmailToken } = await import("../src/lib/verification");
-    expect(await verifyEmailToken("no-existe")).toBe("invalido");
+    expect(await verifyEmailToken("no-existe")).toEqual({ status: "invalido" });
     expect(transaction).not.toHaveBeenCalled();
   });
 
@@ -71,7 +71,7 @@ describe("verifyEmailToken", () => {
       expiresAt: new Date(Date.now() - 1000),
     });
     const { verifyEmailToken } = await import("../src/lib/verification");
-    expect(await verifyEmailToken("abc")).toBe("caducado");
+    expect(await verifyEmailToken("abc")).toEqual({ status: "caducado" });
     expect(verificationTokenDelete).toHaveBeenCalledWith({ where: { id: "t1" } });
     expect(transaction).not.toHaveBeenCalled();
   });
@@ -84,7 +84,9 @@ describe("verifyEmailToken", () => {
       expiresAt: new Date(Date.now() + 1000 * 60 * 60),
     });
     const { verifyEmailToken } = await import("../src/lib/verification");
-    expect(await verifyEmailToken("abc")).toBe("ok");
+    // El userId es lo que permite el auto-login tras confirmar: sin él, la
+    // acción no tendría a quién abrirle sesión.
+    expect(await verifyEmailToken("abc")).toEqual({ status: "ok", userId: "u1" });
     expect(transaction).toHaveBeenCalledTimes(1);
   });
 });

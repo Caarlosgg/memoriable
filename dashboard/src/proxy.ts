@@ -32,7 +32,16 @@ export async function proxy(request: NextRequest) {
   // verificada / la contraseña nunca se cambiaba. A diferencia de /login y
   // /registro, no redirige aunque SÍ haya sesión: alguien ya logueado en
   // otro dispositivo puede pinchar el mismo enlace sin problema.
-  if (pathname === "/verificar-email" || pathname === "/restablecer-password") {
+  // Igual que arriba, pero por otro motivo: los términos y la privacidad se
+  // enlazan DESDE el registro, así que quien los abre por definición todavía
+  // no tiene cuenta. Mandarlos a /login haría imposible leer lo que se te
+  // pide aceptar.
+  if (
+    pathname === "/verificar-email" ||
+    pathname === "/restablecer-password" ||
+    pathname === "/terminos" ||
+    pathname === "/privacidad"
+  ) {
     return NextResponse.next();
   }
 

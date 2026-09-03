@@ -49,6 +49,11 @@ datasource db {
 model User {
   id    String @id @default(cuid())
   email String @unique
+  /// Nombre para mostrar. Opcional a propósito: las cuentas anteriores a
+  /// este campo no lo tienen y el producto no puede quedarse a medias por
+  /// eso — cuando falta se cae a la parte local del email (ver
+  /// `displayName()` en dashboard/src/lib/format.ts).
+  nombre String?
   /// Opcional desde el login con Google: una cuenta creada solo por OAuth no
   /// tiene contraseña propia (ver dashboard/src/app/login/actions.ts, caso
   /// passwordHash null).

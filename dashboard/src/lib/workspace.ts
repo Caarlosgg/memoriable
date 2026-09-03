@@ -3,6 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import type { Prisma, WorkspaceRole, MembershipStatus, MemberPresence, EstadoTarea } from "@prisma/client";
 import { prisma } from "./prisma";
+import { displayName } from "./format";
 
 export const ACTIVE_WORKSPACE_COOKIE = "active_workspace";
 
@@ -124,6 +125,8 @@ export async function getPersonalWorkspaceId(userId: string): Promise<string> {
 export interface WorkspaceMemberInfo {
   userId: string;
   email: string;
+  /** Nombre para mostrar ya resuelto (cae al email troceado si la cuenta no tiene). */
+  nombre: string;
   role: WorkspaceRole;
   status: MembershipStatus;
   isSelf: boolean;
@@ -154,12 +157,13 @@ export const listWorkspaceMembers = cache(
   async (workspaceId: string, currentUserId: string): Promise<WorkspaceMemberInfo[]> => {
     const memberships = await prisma.membership.findMany({
       where: { workspaceId },
-      include: { user: { select: { email: true, accountPending: true } } },
+      include: { user: { select: { email: true, nombre: true, accountPending: true } } },
       orderBy: { joinedAt: "asc" },
     });
     return memberships.map((m) => ({
       userId: m.userId,
       email: m.user.email,
+      nombre: displayName(m.user),
       role: m.role,
       status: m.status,
       isSelf: m.userId === currentUserId,

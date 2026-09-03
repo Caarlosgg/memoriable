@@ -82,10 +82,30 @@ describe("login", () => {
     userFindUnique.mockResolvedValue({ id: "u1", passwordHash: "hash", emailVerified: true });
     verifyPasswordConstantTime.mockResolvedValue(true);
     const { login } = await import("../src/app/(auth)/login/actions");
+    await expect(
+      login({}, formData({ email: "ana@example.com", password: "correcta", recordar: "si" })),
+    ).rejects.toThrow(`${REDIRECT_MARK}:/`);
+    expect(createSession).toHaveBeenCalledWith("u1", true);
+  });
+
+  it("sin marcar 'no cerrar sesión', la sesión se crea corta", async () => {
+    userFindUnique.mockResolvedValue({ id: "u1", passwordHash: "hash", emailVerified: true });
+    verifyPasswordConstantTime.mockResolvedValue(true);
+    const { login } = await import("../src/app/(auth)/login/actions");
+    // La casilla desmarcada simplemente no viaja en el FormData.
     await expect(login({}, formData({ email: "ana@example.com", password: "correcta" }))).rejects.toThrow(
       `${REDIRECT_MARK}:/`,
     );
-    expect(createSession).toHaveBeenCalledWith("u1");
+    expect(createSession).toHaveBeenCalledWith("u1", false);
+  });
+
+  it("una cuenta de Google lo dice, en vez de repetir 'contraseña incorrecta' para siempre", async () => {
+    userFindUnique.mockResolvedValue({ id: "u1", passwordHash: null, emailVerified: true });
+    verifyPasswordConstantTime.mockResolvedValue(false);
+    const { login } = await import("../src/app/(auth)/login/actions");
+    const result = await login({}, formData({ email: "ana@example.com", password: "loquesea" }));
+    expect(result.soloGoogle).toBe(true);
+    expect(result.error).toMatch(/Google/);
   });
 
   it("contraseña incorrecta no revela si la cuenta existe", async () => {

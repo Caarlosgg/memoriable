@@ -31,6 +31,16 @@ describe("proxy", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
+  it.each(["/terminos", "/privacidad"])(
+    "deja pasar %s sin sesión (se enlazan desde el registro, cuando aún no hay cuenta)",
+    async (ruta) => {
+      verifySessionToken.mockResolvedValue(null);
+      const { proxy } = await import("../src/proxy");
+      const res = await proxy(requestTo(ruta));
+      expect(res.headers.get("location")).toBeNull();
+    },
+  );
+
   it("manda a /login una ruta protegida sin sesión", async () => {
     verifySessionToken.mockResolvedValue(null);
     const { proxy } = await import("../src/proxy");

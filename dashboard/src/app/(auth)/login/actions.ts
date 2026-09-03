@@ -13,6 +13,15 @@ export interface LoginState {
   error?: string;
   /** true cuando el único problema es que falta confirmar el email (ofrece reenviar). */
   sinVerificar?: boolean;
+  /** true cuando la cuenta existe pero solo entra por Google (ofrece ese botón). */
+  soloGoogle?: boolean;
+  /**
+   * Instante (epoch ms) a partir del cual se puede reintentar, cuando el
+   * freno de intentos ha saltado. Absoluto y no "segundos que faltan": el
+   * formulario lo descuenta en vivo (ver RetryCountdown), y un número
+   * congelado en el mensaje parece un error más que una espera.
+   */
+  retryAt?: number;
 }
 
 // Freno de fuerza bruta: 10 intentos por IP cada 5 minutos (best-effort en
@@ -43,6 +52,7 @@ export async function login(
 ): Promise<LoginState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const recordar = formData.get("recordar") === "si";
 
   if (!email || !password) {
     return { error: "Escribe tu email y contraseña." };
@@ -59,7 +69,7 @@ export async function login(
     // Mismo mensaje en ambos casos: distinguirlos diría si el email
     // existe/está siendo atacado, justo lo que el resto del login evita.
     const retryAfter = Math.max(limit.allowed ? 0 : limit.retryAfterSeconds, accountLimit.allowed ? 0 : accountLimit.retryAfterSeconds);
-    return { error: `Demasiados intentos. Espera ${retryAfter}s e inténtalo de nuevo.` };
+    return { error: "Demasiados intentos.", retryAt: Date.now() + retryAfter * 1000 };
   }
 
   let userId: string;
@@ -72,6 +82,15 @@ export async function login(
     // no hay ninguna contraseña real que pueda coincidir.
     const ok = await verifyPasswordConstantTime(password, user?.passwordHash ?? null);
     if (!user || !ok) {
+      // Excepción a "no reveles nada": una cuenta creada por Google NUNCA
+      // podrá entrar por aquí, haga lo que haga. Repetirle "email o
+      // contraseña incorrectos" a alguien que no tiene contraseña es un
+      // callejón sin salida — probaría variantes hasta rendirse. Lo único
+      // que se filtra es que ese email entra por Google, que es
+      // exactamente lo que necesita saber para poder entrar.
+      if (user && user.passwordHash === null) {
+        return { error: "Esta cuenta entra con Google. Usa el botón de arriba.", soloGoogle: true };
+      }
       return { error: "Email o contraseña incorrectos." };
     }
     // Cuentas creadas por email/contraseña exigen confirmar el correo antes
@@ -101,7 +120,7 @@ export async function login(
   }
 
   try {
-    await createSession(userId);
+    await createSession(userId, recordar);
   } catch (err) {
     console.error("Credenciales correctas pero no se pudo iniciar sesión:", err);
     Sentry.captureException(err);
