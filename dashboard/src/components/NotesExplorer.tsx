@@ -14,6 +14,7 @@ import { MessageCard } from "./MessageCard";
 import { MessageDetailDialog } from "./MessageDetailDialog";
 import { Select } from "./ui/select";
 import { EmptyState } from "./ui/empty-state";
+import { BulkBar } from "./notas/BulkBar";
 
 const DEBOUNCE_MS = 300;
 
@@ -150,6 +151,20 @@ export function NotesExplorer({
   // oculta de toda vista (agrupada y filtrada) — vuelve si se deshace, se
   // queda oculto para siempre si el margen expira y se borra de verdad.
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+
+  /**
+   * Notas marcadas para una acción en bloque. Solo en la vista de
+   * resultados: en la agrupada por categoría no hay una lista sobre la que
+   * "seleccionar todo" signifique algo claro.
+   */
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const alternarSeleccion = (id: string) =>
+    setSeleccion((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const hideMessage = (id: string) => setHiddenIds((prev) => new Set(prev).add(id));
   const unhideMessage = (id: string) =>
     setHiddenIds((prev) => {
@@ -168,6 +183,10 @@ export function NotesExplorer({
     setEtiquetaInput("");
     setFilters(INITIAL_FILTERS);
     setLimite(PAGE_SIZE);
+    // La selección se pierde a propósito: cambiar de búsqueda deja marcadas
+    // notas que ya no se ven, y actuar sobre lo que no está en pantalla es
+    // la forma más fácil de borrar algo sin querer.
+    setSeleccion(new Set());
   }
 
   /**
@@ -464,21 +483,38 @@ export function NotesExplorer({
             {fetchState.results
               .filter((message) => !hiddenIds.has(message.id))
               .map((message, i) => (
-                <MessageDetailDialog
-                  key={message.id}
-                  message={message}
-                  onDeleted={hideMessage}
-                  onUndoDelete={unhideMessage}
-                >
-                  <MessageCard
-                    message={message}
-                    highlightQuery={query}
-                    className="cursor-pointer"
-                    style={{ "--i": i } as React.CSSProperties}
+                <li key={message.id} className="flex items-start gap-2">
+                  {/* La casilla va FUERA de la tarjeta: dentro, cada clic
+                      para seleccionar abriría también el detalle. */}
+                  <input
+                    type="checkbox"
+                    checked={seleccion.has(message.id)}
+                    onChange={() => alternarSeleccion(message.id)}
+                    aria-label={`Seleccionar «${message.resumen}»`}
+                    className="mt-4 size-4 shrink-0 cursor-pointer rounded-sm accent-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
                   />
-                </MessageDetailDialog>
+                  <MessageDetailDialog
+                    message={message}
+                    onDeleted={hideMessage}
+                    onUndoDelete={unhideMessage}
+                  >
+                    <MessageCard
+                      as="div"
+                      message={message}
+                      highlightQuery={query}
+                      className="flex-1 cursor-pointer"
+                      style={{ "--i": i } as React.CSSProperties}
+                    />
+                  </MessageDetailDialog>
+                </li>
               ))}
           </ul>
+
+          <BulkBar
+            seleccionados={[...seleccion]}
+            onLimpiar={() => setSeleccion(new Set())}
+            onAplicado={() => setAttempt((n) => n + 1)}
+          />
 
           {fetchState.hayMas && (
             <Button

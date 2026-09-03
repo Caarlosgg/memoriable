@@ -593,3 +593,76 @@ export async function saveCampoTemplate(
     return { error: "No se ha podido guardar la plantilla. Inténtalo de nuevo." };
   }
 }
+
+export interface BulkResult {
+  error?: string;
+  /** Cuántas se cambiaron de verdad — puede ser menos de las pedidas si alguna ya no existía. */
+  afectadas?: number;
+}
+
+/** Tope por lote: evita que una petición manipulada intente reescribir el workspace entero. */
+const MAX_BULK = 200;
+
+/**
+ * Recategoriza varias notas de golpe.
+ *
+ * Recategorizar 20 notas eran ~80 clics: abrir cada una, cambiar, guardar,
+ * cerrar. Es el tipo de tarea que nadie hace, así que las categorías mal
+ * puestas se quedan mal puestas para siempre y la pantalla pierde valor.
+ *
+ * Un solo `updateMany` con `workspaceId` en el `where`: el alcance va en la
+ * consulta, no en un bucle con comprobaciones — así un id ajeno colado en
+ * la lista simplemente no coincide, en vez de depender de que el bucle lo
+ * compruebe bien.
+ */
+export async function bulkRecategorize(ids: string[], categoria: string): Promise<BulkResult> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  if (ids.length === 0) return { afectadas: 0 };
+  if (ids.length > MAX_BULK) return { error: `No se pueden cambiar más de ${MAX_BULK} notas a la vez.` };
+  if (!isCategory(categoria)) return { error: "Esa categoría no existe." };
+
+  try {
+    const { count } = await prisma.message.updateMany({
+      where: { id: { in: ids }, workspaceId },
+      data: { categoria },
+    });
+    revalidatePath("/notas");
+    revalidatePath("/pendientes");
+    return { afectadas: count };
+  } catch (err) {
+    console.error("Error al recategorizar en bloque:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido cambiar la categoría. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Borra varias notas de golpe.
+ *
+ * SIN el margen de deshacer que tiene el borrado individual (ver
+ * UndoToast): un lote se confirma antes de ejecutarse, y sostener 50
+ * borrados "en vuelo" pendientes de deshacer complica el estado de la
+ * pantalla mucho más de lo que aporta.
+ */
+export async function bulkDelete(ids: string[]): Promise<BulkResult> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  if (ids.length === 0) return { afectadas: 0 };
+  if (ids.length > MAX_BULK) return { error: `No se pueden borrar más de ${MAX_BULK} notas a la vez.` };
+
+  try {
+    const { count } = await prisma.message.deleteMany({ where: { id: { in: ids }, workspaceId } });
+    revalidatePath("/notas");
+    revalidatePath("/pendientes");
+    return { afectadas: count };
+  } catch (err) {
+    console.error("Error al borrar en bloque:", err);
+    Sentry.captureException(err);
+    return { error: "No se han podido borrar. Inténtalo de nuevo." };
+  }
+}
