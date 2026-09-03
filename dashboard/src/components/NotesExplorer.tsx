@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useSearchParams, type ReadonlyURLSearchParams } from "next/navigation";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import { Search, Tag, StickyNote } from "lucide-react";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
@@ -73,6 +74,25 @@ function isDefaultFilters(f: Filters): boolean {
 }
 
 /**
+ * Lee los filtros de la URL. Un valor que no existe cae al de por defecto
+ * en vez de romper: la URL la puede escribir cualquiera a mano, y una
+ * pantalla en blanco por un parámetro mal escrito no ayuda a nadie.
+ */
+export function filtersFromParams(params: URLSearchParams | ReadonlyURLSearchParams): Filters {
+  const leer = <T extends string>(clave: string, validos: readonly T[]): T | "todos" => {
+    const v = params.get(clave);
+    return v && (validos as readonly string[]).includes(v) ? (v as T) : "todos";
+  };
+  return {
+    categoria: leer("categoria", CATEGORIES),
+    estado: leer("estado", ESTADOS_TABLERO),
+    prioridad: leer("prioridad", PRIORIDADES),
+    desde: params.get("desde") ?? "",
+    hasta: params.get("hasta") ?? "",
+  };
+}
+
+/**
  * Notas: buscador y categorías vivían como dos pantallas casi idénticas
  * (ambas listas de `MessageCard`) con funcionalidad repartida sin motivo —
  * el filtro por estado/prioridad/etiqueta solo existía en una de las dos,
@@ -89,9 +109,16 @@ export function NotesExplorer({
   initialGroups: CategoryGroup[];
   highlightId?: string;
 }) {
-  const [input, setInput] = useState("");
-  const [etiquetaInput, setEtiquetaInput] = useState("");
-  const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
+  // Los filtros arrancan de la URL: así una búsqueda se puede compartir,
+  // guardar en marcadores y sobrevive a ir a otra pantalla y volver. Antes
+  // vivían solo en `useState` y se perdían en cuanto navegabas — con lo que
+  // volver a una búsqueda de 8 filtros significaba rehacerla entera.
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const [input, setInput] = useState(() => searchParams.get("q") ?? "");
+  const [etiquetaInput, setEtiquetaInput] = useState(() => searchParams.get("etiqueta") ?? "");
+  const [filters, setFilters] = useState<Filters>(() => filtersFromParams(searchParams));
   const [fetchState, setFetchState] = useState<FetchState>(INITIAL_FETCH_STATE);
   const [attempt, setAttempt] = useState(0);
   // Cuántos resultados se están pidiendo. Sube al pulsar "ver más" y vuelve
@@ -141,6 +168,44 @@ export function NotesExplorer({
     setFilters(INITIAL_FILTERS);
     setLimite(PAGE_SIZE);
   }
+
+  /**
+   * Refleja en la URL lo que se está buscando.
+   *
+   * `history.replaceState` y NO `router.replace`: lo segundo es una
+   * navegación de Next, y cada una vuelve a pedir el componente de servidor
+   * de la página — o sea, recalcular la vista agrupada por categoría en
+   * cada pulsación. Aquí no se quiere navegar, solo que la barra de
+   * direcciones diga la verdad; es el caso que Next documenta expresamente
+   * para usar la API nativa del historial.
+   *
+   * `replaceState` y no `pushState` por lo mismo de siempre: si cada tecla
+   * dejara una entrada en el historial, "atrás" habría que pulsarlo una vez
+   * por letra escrita. Y se trabaja sobre los valores ya debounceados.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (etiqueta) params.set("etiqueta", etiqueta);
+    if (filters.categoria !== "todos") params.set("categoria", filters.categoria);
+    if (filters.estado !== "todos") params.set("estado", filters.estado);
+    if (filters.prioridad !== "todos") params.set("prioridad", filters.prioridad);
+    if (filters.desde) params.set("desde", filters.desde);
+    if (filters.hasta) params.set("hasta", filters.hasta);
+
+    // `mensaje` (la nota que resalta el Asistente) no es un filtro y no lo
+    // gestiona este componente: se conserva tal cual estuviera.
+    const mensaje = new URLSearchParams(window.location.search).get("mensaje");
+    if (mensaje) params.set("mensaje", mensaje);
+
+    const nueva = params.toString();
+    // Se compara contra la URL REAL, no contra `searchParams`: al escribir
+    // con `replaceState`, el hook de Next no se entera del cambio y su
+    // valor se quedaría atrás, disparando esto en bucle.
+    if (nueva !== window.location.search.replace(/^\?/, "")) {
+      history.replaceState(null, "", nueva ? `${pathname}?${nueva}` : pathname);
+    }
+  }, [query, etiqueta, filters, pathname]);
 
   useEffect(() => {
     if (!hasActiveFilters) return;
