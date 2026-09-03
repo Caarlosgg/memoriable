@@ -34,6 +34,18 @@ export const DEFAULT_MAX_MESSAGES_PER_DAY = 50;
 /** Hora (0-23, hora local) por defecto del resumen diario proactivo. */
 export const DEFAULT_DAILY_SUMMARY_HOUR = 9;
 
+/**
+ * Zona horaria en la que el bot enseña las fechas.
+ *
+ * Antes eran UTC fijo, y a un usuario español eso le pintaba mal la hora de
+ * cada nota — una o dos horas antes de cuando la escribió, según la época
+ * del año. Configurable para no dejarlo clavado a un país, y europea por
+ * defecto porque es donde está el usuario real de hoy. Es un apaño honesto:
+ * lo correcto es una zona horaria POR USUARIO (Fase 5.3), pero eso no puede
+ * ser excusa para seguir enseñando UTC mientras tanto.
+ */
+export const DEFAULT_BOT_TIMEZONE = 'Europe/Madrid';
+
 export type RequiredEnvVar = 'DATABASE_URL' | 'TELEGRAM_BOT_TOKEN' | 'GROQ_API_KEY';
 
 interface EnvVarSpec {
@@ -158,6 +170,25 @@ export function readHourOfDay(name: string, fallback: number): number {
   return parsed;
 }
 
+/**
+ * Lee una zona horaria IANA. Se valida construyendo un formateador con ella:
+ * `Intl` lanza `RangeError` con una zona que no existe, y es preferible
+ * enterarse al arrancar (con un aviso) que ver cada fecha reventar más tarde.
+ */
+export function readTimeZone(name: string, fallback: string): string {
+  const raw = readString(name);
+  if (raw === undefined) return fallback;
+  try {
+    new Intl.DateTimeFormat('es-ES', { timeZone: raw });
+    return raw;
+  } catch {
+    configWarnings.push(
+      `${name}="${raw}" no es una zona horaria válida; se usa la de por defecto ${fallback}.`,
+    );
+    return fallback;
+  }
+}
+
 export const env = {
   DATABASE_URL: readString('DATABASE_URL'),
   TELEGRAM_BOT_TOKEN: readString('TELEGRAM_BOT_TOKEN'),
@@ -178,6 +209,14 @@ export const env = {
   TELEGRAM_CHAT_ID: readString('TELEGRAM_CHAT_ID'),
   /** Hora local (0-23) a la que se envía el resumen diario. */
   DAILY_SUMMARY_HOUR: readHourOfDay('DAILY_SUMMARY_HOUR', DEFAULT_DAILY_SUMMARY_HOUR),
+  /** Zona horaria de las fechas que enseña el bot (ver DEFAULT_BOT_TIMEZONE). */
+  BOT_TIMEZONE: readTimeZone('BOT_TIMEZONE', DEFAULT_BOT_TIMEZONE),
+  /**
+   * Base del dashboard, para poder enlazar una nota desde Telegram
+   * ("Abrir en el dashboard"). Opcional: sin ella las tarjetas salen igual,
+   * solo sin enlace — nunca con una URL inventada.
+   */
+  DASHBOARD_URL: readString('DASHBOARD_URL'),
   /** Fichero donde persiste la marca del último resumen diario enviado. */
   DAILY_SUMMARY_STATE_FILE: readString('DAILY_SUMMARY_STATE_FILE'),
   LOG_LEVEL: readString('LOG_LEVEL'),

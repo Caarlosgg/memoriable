@@ -26,21 +26,24 @@ export class BudgetedCategorizer implements Categorizer {
     this.logger = options.logger;
   }
 
-  async analyze(message: IncomingMessage): Promise<Analysis> {
-    if (!this.budget.tryConsume()) {
-      const { used, max, day } = this.budget.snapshot();
+  async analyze(message: IncomingMessage, userId?: string): Promise<Analysis> {
+    // El fusible se lleva POR USUARIO: sin esto, quien más usa el bot
+    // apagaba la categorización de pago para todos los demás.
+    if (!this.budget.tryConsume(userId)) {
+      const { used, max, day } = this.budget.snapshot(userId);
       this.logger?.warn('cost.budget_exhausted', {
         used,
         max,
         day,
+        userId,
         action: 'fallback_offline',
         hint: 'Sube MAX_MESSAGES_PER_DAY si esto es uso legítimo.',
       });
-      return this.fallback.analyze(message);
+      return this.fallback.analyze(message, userId);
     }
 
-    const { remaining, max } = this.budget.snapshot();
-    this.logger?.debug('cost.budget_consumed', { remaining, max });
-    return this.paid.analyze(message);
+    const { remaining, max } = this.budget.snapshot(userId);
+    this.logger?.debug('cost.budget_consumed', { remaining, max, userId });
+    return this.paid.analyze(message, userId);
   }
 }

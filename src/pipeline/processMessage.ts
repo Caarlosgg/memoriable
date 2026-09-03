@@ -83,7 +83,10 @@ export async function processMessage(
     const embeddingPromise: Promise<number[] | null> = embedder
       ? embedder.embedDocument(clean.contenido)
       : Promise.resolve(null);
-    const analysisPromise = categorizer.analyze(clean).then((a) => {
+    // `userId` va al categorizador solo para el fusible de coste, que se
+    // lleva por persona (ver BudgetedCategorizer): nada de la
+    // categorización en sí depende de quién escriba.
+    const analysisPromise = categorizer.analyze(clean, userId).then((a) => {
       onAnalysis?.(a);
       return a;
     });

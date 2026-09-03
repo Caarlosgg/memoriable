@@ -81,10 +81,11 @@ describe('pipeline/factory', () => {
       const { resolveBudget } = await import('../src/pipeline/factory.js');
       const { logger } = createMemoryLogger();
 
-      resolveBudget(logger).tryConsume();
+      resolveBudget(logger).tryConsume('u1');
 
       expect(existsSync(budgetFile)).toBe(true);
-      expect(JSON.parse(readFileSync(budgetFile, 'utf8'))).toMatchObject({ used: 1 });
+      // Un contador POR USUARIO: la clave es el userId (ver FileBudgetStore).
+      expect(JSON.parse(readFileSync(budgetFile, 'utf8'))).toMatchObject({ u1: { used: 1 } });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

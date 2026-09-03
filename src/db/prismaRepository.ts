@@ -3,6 +3,7 @@ import type { Category } from '../ai/types.js';
 import type { MessageRepository, NewMessage, StoredMessage } from './repository.js';
 import { DEFAULT_SEARCH_LIMIT } from './search.js';
 import { ACTIONABLE_CATEGORIES, DEFAULT_PENDING_LIMIT } from './pending.js';
+import { resolveBotWorkspace } from './workspaces.js';
 
 /**
  * Repositorio respaldado por Prisma/PostgreSQL.
@@ -33,9 +34,6 @@ export class PrismaMessageRepository implements MessageRepository {
       // para saber si el id era ajeno/inventado, sin una consulta aparte.
       updateMany(args: unknown): Promise<{ count: number }>;
     };
-    user: {
-      findUnique(args: unknown): Promise<{ personalWorkspaceId: string | null } | null>;
-    };
     // Solo para verificar propiedad en setCustomCategory — ver su comentario.
     customCategory: {
       findFirst(args: unknown): Promise<{ id: string } | null>;
@@ -61,18 +59,12 @@ export class PrismaMessageRepository implements MessageRepository {
     const client = await this.getClient();
 
     // Fase Equipo: todo mensaje vive en un workspace, nunca solo en un
-    // userId — el bot no tiene concepto de equipo todavía, así que
-    // siempre escribe en el workspace PERSONAL del dueño del chat. Cada
-    // cuenta ya tiene uno (autocreado al registrarse desde el dashboard,
-    // o backfillado por la migración para las cuentas previas) — si por
-    // lo que sea faltara, es un estado inconsistente real, no algo que
-    // deba silenciarse guardando con workspaceId nulo.
-    const owner = await client.user.findUnique({ where: { id: userId }, select: { personalWorkspaceId: true } });
-    if (!owner?.personalWorkspaceId) {
-      throw new Error(
-        `El usuario ${userId} no tiene workspace personal — no se puede guardar el mensaje.`,
-      );
-    }
+    // userId. Hasta la Fase 4 esto era SIEMPRE el personal, lo que hacía
+    // que quien trabaja en equipo dictase al bot y el equipo no viera nada
+    // — ahora se respeta lo que el usuario haya elegido con `/espacio` (ver
+    // resolveBotWorkspace, que además revalida la membresía y cae al
+    // personal si ya no procede).
+    const workspace = await resolveBotWorkspace(userId);
 
     // Primero el insert normal (tipado, siempre fiable) y LUEGO, si hay
     // embedding, un UPDATE aparte para la columna Unsupported. Dos viajes en
@@ -86,7 +78,7 @@ export class PrismaMessageRepository implements MessageRepository {
         categoria: record.categoria,
         resumen: record.resumen,
         userId,
-        workspaceId: owner.personalWorkspaceId,
+        workspaceId: workspace.id,
       },
     });
 
@@ -94,7 +86,10 @@ export class PrismaMessageRepository implements MessageRepository {
       await this.setEmbedding(client, stored.id, record.embedding);
     }
 
-    return stored;
+    // El nombre del espacio viaja de vuelta para que la tarjeta de respuesta
+    // pueda decir DÓNDE se guardó: guardar en el sitio correcto no sirve de
+    // nada si el usuario no puede comprobarlo de un vistazo.
+    return { ...stored, workspaceNombre: workspace.personal ? undefined : workspace.nombre };
   }
 
   private async setEmbedding(

@@ -20,6 +20,14 @@ export interface StoredMessage extends IncomingMessage, Analysis {
    */
   asignadaPor?: string;
   /**
+   * Nombre del espacio de EQUIPO donde se guardó, para que la tarjeta de
+   * respuesta pueda decirlo (ver `/espacio` y `resolveBotWorkspace`).
+   * `undefined` cuando fue al espacio personal — que es el caso normal, y
+   * decir "guardado en Mi espacio" en cada nota sería ruido: lo que hay que
+   * avisar es cuando NO va al sitio de siempre.
+   */
+  workspaceNombre?: string;
+  /**
    * Etiqueta propia del usuario (Fase 3 del roadmap: "categorías
    * configurables"), APARTE de `categoria` — nunca la sustituye, ver el
    * comentario de `Message.customCategoryId` en schema.prisma. `undefined`

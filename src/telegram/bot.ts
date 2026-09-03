@@ -7,12 +7,13 @@ import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
 import { resolvePipeline, resolveBriefingGenerator } from '../pipeline/factory.js';
 import { resolveChatOwner, linkTelegramChat } from '../db/users.js';
 import { listCustomCategories, findCustomCategory } from '../db/customCategories.js';
+import { listBotWorkspaces, resolveBotWorkspace, setBotWorkspace } from '../db/workspaces.js';
 import type { StoredMessage } from '../db/repository.js';
 import { linkAttemptLimiter, type LinkAttemptLimiter } from './linkRateLimit.js';
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
-import { noteActionsKeyboard, categoryPickerKeyboard } from './actionsKeyboard.js';
+import { noteActionsKeyboard, categoryPickerKeyboard, workspacePickerKeyboard } from './actionsKeyboard.js';
 import { isCategory, type Category } from '../ai/types.js';
 import { startDailySummary } from '../summary/scheduler.js';
 import { dayKey, buildDailySummary } from '../summary/dailySummary.js';
@@ -38,6 +39,9 @@ export const REPLIES = {
   linkInvalid: '⚠️ Ese código no es válido o ha caducado. Genera uno nuevo desde "Cuenta" en el dashboard.',
   linkRateLimited:
     '⏳ Demasiados códigos incorrectos seguidos. Espera unos minutos y genera un código nuevo desde "Cuenta" en el dashboard.',
+  espacioSolo:
+    '🔒 Solo tienes tu espacio personal, así que todo lo que me mandes se guarda ahí. Crea un equipo en el dashboard y podrás elegir.',
+  espacioNoMiembro: '⚠️ Ya no perteneces a ese equipo. Sigo escribiendo en tu espacio personal.',
 } as const;
 
 /**
@@ -56,6 +60,7 @@ export function commandArgument(text: string): string {
 export const BOT_COMMANDS = [
   { command: 'start', description: 'Empezar y ver cómo funciona el bot' },
   { command: 'vincular', description: 'Vincular este chat a tu cuenta del dashboard' },
+  { command: 'espacio', description: 'Elegir dónde guardo lo que me mandas (personal o equipo)' },
   { command: 'buscar', description: 'Buscar en tus mensajes guardados' },
   { command: 'pendientes', description: 'Ver tus tareas y recordatorios pendientes' },
   { command: 'resumen', description: 'Tu día en claro: misión principal, plan y avisos' },
@@ -122,6 +127,70 @@ export async function handlePendingCommand(
     });
   } catch (err) {
     logger?.error('telegram.pending_failed', errorContext(err));
+    return REPLIES.error;
+  }
+}
+
+export interface EspacioCommandResult {
+  text: string;
+  /** Teclado con los espacios elegibles — ausente si no hay nada que elegir. */
+  keyboard?: ReturnType<typeof workspacePickerKeyboard>;
+}
+
+/**
+ * Maneja `/espacio`: enseña dónde está escribiendo el bot ahora mismo y
+ * ofrece cambiarlo.
+ *
+ * Es el comando que arregla la incoherencia más gorda que tenía el producto:
+ * el bot guardaba SIEMPRE en el espacio personal, así que quien trabajaba en
+ * equipo dictaba notas al bot y su equipo no las veía nunca.
+ *
+ * Si solo hay espacio personal no se enseña un selector de un botón —
+ * pedirle a alguien que "elija" entre una única opción es teatro; se le dice
+ * lo que hay y cómo tener más. **Nunca lanza.**
+ */
+export async function handleEspacioCommand(
+  userId: string,
+  logger?: Logger,
+  listar: typeof listBotWorkspaces = listBotWorkspaces,
+  resolver: typeof resolveBotWorkspace = resolveBotWorkspace,
+): Promise<EspacioCommandResult> {
+  try {
+    const [espacios, actual] = await Promise.all([listar(userId), resolver(userId)]);
+    if (espacios.length <= 1) return { text: REPLIES.espacioSolo };
+
+    return {
+      text: `📍 Ahora mismo guardo en <b>${escapeHtml(actual.nombre)}</b>.\nElige dónde quieres que guarde a partir de ahora:`,
+      keyboard: workspacePickerKeyboard(espacios, actual.id),
+    };
+  } catch (err) {
+    logger?.error('telegram.espacio_failed', errorContext(err));
+    return { text: REPLIES.error };
+  }
+}
+
+/**
+ * Aplica la elección de `/espacio` (callback `ws:<id>`). Devuelve el texto de
+ * confirmación; la comprobación de que sigues siendo miembro ACTIVO la hace
+ * `setBotWorkspace` en el `where`, no aquí — el id llega por `callback_data`,
+ * que es entrada de usuario. **Nunca lanza.**
+ */
+export async function handleEspacioChoice(
+  userId: string,
+  workspaceId: string,
+  logger?: Logger,
+  fijar: typeof setBotWorkspace = setBotWorkspace,
+  resolver: typeof resolveBotWorkspace = resolveBotWorkspace,
+): Promise<string> {
+  try {
+    const result = await fijar(userId, workspaceId);
+    if (result === 'no_member') return REPLIES.espacioNoMiembro;
+    if (result === 'no_database') return REPLIES.error;
+
+    const actual = await resolver(userId);
+    return `✅ A partir de ahora guardo en <b>${escapeHtml(actual.nombre)}</b>.`;
+  } catch (err) {
+    logger?.error('telegram.espacio_choice_failed', errorContext(err));
     return REPLIES.error;
   }
 }
@@ -360,6 +429,32 @@ export function createBot(
   bot.command('vincular', async (ctx) => {
     const reply = await handleLinkCommand(commandArgument(ctx.message.text), ctx.chat.id, linkTelegramChat, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
+  });
+
+  bot.command('espacio', async (ctx) => {
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+    const { text, keyboard } = await handleEspacioCommand(userId, logger);
+    await ctx.reply(text, { parse_mode: 'HTML', ...(keyboard ?? {}) });
+  });
+
+  bot.action(/^ws:(.+)$/, async (ctx) => {
+    const workspaceId = ctx.match[1]!;
+    const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    const text = await handleEspacioChoice(userId, workspaceId, logger);
+    await ctx.answerCbQuery();
+    try {
+      // Se edita el mensaje del selector en vez de mandar uno nuevo: el
+      // selector ya no sirve de nada una vez elegido, y dejarlo ahí invita
+      // a pulsar botones que ya no reflejan el estado.
+      await ctx.editMessageText(text, { parse_mode: 'HTML' });
+    } catch (err) {
+      logger.debug('telegram.espacio_edit_noop', errorContext(err));
+    }
   });
 
   bot.command('buscar', async (ctx) => {

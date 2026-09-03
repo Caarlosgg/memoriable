@@ -100,4 +100,18 @@ describe('BudgetedCategorizer', () => {
     );
     await expect(categorizer.analyze(mensaje)).resolves.toHaveProperty('categoria');
   });
+
+  it('el fusible de un usuario NO apaga el de otro', async () => {
+    // Era el bug real: un contador único para todo el proceso hacía que el
+    // usuario más activo dejara sin categorización de pago a los demás, sin
+    // que ellos hubieran hecho nada.
+    const paid = paidStub();
+    const categorizer = new BudgetedCategorizer(paid, new OfflineCategorizer(), new DailyBudget(1));
+
+    await categorizer.analyze(mensaje, 'ana'); // ana gasta su único crédito
+    await categorizer.analyze(mensaje, 'ana'); // ana ya cae al offline
+    await categorizer.analyze(mensaje, 'bruno'); // bruno sigue teniendo el suyo
+
+    expect(paid.analyze).toHaveBeenCalledTimes(2);
+  });
 });

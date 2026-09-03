@@ -7,7 +7,10 @@ describe('formatResponseCard', () => {
   it('formatea una tarjeta con emoji, negrita y fecha legible', () => {
     const card = formatResponseCard({ categoria: 'idea', resumen: 'Montar una cafetería', fecha });
 
-    expect(card).toBe('💡 <b>Idea</b>\nMontar una cafetería\n🕒 28/07/2026, 05:42');
+    // 07:42 y no 05:42: la fecha va en BOT_TIMEZONE (Europe/Madrid por
+    // defecto, CEST en julio), no en UTC. Enseñar UTC pintaba cada nota una
+    // o dos horas antes de cuando el usuario la escribió.
+    expect(card).toBe('💡 <b>Idea</b>\nMontar una cafetería\n🕒 28/07/2026, 07:42');
   });
 
   it('usa un emoji y etiqueta propios por cada categoría', () => {

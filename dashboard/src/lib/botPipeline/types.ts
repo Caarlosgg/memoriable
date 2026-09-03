@@ -39,7 +39,13 @@ export interface Analysis {
  * interfaz, no de la SDK de Groq, para poder inyectar mocks en tests.
  */
 export interface Categorizer {
-  analyze(message: IncomingMessage): Promise<Analysis>;
+  /**
+   * `userId` es quién pide el análisis. Solo lo usa el decorador del fusible
+   * de coste (`BudgetedCategorizer`), que NO se copia aquí (ver README) —
+   * en el dashboard el parámetro se acepta y se ignora, y existe solo para
+   * que esta interfaz siga siendo un calco de la del bot.
+   */
+  analyze(message: IncomingMessage, userId?: string): Promise<Analysis>;
 }
 
 /**

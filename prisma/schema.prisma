@@ -123,6 +123,21 @@ model User {
   personalWorkspaceId String?    @unique
   personalWorkspace   Workspace? @relation("PersonalWorkspace", fields: [personalWorkspaceId], references: [id])
 
+  /// Dónde escribe el BOT de Telegram (comando `/espacio`).
+  ///
+  /// Existe aparte del workspace activo del dashboard porque ese vive en
+  /// una cookie del navegador, a la que el bot no tiene acceso — y porque
+  /// son elecciones legítimamente distintas: puedes estar mirando el
+  /// tablero del equipo mientras dictas notas a tu espacio personal.
+  ///
+  /// `null` = el personal, que es el comportamiento de siempre y el que
+  /// tiene toda cuenta nueva. `onDelete: SetNull` porque borrar un equipo
+  /// no puede dejar al bot escribiendo a un workspace que ya no existe:
+  /// vuelve solo al personal (ver resolveBotWorkspace en db/workspaces.ts,
+  /// que además comprueba que la membresía siga ACTIVA).
+  botWorkspaceId String?
+  botWorkspace   Workspace? @relation("BotWorkspace", fields: [botWorkspaceId], references: [id], onDelete: SetNull)
+
   messages         Message[]           @relation("MessageAuthor")
   assignedMessages Message[]           @relation("MessageAssignee")
   enProgresoMessages Message[]         @relation("MessageEnProgreso")
@@ -144,6 +159,7 @@ model User {
   customCategories         CustomCategory[]
   comentarios              Comentario[]
 
+  @@index([botWorkspaceId])
   @@map("users")
 }
 
@@ -186,6 +202,9 @@ model Workspace {
   /// Reverso de User.personalWorkspaceId — como máximo un usuario por
   /// workspace personal (impuesto por el @unique del otro lado).
   personalOf  User?    @relation("PersonalWorkspace")
+  /// Reverso de User.botWorkspaceId — a diferencia del anterior, varios
+  /// usuarios pueden tener el bot apuntando al mismo equipo.
+  botOf       User[]   @relation("BotWorkspace")
 
   @@map("workspaces")
 }

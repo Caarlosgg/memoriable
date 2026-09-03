@@ -74,6 +74,12 @@ model User {
   personalWorkspaceId String?    @unique
   personalWorkspace   Workspace? @relation("PersonalWorkspace", fields: [personalWorkspaceId], references: [id])
 
+  /// Ver ../../prisma/schema.prisma: dónde escribe el bot de Telegram
+  /// (comando `/espacio`). Aparte del workspace activo del dashboard, que
+  /// vive en una cookie a la que el bot no llega. null = el personal.
+  botWorkspaceId String?
+  botWorkspace   Workspace? @relation("BotWorkspace", fields: [botWorkspaceId], references: [id], onDelete: SetNull)
+
   messages         Message[]           @relation("MessageAuthor")
   assignedMessages Message[]           @relation("MessageAssignee")
   enProgresoMessages Message[]         @relation("MessageEnProgreso")
@@ -95,6 +101,7 @@ model User {
   customCategories  CustomCategory[]
   comentarios       Comentario[]
 
+  @@index([botWorkspaceId])
   @@map("users")
 }
 
@@ -121,6 +128,8 @@ model Workspace {
   boardStatuses  BoardStatus[]
   comentarios    Comentario[]
   personalOf     User?    @relation("PersonalWorkspace")
+  /// Ver ../../prisma/schema.prisma: reverso de User.botWorkspaceId.
+  botOf          User[]   @relation("BotWorkspace")
 
   @@map("workspaces")
 }

@@ -52,7 +52,14 @@ export interface Analysis {
  * interfaz, no de la SDK de Groq, para poder inyectar mocks en tests.
  */
 export interface Categorizer {
-  analyze(message: IncomingMessage): Promise<Analysis>;
+  /**
+   * `userId` es quién pide el análisis. Solo lo usa el decorador del fusible
+   * de coste (`BudgetedCategorizer`), para llevar la cuenta POR PERSONA: con
+   * un contador único para todo el proceso, el usuario más activo dejaba a
+   * los demás sin categorización de pago el resto del día. Las
+   * implementaciones que no cobran nada lo ignoran, de ahí que sea opcional.
+   */
+  analyze(message: IncomingMessage, userId?: string): Promise<Analysis>;
 }
 
 /**

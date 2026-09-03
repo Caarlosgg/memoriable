@@ -53,6 +53,31 @@ export function noteActionsKeyboard(message: Pick<StoredMessage, 'id' | 'categor
  * (`setcustom:<25>:<25>`) son 61 bytes — de sobra bajo el límite de 64 de
  * Telegram.
  */
+/**
+ * Selector de espacio de trabajo para `/espacio`.
+ *
+ * El actual lleva "•" delante en vez de estar ausente o deshabilitado: la
+ * pregunta de quien abre esto es "¿dónde estoy escribiendo AHORA?" tanto
+ * como "¿dónde quiero escribir?", y quitar el botón activo dejaría la
+ * primera sin responder. Pulsarlo simplemente reconfirma, que es inofensivo.
+ *
+ * `callback_data` = `ws:<cuid>` → 28 bytes, muy por debajo del límite de 64
+ * de Telegram.
+ */
+export function workspacePickerKeyboard(
+  espacios: readonly { id: string; nombre: string; personal: boolean }[],
+  actualId: string,
+) {
+  return Markup.inlineKeyboard(
+    espacios.map((w) => [
+      Markup.button.callback(
+        `${w.id === actualId ? '• ' : ''}${w.personal ? '🔒' : '🏢'} ${w.nombre}`,
+        `ws:${w.id}`,
+      ),
+    ]),
+  );
+}
+
 export function categoryPickerKeyboard(messageId: string, customCategories: readonly CustomCategory[] = []) {
   const fijas = CATEGORIES.map((categoria) => [
     Markup.button.callback(CATEGORY_BUTTON_LABEL[categoria], `setcat:${messageId}:${categoria}`),
