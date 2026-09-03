@@ -57,8 +57,9 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
   en el personal, así que quien trabajaba en equipo dictaba notas al bot y su
   equipo no las veía nunca.
 - **Resumen diario proactivo** (node-cron): a la hora configurable
-  (`DAILY_SUMMARY_HOUR`) envía los pendientes y lo guardado el día anterior;
-  idempotente ante reinicios del proceso.
+  (`DAILY_SUMMARY_HOUR`) cada usuario con Telegram vinculado recibe SU
+  resumen en SU chat — pendientes y lo guardado el día anterior. Idempotente
+  ante reinicios del proceso, con la marca de "ya enviado hoy" por usuario.
 - **Bot de Telegram** con Telegraf en modo *polling*, con reconexión automática
   ante caídas y logs claros si el token es inválido. Cada respuesta se
   presenta como una tarjeta HTML (`formatResponseCard()`): categoría en
@@ -179,9 +180,9 @@ npm run prisma:deploy
 | `GEMINI_MODEL`          | Modelo de embeddings a usar (opcional)                    | — (def. `gemini-embedding-001`) |
 | `MAX_MESSAGES_PER_DAY`  | Fusible de coste: máx. llamadas a Groq por día (opcional) | — (def. `50`)    |
 | `BUDGET_FILE`           | Fichero donde persiste el contador del fusible, uno por usuario (opcional) | — (def. `.budget.json`) |
-| `TELEGRAM_CHAT_ID`      | Chat al que se envía el resumen diario proactivo          | Resumen diario        |
+| `TELEGRAM_CHAT_ID`      | Solo para desarrollo local sin base de datos: chat al que mandar el resumen. Con `DATABASE_URL`, el resumen va a todos los usuarios con Telegram vinculado y esta variable no se usa. | — |
 | `DAILY_SUMMARY_HOUR`    | Hora local (0-23) del resumen diario (opcional)           | — (def. `9`)          |
-| `DAILY_SUMMARY_STATE_FILE` | Fichero donde persiste la marca del último resumen enviado (opcional) | — (def. `.daily-summary.json`) |
+| `DAILY_SUMMARY_STATE_FILE` | Fichero donde persiste la marca del último resumen enviado, una por usuario (opcional) | — (def. `.daily-summary.json`) |
 | `BOT_TIMEZONE`          | Zona horaria (IANA) de las fechas que enseña el bot (opcional) | — (def. `Europe/Madrid`) |
 | `DASHBOARD_URL`         | Base del dashboard, para enlazar la nota desde la tarjeta (opcional) | — (sin ella, tarjeta sin enlace) |
 | `LOG_LEVEL`             | Nivel de log: `debug`\|`info`\|`warn`\|`error` (opcional) | — (def. `info`)       |

@@ -8,6 +8,7 @@ import { env, hasDatabase } from '../config/env.js';
 type UserClient = {
   user: {
     findUnique(args: unknown): Promise<{ id: string; linkCodeExpiresAt?: Date | null } | null>;
+    findMany(args: unknown): Promise<{ id: string; telegramChatId: bigint | null }[]>;
     update(args: unknown): Promise<unknown>;
   };
 };
@@ -47,6 +48,34 @@ export async function resolveChatOwner(chatId: number): Promise<string | null> {
   const client = await getClient();
   const user = await client.user.findUnique({ where: { telegramChatId: BigInt(chatId) } });
   return user?.id ?? null;
+}
+
+export interface TelegramUser {
+  userId: string;
+  chatId: number;
+}
+
+/**
+ * Todas las cuentas con un chat de Telegram vinculado — a quiénes hay que
+ * mandarles el resumen diario.
+ *
+ * Antes el resumen iba a un `TELEGRAM_CHAT_ID` global: funcionaba para
+ * exactamente una persona (el operador), y el resto de usuarios vinculados
+ * no recibía nada nunca. Sin base de datos devuelve `[]`: el llamante decide
+ * qué hacer (ver scheduler.ts, que en ese caso cae al chat de la variable de
+ * entorno para no romper el desarrollo local).
+ */
+export async function listTelegramUsers(): Promise<TelegramUser[]> {
+  if (!hasDatabase()) return [];
+
+  const client = await getClient();
+  const users = await client.user.findMany({
+    where: { telegramChatId: { not: null } },
+    select: { id: true, telegramChatId: true },
+  });
+  return users
+    .filter((u): u is { id: string; telegramChatId: bigint } => u.telegramChatId !== null)
+    .map((u) => ({ userId: u.id, chatId: Number(u.telegramChatId) }));
 }
 
 export type LinkTelegramChatResult = 'linked' | 'invalid_or_expired' | 'no_database';

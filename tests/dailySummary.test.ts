@@ -291,12 +291,27 @@ describe('runDailySummaryTick', () => {
     });
     expect(result).toBe('sent');
     expect(send).toHaveBeenCalledOnce();
-    expect(store.lastSentDay()).toBe('2026-07-29');
+    // La marca es POR USUARIO: es lo que permite que varios reciban su
+    // resumen el mismo día (antes el primero bloqueaba a todos los demás).
+    expect(store.lastSentDay('u1')).toBe('2026-07-29');
+  });
+
+  it('el resumen de un usuario NO bloquea el de otro el mismo día', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const store = new InMemorySummaryStateStore();
+    const base = { repository: fakeRepo([], []), chatId: 123, store, send, hour: 9, now };
+
+    expect(await runDailySummaryTick({ ...base, userId: 'ana' })).toBe('sent');
+    expect(await runDailySummaryTick({ ...base, userId: 'bruno' })).toBe('sent');
+    // Y cada uno sigue siendo idempotente para sí mismo.
+    expect(await runDailySummaryTick({ ...base, userId: 'ana' })).toBe('already_sent_today');
+    expect(send).toHaveBeenCalledTimes(2);
   });
 
   it('no reenvía si ya se envió hoy (idempotente entre reinicios)', async () => {
     const send = vi.fn().mockResolvedValue(undefined);
-    const store = new InMemorySummaryStateStore('2026-07-29'); // como tras un reinicio
+    const store = new InMemorySummaryStateStore(); // como tras un reinicio
+    store.markSent('2026-07-29', 'u1');
     const result = await runDailySummaryTick({
       repository: fakeRepo([], []),
       userId: 'u1',

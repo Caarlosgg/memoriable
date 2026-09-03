@@ -236,7 +236,10 @@ export async function runDailySummaryTick(
   if (!isAtOrAfterHour(now, deps.hour)) return 'before_hour';
 
   const key = dayKey(now);
-  if (deps.store.lastSentDay() === key) return 'already_sent_today';
+  // La marca es POR USUARIO: con una sola para todo el proceso, el primer
+  // envío del día bloqueaba el de todos los demás y el resumen diario
+  // funcionaba para exactamente una persona.
+  if (deps.store.lastSentDay(deps.userId) === key) return 'already_sent_today';
 
   const { text, focusCandidates } = await buildDailySummary(
     deps.repository,
@@ -246,8 +249,8 @@ export async function runDailySummaryTick(
     deps.briefingGenerator,
   );
   await deps.send(text);
-  deps.store.markSent(key);
+  deps.store.markSent(key, deps.userId);
   if (focusCandidates.length > 0) deps.focusStore?.setAwaiting(deps.chatId, key);
-  deps.logger?.info('summary.sent', { day: key, focusCandidates: focusCandidates.length });
+  deps.logger?.info('summary.sent', { day: key, userId: deps.userId, focusCandidates: focusCandidates.length });
   return 'sent';
 }

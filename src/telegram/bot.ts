@@ -942,12 +942,14 @@ export function startBot(
   // Publica el menú de comandos (/buscar, /pendientes, ...) en Telegram.
   void registerCommands(bot, logger);
 
-  // Resumen diario proactivo (si hay TELEGRAM_CHAT_ID configurado).
+  // Resumen diario proactivo: a CADA usuario con Telegram vinculado, en su
+  // propio chat (ver scheduler.ts). Ya no depende de TELEGRAM_CHAT_ID, que
+  // solo sigue existiendo como salida para el desarrollo local sin BD.
   const dailySummary = startDailySummary(bot, pipeline.repository, logger, focusStore, eventRepository, briefingGenerator);
 
   const stop = (signal: string) => {
     logger.info('telegram.stopping', { signal });
-    dailySummary?.stop();
+    dailySummary.stop();
     bot.stop(signal);
   };
   process.once('SIGINT', () => stop('SIGINT'));
