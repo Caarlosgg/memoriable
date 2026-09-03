@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Evento, Message } from "@prisma/client";
 import { ChevronLeft, ChevronRight, Plus, CalendarCheck2, ListTodo, Download } from "lucide-react";
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DiaDroppable, DraggableEvento, DIA_DROP_PREFIX } from "./DraggableEvento";
+import { moverEvento } from "@/app/(dashboard)/calendario/actions";
 import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, rangoCalendario, type WeekDay } from "@/lib/calendar";
 import { loadCalendarRange } from "@/app/(dashboard)/calendario/actions";
 import { assignMessage } from "@/app/(dashboard)/actions";
@@ -69,6 +72,7 @@ export function CalendarView({
   tareas: tareasProp = [],
   members = [],
   highlightEventoId,
+  puedeEditar = true,
 }: {
   eventos: Evento[];
   /** Tareas/recordatorios con fecha límite (ver getTasksEnRango en lib/eventos.ts) — se pintan junto a los eventos, con otro aspecto. */
@@ -77,6 +81,8 @@ export function CalendarView({
   members?: WorkspaceMemberInfo[];
   /** Evento al que ha navegado la notificación de asignación (?evento=ID) — abre su detalle solo, sin tocar el resto. */
   highlightEventoId?: string;
+  /** Si no puede escribir (rol VIEWER), los eventos no se arrastran: el servidor lo rechazaría y revertir tras soltar es peor que no dejar. */
+  puedeEditar?: boolean;
 }) {
   const router = useRouter();
   const [view, setView] = useState<CalendarViewMode>("mes");
@@ -192,7 +198,31 @@ export function CalendarView({
   // Lo que trajo la página + lo cargado después, sin duplicar: los `extra`
   // pueden solapar con los iniciales si el tramo pedido los incluye.
   const idsIniciales = new Set(eventosProp.map((e) => e.id));
-  const eventos = [...eventosProp, ...eventosExtra.filter((e) => !idsIniciales.has(e.id))];
+  /**
+   * Desplazamientos aún sin confirmar por el servidor, en días por id de
+   * evento. Se aplican encima de lo que manda el servidor para que la
+   * tarjeta cambie de casilla al SOLTAR — esperar la ida y vuelta hace que
+   * arrastrar se sienta roto. Se limpian solos cuando el servidor responde
+   * y `router.refresh()` trae las fechas ya guardadas.
+   */
+  const [movidos, setMovidos] = useState<Record<string, number>>({});
+  const [, startTransition] = useTransition();
+
+  const eventosSinMover = [...eventosProp, ...eventosExtra.filter((e) => !idsIniciales.has(e.id))];
+  const eventos = eventosSinMover.map((e) => {
+    const dias = movidos[e.id];
+    if (!dias) return e;
+    const desplazar = (f: Date) => {
+      const n = new Date(f);
+      n.setUTCDate(n.getUTCDate() + dias);
+      return n;
+    };
+    return {
+      ...e,
+      fechaInicio: desplazar(e.fechaInicio),
+      fechaFin: e.fechaFin ? desplazar(e.fechaFin) : e.fechaFin,
+    };
+  });
   const idsTareasIniciales = new Set(tareasProp.map((t) => t.id));
   const tareasSinPatch = [...tareasProp, ...tareasExtra.filter((t) => !idsTareasIniciales.has(t.id))];
 
@@ -278,6 +308,58 @@ export function CalendarView({
       ? cursor.getUTCFullYear() === now.getUTCFullYear() && cursor.getUTCMonth() === now.getUTCMonth()
       : weekGrid.some((d) => d.isToday);
 
+  /**
+   * `distance: 6` es lo que permite que un chip siga siendo un BOTÓN que
+   * abre el detalle del evento: sin una distancia mínima antes de dar por
+   * empezado el arrastre, cada clic se interpretaría como el principio de
+   * uno y no se podría abrir nada.
+   */
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  /**
+   * Mueve un evento al día donde se ha soltado.
+   *
+   * Optimista: el chip cambia de casilla al instante y solo se revierte si
+   * el servidor dice que no. Esperar la ida y vuelta para ver moverse la
+   * tarjeta hace que arrastrar se sienta roto, que es justo lo contrario de
+   * lo que se busca al añadir el gesto.
+   */
+  function handleDragEnd(e: DragEndEvent) {
+    const destino = e.over?.id;
+    if (typeof destino !== "string" || !destino.startsWith(DIA_DROP_PREFIX)) return;
+
+    const eventoId = String(e.active.id);
+    const evento = eventos.find((ev) => ev.id === eventoId);
+    if (!evento) return;
+
+    const claveDestino = destino.slice(DIA_DROP_PREFIX.length);
+    const claveOrigen = dateKey(evento.fechaInicio);
+    if (claveDestino === claveOrigen) return;
+
+    // Se calcula en DÍAS enteros, no con una fecha nueva: así la hora y la
+    // duración del evento se conservan solas (una reunión de las 10:00 a
+    // las 11:30 sigue siéndolo al cambiarla de día).
+    const dias = Math.round(
+      (Date.parse(`${claveDestino}T00:00:00Z`) - Date.parse(`${claveOrigen}T00:00:00Z`)) / 86_400_000,
+    );
+    if (!Number.isFinite(dias) || dias === 0) return;
+
+    setMovidos((prev) => ({ ...prev, [eventoId]: dias }));
+    startTransition(async () => {
+      const result = await moverEvento(eventoId, dias);
+      if (result.error) {
+        // Se deshace el movimiento y se recarga: el usuario ve la tarjeta
+        // volver a su sitio, que es la señal honesta de que no se guardó.
+        setMovidos((prev) => {
+          const next = { ...prev };
+          delete next[eventoId];
+          return next;
+        });
+      }
+      router.refresh();
+    });
+  }
+
   function memberOf(assigneeId: string | null): WorkspaceMemberInfo | undefined {
     return members.find((m) => m.userId === assigneeId);
   }
@@ -308,6 +390,7 @@ export function CalendarView({
   }
 
   return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
     <section
       aria-labelledby="mes-heading"
       className="flex flex-col gap-3 rounded-2xl border border-paper-line bg-paper-raised p-4 shadow-sm"
@@ -433,8 +516,9 @@ export function CalendarView({
               const ocultas =
                 Math.max(0, dayEventos.length - MAX_CHIPS_PER_DAY_MONTH) + (dayTareas.length - tareasVisibles.length);
               return (
-                <div
+                <DiaDroppable
                   key={key}
+                  fechaKey={key}
                   className={cn(
                     "flex min-h-[80px] flex-col gap-1 rounded-lg border p-1.5 text-xs transition-colors",
                     inMonth ? (isWeekend ? "border-paper-line bg-paper-line/20" : "border-paper-line bg-paper") : "border-transparent bg-paper/40",
@@ -498,8 +582,8 @@ export function CalendarView({
                     {dayEventos.slice(0, MAX_CHIPS_PER_DAY_MONTH).map((evento) => {
                       const assignee = memberOf(evento.assigneeId);
                       return (
+                        <DraggableEvento key={evento.id} id={evento.id} disabled={!puedeEditar}>
                         <EventDetailDialog
-                          key={evento.id}
                           evento={evento}
                           members={members}
                           onChanged={() => router.refresh()}
@@ -520,6 +604,7 @@ export function CalendarView({
                             </span>
                           </button>
                         </EventDetailDialog>
+                        </DraggableEvento>
                       );
                     })}
                     {tareasVisibles.map((tarea) => {
@@ -572,7 +657,7 @@ export function CalendarView({
                       </DayDetailDialog>
                     )}
                   </div>
-                </div>
+                </DiaDroppable>
               );
             })}
           </div>
@@ -756,5 +841,6 @@ export function CalendarView({
         </div>
       )}
     </section>
+    </DndContext>
   );
 }

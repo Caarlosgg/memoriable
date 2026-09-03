@@ -237,3 +237,58 @@ export async function loadCalendarRange(
     return { eventos: [], tareas: [] };
   }
 }
+
+/**
+ * Mueve un evento a otro día conservando su hora y su duración — lo que
+ * significa arrastrarlo en el calendario.
+ *
+ * Acción propia y no `updateEvento` con todos los campos: arrastrar solo
+ * cambia CUÁNDO. Reenviar título, descripción y participantes desde el
+ * cliente para mover una tarjeta es mandar de vuelta datos que no han
+ * cambiado, y abre la puerta a pisarlos con una copia vieja si alguien los
+ * editó entre que se pintó la pantalla y se soltó el ratón.
+ *
+ * `dias` puede ser negativo (mover hacia atrás). La duración se conserva
+ * desplazando también `fechaFin` — un evento de dos horas sigue durando dos
+ * horas al cambiarlo de día.
+ */
+export async function moverEvento(id: string, dias: number): Promise<EventoResult> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  if (!Number.isInteger(dias) || dias === 0) return { error: "Movimiento no válido." };
+  // Tope de cordura: el desplazamiento lo calcula el cliente a partir de
+  // dónde se soltó, y un valor absurdo (por un bug de arrastre) mandaría un
+  // evento a otro siglo sin que nadie lo pidiera.
+  if (Math.abs(dias) > 366) return { error: "Ese movimiento es demasiado grande." };
+
+  try {
+    const evento = await prisma.evento.findFirst({
+      where: { id, workspaceId },
+      select: { fechaInicio: true, fechaFin: true },
+    });
+    if (!evento) return { error: "No se ha encontrado el evento." };
+
+    const desplazar = (fecha: Date) => {
+      const nueva = new Date(fecha);
+      nueva.setUTCDate(nueva.getUTCDate() + dias);
+      return nueva;
+    };
+
+    await prisma.evento.updateMany({
+      where: { id, workspaceId },
+      data: {
+        fechaInicio: desplazar(evento.fechaInicio),
+        ...(evento.fechaFin ? { fechaFin: desplazar(evento.fechaFin) } : {}),
+      },
+    });
+
+    revalidatePath("/calendario");
+    return {};
+  } catch (err) {
+    console.error("Error al mover el evento:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido mover el evento. Inténtalo de nuevo." };
+  }
+}

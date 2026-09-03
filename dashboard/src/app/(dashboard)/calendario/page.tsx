@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { verifySession } from "@/lib/dal";
-import { getActiveWorkspace, listWorkspaceMembers } from "@/lib/workspace";
+import { getActiveWorkspace, listWorkspaceMembers, canWrite } from "@/lib/workspace";
 import { getEventosEnRango, getTasksEnRango, getImportantPending } from "@/lib/eventos";
 import { rangoCalendario } from "@/lib/calendar";
 import { upcomingRange } from "@/lib/calendar";
@@ -22,7 +22,7 @@ export const metadata: Metadata = { title: "Calendario · MemorIAble" };
  */
 async function CalendarSection({ highlightEventoId }: { highlightEventoId?: string }) {
   const userId = await verifySession();
-  const { workspaceId, isPersonal } = await getActiveWorkspace(userId);
+  const { workspaceId, isPersonal, role } = await getActiveWorkspace(userId);
   // Solo los meses de alrededor, no el historial entero (ver
   // rangoCalendario): al navegar fuera, el propio calendario pide el tramo
   // que falte con `loadCalendarRange`.
@@ -49,7 +49,13 @@ async function CalendarSection({ highlightEventoId }: { highlightEventoId?: stri
         </div>
       )}
       <ResumenSection importantPending={importantPending} upcomingEventos={upcomingEventos} members={members} />
-      <CalendarView eventos={allEventos} tareas={tareas} members={members} highlightEventoId={highlightEventoId} />
+      <CalendarView
+        eventos={allEventos}
+        tareas={tareas}
+        members={members}
+        highlightEventoId={highlightEventoId}
+        puedeEditar={canWrite(role)}
+      />
     </>
   );
 }

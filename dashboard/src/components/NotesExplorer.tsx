@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams, type ReadonlyURLSearchParams } from "next/navigation";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
 import { Search, Tag, StickyNote } from "lucide-react";
@@ -116,6 +116,7 @@ export function NotesExplorer({
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
+  const buscadorRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState(() => searchParams.get("q") ?? "");
   const [etiquetaInput, setEtiquetaInput] = useState(() => searchParams.get("etiqueta") ?? "");
   const [filters, setFilters] = useState<Filters>(() => filtersFromParams(searchParams));
@@ -207,6 +208,37 @@ export function NotesExplorer({
     }
   }, [query, etiqueta, filters, pathname]);
 
+  /**
+   * Atajos de teclado: `/` enfoca el buscador, `Escape` limpia y sale.
+   *
+   * No había ninguno, y en la pantalla donde uno pasa el rato buscando eso
+   * significa ir al ratón para cada búsqueda. `/` es la convención (GitHub,
+   * Slack, Linear) y no hace falta enseñarla.
+   *
+   * Se ignora si ya se está escribiendo en algún campo: si no, teclear una
+   * barra en una nota saltaría al buscador y se comería el carácter.
+   */
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const dentroDeUnCampo =
+        e.target instanceof HTMLElement &&
+        (e.target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName));
+
+      if (e.key === "/" && !dentroDeUnCampo && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        buscadorRef.current?.focus();
+        return;
+      }
+      // Escape SÍ funciona desde dentro del buscador: es donde se usa.
+      if (e.key === "Escape" && document.activeElement === buscadorRef.current) {
+        limpiarFiltros();
+        buscadorRef.current?.blur();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   useEffect(() => {
     if (!hasActiveFilters) return;
 
@@ -268,11 +300,13 @@ export function NotesExplorer({
         </h2>
 
         <Input
+          ref={buscadorRef}
           type="search"
           value={input}
           onChange={(e) => cambiarInput(e.target.value)}
-          placeholder="Buscar en tus notas…"
+          placeholder="Buscar en tus notas…  (pulsa / )"
           aria-label="Buscar en tus notas"
+          aria-keyshortcuts="/"
         />
 
         <div className="flex flex-wrap gap-2">
