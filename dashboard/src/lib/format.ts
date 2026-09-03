@@ -89,3 +89,32 @@ export function shortEmailName(email: string): string {
 export function displayName(user: { nombre?: string | null; email: string }): string {
   return user.nombre?.trim() || shortEmailName(user.email);
 }
+
+/**
+ * Fecha relativa corta ("hace 5 min").
+ *
+ * Cuando lo que importa es cuánto hace, no el instante exacto: en un hilo
+ * de comentarios y en la bandeja de notificaciones, "03/09/2026, 11:15" no
+ * responde a la pregunta que uno se hace al mirarlas.
+ *
+ * A partir de una semana se cae a la fecha: "hace 34 d" ya no ayuda a nadie
+ * a situar nada.
+ */
+export function haceCuanto(fecha: string | Date, ahora: Date = new Date()): string {
+  const date = fecha instanceof Date ? fecha : new Date(fecha);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const diff = ahora.getTime() - date.getTime();
+  // Una fecha en el futuro (relojes desincronizados) no debe salir como
+  // "hace -3 min": se trata como recién ocurrida.
+  if (diff < 0) return "ahora mismo";
+
+  const min = Math.round(diff / 60000);
+  if (min < 1) return "ahora mismo";
+  if (min < 60) return `hace ${min} min`;
+  const horas = Math.round(min / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  const dias = Math.round(horas / 24);
+  if (dias < 7) return `hace ${dias} d`;
+  return date.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+}

@@ -13,19 +13,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SkeletonText } from "@/components/ui/skeleton";
-
-/** Fecha relativa corta ("hace 5 min") — en un hilo importa cuánto hace, no el timestamp exacto. */
-function haceCuanto(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const min = Math.round(diff / 60000);
-  if (min < 1) return "ahora mismo";
-  if (min < 60) return `hace ${min} min`;
-  const horas = Math.round(min / 60);
-  if (horas < 24) return `hace ${horas} h`;
-  const dias = Math.round(horas / 24);
-  if (dias < 7) return `hace ${dias} d`;
-  return new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
-}
+import { haceCuanto } from "@/lib/format";
 
 /**
  * Hilo de comentarios sobre una nota o un evento — así es como el equipo se

@@ -19,6 +19,7 @@ import {
   markAllAsRead,
 } from "@/app/(dashboard)/notificaciones/actions";
 import { cn } from "@/lib/utils";
+import { haceCuanto } from "@/lib/format";
 
 const TYPE_ICON: Record<Notification["type"], typeof StickyNote> = {
   ASSIGNED_MESSAGE: StickyNote,
@@ -124,8 +125,11 @@ export function NotificationsList({
                       {n.body}
                     </span>
                   )}
-                  <span className="text-xs text-muted">
-                    {DATE_FORMATTER.format(n.createdAt)}
+                  {/* Relativa, con la fecha exacta en el title: al mirar la
+                      bandeja la pregunta es "¿cuándo pasó esto?", y
+                      "03/09/2026, 11:15" no la responde de un vistazo. */}
+                  <span className="text-xs text-muted" title={DATE_FORMATTER.format(n.createdAt)}>
+                    {haceCuanto(n.createdAt)}
                   </span>
                 </div>
                 {!n.read && (

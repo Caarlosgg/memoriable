@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Evento, Message } from "@prisma/client";
-import { ChevronLeft, ChevronRight, Plus, CalendarCheck2, ListTodo } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, CalendarCheck2, ListTodo, Download } from "lucide-react";
 import { buildMonthGrid, buildWeekGrid, dateKey, groupByDayRange, layoutDayEvents, rangoCalendario, type WeekDay } from "@/lib/calendar";
 import { loadCalendarRange } from "@/app/(dashboard)/calendario/actions";
 import { assignMessage } from "@/app/(dashboard)/actions";
@@ -19,6 +19,12 @@ import { MessageDetailDialog } from "../MessageDetailDialog";
 import { DayDetailDialog } from "./DayDetailDialog";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric", timeZone: "UTC" });
+const DAY_FORMATTER = new Intl.DateTimeFormat("es-ES", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+});
 const WEEK_RANGE_FORMATTER = new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short", timeZone: "UTC" });
 const WEEKDAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const MAX_CHIPS_PER_DAY_MONTH = 3;
@@ -26,7 +32,14 @@ const MAX_CHIPS_PER_DAY_MONTH = 3;
 /** Vista semana: rejilla horaria real (estilo Google Calendar/Outlook) en vez de chips apilados — ver `layoutDayEvents`. */
 const HOUR_HEIGHT = 56;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const WEEK_GRID_COLUMNS = "40px repeat(7, minmax(90px, 1fr))";
+/**
+ * Columnas de la rejilla de horas: la de las horas (40px) más una por día.
+ * Se calcula a partir de cuántos días se pintan para que la vista "día"
+ * ocupe todo el ancho en vez de dejar una columna estrecha y seis huecos.
+ */
+function gridColumns(dias: number): string {
+  return `40px repeat(${dias}, minmax(90px, 1fr))`;
+}
 /** Cada cuánto se recalcula la línea de "ahora" en la columna de hoy — no hace falta más fino que esto. */
 const NOW_LINE_REFRESH_MS = 5 * 60 * 1000;
 
@@ -35,7 +48,7 @@ function isAllDay(evento: Evento): boolean {
   return !!evento.fechaFin && dateKey(evento.fechaFin) !== dateKey(evento.fechaInicio);
 }
 
-type CalendarViewMode = "mes" | "semana";
+type CalendarViewMode = "mes" | "semana" | "dia";
 
 /** Rango "12 - 18 ago" para el título de la vista semanal. */
 function weekRangeLabel(days: WeekDay[]): string {
@@ -128,7 +141,7 @@ export function CalendarView({
   // scroll manual para ver "qué tengo ahora".
   const hourGridRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (view !== "semana" || !hourGridRef.current) return;
+    if (view === "mes" || !hourGridRef.current) return;
     const nowMinutes = nowTick.getUTCHours() * 60 + nowTick.getUTCMinutes();
     hourGridRef.current.scrollTop = Math.max(0, (nowMinutes / 60) * HOUR_HEIGHT - HOUR_HEIGHT * 2);
     // Solo al cambiar de vista/semana — no en cada tick de nowTick, o se
@@ -213,7 +226,16 @@ export function CalendarView({
   }
 
   const monthGrid = buildMonthGrid(cursor.getUTCFullYear(), cursor.getUTCMonth());
-  const weekGrid = buildWeekGrid(cursor);
+  /**
+   * Los días que se pintan en la rejilla de horas.
+   *
+   * La vista "día" es la de semana con UNA columna: la rejilla de horas, el
+   * posicionamiento de los eventos y la línea de "ahora" ya funcionaban, y
+   * duplicarlos para pintar un solo día habría creado dos sitios donde
+   * arreglar el mismo fallo. En el móvil es la única vista de horas
+   * legible — siete columnas en 360px no caben.
+   */
+  const weekGrid = view === "dia" ? buildWeekGrid(cursor).filter((d) => dateKey(d.date) === dateKey(cursor)) : buildWeekGrid(cursor);
   // "Calendario por periodos": un evento con fechaFin en otro día aparece
   // en TODOS los días que ocupa, no solo el primero — antes solo se veía
   // el día de inicio, así que una actividad de varios días "desaparecía"
@@ -235,19 +257,19 @@ export function CalendarView({
     else tareasByDay.set(key, [tarea]);
   }
 
+  /** Cuántos días salta la navegación: un mes, una semana o un día. */
+  function avanzar(prev: Date, signo: 1 | -1): Date {
+    if (view === "mes") {
+      return new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth() + signo, 1));
+    }
+    const dias = view === "dia" ? 1 : 7;
+    return new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth(), prev.getUTCDate() + signo * dias));
+  }
   function goToPrevious() {
-    setCursor((prev) =>
-      view === "mes"
-        ? new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth() - 1, 1))
-        : new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth(), prev.getUTCDate() - 7)),
-    );
+    setCursor((prev) => avanzar(prev, -1));
   }
   function goToNext() {
-    setCursor((prev) =>
-      view === "mes"
-        ? new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth() + 1, 1))
-        : new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth(), prev.getUTCDate() + 7)),
-    );
+    setCursor((prev) => avanzar(prev, 1));
   }
 
   const now = new Date();
@@ -292,7 +314,11 @@ export function CalendarView({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="mes-heading" className="flex items-center gap-2 font-display text-lg font-semibold text-ink capitalize">
-          {view === "mes" ? MONTH_FORMATTER.format(cursor) : weekRangeLabel(weekGrid)}
+          {view === "mes"
+            ? MONTH_FORMATTER.format(cursor)
+            : view === "dia"
+              ? DAY_FORMATTER.format(cursor)
+              : weekRangeLabel(weekGrid)}
           {/* Señal de que ese tramo aún se está trayendo: sin esto, un mes
               lejano parece vacío durante un instante y da la impresión de
               que no hay nada, en vez de que falta por cargar. */}
@@ -320,6 +346,16 @@ export function CalendarView({
             >
               Semana
             </button>
+            {/* Vista día: en el móvil es la única rejilla de horas legible
+                — siete columnas en 360px se quedan en puntos sin texto. */}
+            <button
+              type="button"
+              onClick={() => setView("dia")}
+              aria-pressed={view === "dia"}
+              className={`rounded-full px-2.5 py-1 transition-colors ${view === "dia" ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}
+            >
+              Día
+            </button>
           </div>
           <button
             type="button"
@@ -346,6 +382,16 @@ export function CalendarView({
               <CalendarCheck2 aria-hidden size={13} /> Hoy
             </button>
           )}
+          {/* Exportar a .ics: sin esto, lo que capturas por Telegram vive
+              solo aquí dentro, y nadie mantiene dos calendarios. */}
+          <a
+            href="/api/calendario/ics"
+            download="memoriable.ics"
+            title="Descargar el calendario (.ics) para Google Calendar, Apple o Outlook"
+            className="flex items-center gap-1 rounded-full border border-paper-line px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Download aria-hidden size={13} /> Exportar
+          </a>
           {/* `key` + `defaultOpen`: `defaultOpen` solo se lee en el primer
               render, así que llegar con `#nuevo-evento` estando YA en el
               calendario no abriría nada. Cambiar la clave remonta el modal
@@ -533,8 +579,11 @@ export function CalendarView({
         </>
       ) : (
         <div className="overflow-x-auto">
-          <div style={{ minWidth: 40 + 7 * 90 }}>
-            <div className="grid gap-px pb-1" style={{ gridTemplateColumns: WEEK_GRID_COLUMNS }}>
+          {/* En vista día no hace falta ancho mínimo: una columna cabe en
+              cualquier móvil, y forzarlo dejaría un scroll horizontal
+              innecesario. */}
+          <div style={{ minWidth: weekGrid.length > 1 ? 40 + weekGrid.length * 90 : undefined }}>
+            <div className="grid gap-px pb-1" style={{ gridTemplateColumns: gridColumns(weekGrid.length) }}>
               <div />
               {weekGrid.map((day, i) => (
                 <div key={dateKey(day.date)} className="text-center text-xs font-semibold text-muted">
@@ -563,7 +612,7 @@ export function CalendarView({
             ) && (
               <div
                 className="grid gap-px border-b border-paper-line pb-1"
-                style={{ gridTemplateColumns: WEEK_GRID_COLUMNS }}
+                style={{ gridTemplateColumns: gridColumns(weekGrid.length) }}
               >
                 <span className="pt-0.5 text-[9px] text-muted">todo el día</span>
                 {weekGrid.map((day) => {
@@ -626,7 +675,7 @@ export function CalendarView({
             )}
 
             <div ref={hourGridRef} className="overflow-y-auto" style={{ maxHeight: 480 }}>
-              <div className="grid" style={{ gridTemplateColumns: WEEK_GRID_COLUMNS }}>
+              <div className="grid" style={{ gridTemplateColumns: gridColumns(weekGrid.length) }}>
                 <div className="relative" style={{ height: HOUR_HEIGHT * 24 }}>
                   {HOURS.map((h) => (
                     <span

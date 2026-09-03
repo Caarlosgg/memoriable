@@ -27,3 +27,34 @@ describe("shortEmailName", () => {
     expect(shortEmailName("ana.lopez@example.com")).toBe("ana.lopez");
   });
 });
+
+describe("haceCuanto", () => {
+  const ahora = new Date("2026-09-03T12:00:00.000Z");
+
+  it("dice cuánto hace en la unidad que toca", async () => {
+    const { haceCuanto } = await import("@/lib/format");
+    expect(haceCuanto(new Date("2026-09-03T11:58:00.000Z"), ahora)).toBe("hace 2 min");
+    expect(haceCuanto(new Date("2026-09-03T09:00:00.000Z"), ahora)).toBe("hace 3 h");
+    expect(haceCuanto(new Date("2026-09-01T12:00:00.000Z"), ahora)).toBe("hace 2 d");
+  });
+
+  it("menos de un minuto es 'ahora mismo'", async () => {
+    const { haceCuanto } = await import("@/lib/format");
+    expect(haceCuanto(new Date("2026-09-03T11:59:50.000Z"), ahora)).toBe("ahora mismo");
+  });
+
+  it("a partir de una semana cae a la fecha: 'hace 34 d' no sitúa nada", async () => {
+    const { haceCuanto } = await import("@/lib/format");
+    expect(haceCuanto(new Date("2026-07-30T12:00:00.000Z"), ahora)).toMatch(/jul/);
+  });
+
+  it("una fecha en el futuro (relojes desincronizados) no sale como 'hace -3 min'", async () => {
+    const { haceCuanto } = await import("@/lib/format");
+    expect(haceCuanto(new Date("2026-09-03T12:05:00.000Z"), ahora)).toBe("ahora mismo");
+  });
+
+  it("una fecha inválida devuelve vacío en vez de 'Invalid Date'", async () => {
+    const { haceCuanto } = await import("@/lib/format");
+    expect(haceCuanto("no-es-una-fecha", ahora)).toBe("");
+  });
+});
