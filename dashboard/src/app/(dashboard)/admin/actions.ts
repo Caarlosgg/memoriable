@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/nextjs";
 import { requireSuperAdmin } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { createPasswordResetToken } from "@/lib/passwordReset";
+import { eliminarCuenta } from "@/lib/eliminarCuenta";
 import { sendPasswordResetEmail, resolveBaseUrl } from "@/lib/email";
 
 /**
@@ -180,61 +181,25 @@ export async function adminSetSuperAdmin(targetUserId: string, value: boolean): 
 }
 
 /**
- * Elimina una cuenta entera: su espacio personal (notas, eventos, ahorros,
- * historial del Asistente — todo exclusivamente suyo) y la fila de
- * usuario. Rechaza la operación (sin borrar nada) en dos casos, ambos para
- * no arrastrar consigo el contenido o el equipo de OTRAS personas:
- * - Es la única persona propietaria de algún equipo (pide transferir la
- *   propiedad o eliminar el equipo primero, ver equipo/actions.ts).
- * - Tiene notas o eventos creados dentro de un equipo compartido (esas
- *   filas seguirían siendo relevantes para el resto del equipo).
+ * Elimina una cuenta entera desde el panel de administración.
+ *
+ * La política de borrado (qué se borra, qué lo bloquea y por qué) vive en
+ * `lib/eliminarCuenta.ts`, compartida con el borrado que hace el propio
+ * usuario desde "Cuenta": dos implementaciones de un borrado en cascada
+ * acabarían separándose, y ahí las consecuencias son filas huérfanas o
+ * datos de más borrados.
  */
 export async function adminDeleteUser(targetUserId: string): Promise<AdminActionResult> {
   const selfId = await requireSuperAdmin();
-  if (targetUserId === selfId) return { error: "No puedes eliminar tu propia cuenta desde aquí." };
+  // Un superadmin borrándose a sí mismo desde aquí se quedaría sin sesión a
+  // media pantalla de administración: para eso está el borrado normal de
+  // /cuenta, que además pide confirmar la contraseña.
+  if (targetUserId === selfId) return { error: "Para borrar tu propia cuenta, ve a «Cuenta»." };
 
   try {
-    const target = await prisma.user.findUnique({
-      where: { id: targetUserId },
-      select: { personalWorkspaceId: true },
-    });
-    if (!target) return { error: "No se ha encontrado ese usuario." };
+    const result = await eliminarCuenta(targetUserId);
+    if (result.error) return result;
 
-    const soleOwnerships = await prisma.membership.findMany({
-      where: { userId: targetUserId, role: "OWNER", status: "ACTIVE", workspace: { personal: false } },
-      select: { workspaceId: true, workspace: { select: { nombre: true } } },
-    });
-    for (const membership of soleOwnerships) {
-      const otherOwners = await prisma.membership.count({
-        where: { workspaceId: membership.workspaceId, role: "OWNER", status: "ACTIVE", userId: { not: targetUserId } },
-      });
-      if (otherOwners === 0) {
-        return {
-          error: `Es la única persona propietaria del equipo "${membership.workspace.nombre}". Asigna otro propietario o elimina el equipo antes de borrar esta cuenta.`,
-        };
-      }
-    }
-
-    const outsidePersonal = { userId: targetUserId, workspaceId: { not: target.personalWorkspaceId ?? "" } };
-    const [sharedMessages, sharedEventos] = await Promise.all([
-      prisma.message.count({ where: outsidePersonal }),
-      prisma.evento.count({ where: outsidePersonal }),
-    ]);
-    if (sharedMessages + sharedEventos > 0) {
-      return {
-        error: "Esta persona tiene notas o eventos creados en un equipo compartido. Bórralos o pide que los reasignen antes de eliminar la cuenta.",
-      };
-    }
-
-    await prisma.$transaction([
-      prisma.assistantExchange.deleteMany({ where: { userId: targetUserId } }),
-      prisma.conversation.deleteMany({ where: { userId: targetUserId } }),
-      prisma.cuentaAhorro.deleteMany({ where: { userId: targetUserId } }),
-      prisma.message.deleteMany({ where: { userId: targetUserId } }),
-      prisma.evento.deleteMany({ where: { userId: targetUserId } }),
-      prisma.user.delete({ where: { id: targetUserId } }),
-      ...(target.personalWorkspaceId ? [prisma.workspace.delete({ where: { id: target.personalWorkspaceId } })] : []),
-    ]);
     revalidatePath("/admin/usuarios");
     revalidatePath("/admin");
     return {};

@@ -10,6 +10,8 @@ import { ThemeSettings } from "@/components/ThemeSettings";
 import { NotificationPrefsForm } from "@/components/NotificationPrefsForm";
 import { HiddenCategoriesForm } from "@/components/HiddenCategoriesForm";
 import { CustomCategoriesForm } from "@/components/CustomCategoriesForm";
+import { SettingsIndex, type SettingsEntry } from "@/components/cuenta/SettingsIndex";
+import { DeleteAccountForm } from "@/components/cuenta/DeleteAccountForm";
 import { PushNotificationsToggle } from "@/components/PushNotificationsToggle";
 import {
   hasPushSubscription,
@@ -32,6 +34,12 @@ export async function CuentaSection() {
 
   return (
     <div className="flex flex-col gap-8">
+      {/* Índice: los grupos van plegados (la pantalla es larguísima abierta),
+          y eso dejaba el tema, los avisos push, las categorías propias y la
+          exportación INVISIBLES salvo que se te ocurriera abrir el grupo
+          correcto. El índice dice qué hay dentro de cada uno y lo abre. */}
+      <SettingsIndex entries={SECCIONES} />
+
       {/* Agrupada en bloques con encabezado: eran diez tarjetas seguidas sin
           jerarquía, así que encontrar "silenciar avisos" o "exportar" era
           cuestión de recorrerlas todas. Las tarjetas no cambian; lo que
@@ -78,10 +86,32 @@ export async function CuentaSection() {
 
       <Grupo id="datos" titulo="Tus datos" Icon={Download}>
         <ExportSection />
+        {/* Después de exportar a propósito: quien viene a borrar su cuenta
+            se encuentra primero la forma de llevarse una copia. */}
+        <DeleteAccountForm tienePassword={Boolean(user.passwordHash)} />
       </Grupo>
     </div>
   );
 }
+
+/**
+ * Qué hay en cada sección. `contiene` no es decorativo: es lo que evita
+ * tener que abrir un desplegable llamado "Apariencia y contenido" para
+ * descubrir que ahí se cambia el tema. Los `id` deben coincidir con los del
+ * `<Grupo>` de arriba.
+ */
+const SECCIONES: SettingsEntry[] = [
+  { id: "acceso", titulo: "Cuenta y acceso", contiene: "Email, contraseña, cerrar sesiones", Icon: User },
+  { id: "captura", titulo: "Captura", contiene: "Vincular Telegram", Icon: Send },
+  { id: "avisos", titulo: "Avisos", contiene: "Qué te notificamos, avisos en el móvil", Icon: Bell },
+  {
+    id: "apariencia",
+    titulo: "Apariencia y contenido",
+    contiene: "Tema, tamaño de texto, categorías",
+    Icon: Palette,
+  },
+  { id: "datos", titulo: "Tus datos", contiene: "Exportar todo lo tuyo, eliminar la cuenta", Icon: Download },
+];
 
 /**
  * Bloque PLEGABLE dentro de /cuenta. Agrupar ya puso jerarquía, pero la
@@ -110,7 +140,12 @@ function Grupo({
   children: React.ReactNode;
 }) {
   return (
-    <details open={abierto} className="group flex flex-col gap-4" aria-labelledby={`cuenta-${id}`}>
+    <details
+      id={`cuenta-grupo-${id}`}
+      open={abierto}
+      className="group flex scroll-mt-20 flex-col gap-4"
+      aria-labelledby={`cuenta-${id}`}
+    >
       <summary
         id={`cuenta-${id}`}
         className="flex cursor-pointer list-none items-center gap-2 rounded-lg py-1 font-mono text-xs font-bold tracking-[0.1em] text-accent uppercase transition-colors hover:text-accent-strong focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none [&::-webkit-details-marker]:hidden"

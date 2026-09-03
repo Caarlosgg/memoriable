@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { verifySession } from "@/lib/dal";
-import { generateLinkCode, hashPassword, verifyPassword } from "@/lib/auth";
+import { generateLinkCode, hashPassword, verifyPassword, verifyPasswordConstantTime } from "@/lib/auth";
 import { validarPassword } from "@/lib/passwordPolicy";
-import { createSession } from "@/lib/session";
+import { createSession, deleteSession } from "@/lib/session";
+import { eliminarCuenta } from "@/lib/eliminarCuenta";
 import { revokeAllSessions } from "@/lib/sessionRevocation";
 import { prisma } from "@/lib/prisma";
 import {
@@ -300,4 +302,57 @@ export async function deleteCustomCategory(id: string): Promise<{ error?: string
   const result = await libDeleteCustomCategory(userId, id);
   if (!result.error) revalidatePath("/cuenta");
   return result;
+}
+
+export interface EliminarMiCuentaResult {
+  error?: string;
+}
+
+/**
+ * Borrar la propia cuenta (RGPD).
+ *
+ * No es un extra: los términos de uso dicen "puedes cerrar tu cuenta cuando
+ * quieras desde los ajustes", y la política de privacidad promete el
+ * derecho de supresión. Sin esto, las dos mienten.
+ *
+ * Se exige la contraseña actual, no solo un "¿seguro?": es la acción más
+ * irreversible del producto y basta con dejar la sesión abierta un momento
+ * para que alguien la ejecute. Las cuentas que solo entran con Google no
+ * tienen contraseña que comprobar, así que confirman escribiendo su email
+ * — mismo objetivo (demostrar que es la persona y que va en serio) con lo
+ * que sí tienen.
+ *
+ * La política de qué se borra y qué lo bloquea vive en
+ * `lib/eliminarCuenta.ts`, compartida con el panel de administración.
+ */
+export async function eliminarMiCuenta(confirmacion: string): Promise<EliminarMiCuentaResult> {
+  const userId = await verifySession();
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, passwordHash: true },
+  });
+  if (!user) return { error: "No se ha encontrado tu cuenta." };
+
+  if (user.passwordHash) {
+    const ok = await verifyPasswordConstantTime(confirmacion, user.passwordHash);
+    if (!ok) return { error: "La contraseña no es correcta." };
+  } else if (confirmacion.trim().toLowerCase() !== user.email.toLowerCase()) {
+    return { error: "Escribe tu email exactamente para confirmar." };
+  }
+
+  try {
+    const result = await eliminarCuenta(userId);
+    if (result.error) return result;
+  } catch (err) {
+    console.error("Error al eliminar la propia cuenta:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido eliminar la cuenta. Inténtalo de nuevo." };
+  }
+
+  // La cookie se borra DESPUÉS de que el borrado haya salido bien: si
+  // fallara, dejar al usuario sin sesión y con la cuenta viva sería la peor
+  // de las combinaciones.
+  await deleteSession();
+  redirect("/login?cuenta=eliminada");
 }

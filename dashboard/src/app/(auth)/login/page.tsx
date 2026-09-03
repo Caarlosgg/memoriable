@@ -15,10 +15,14 @@ const OAUTH_ERRORS: Record<string, string> = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; cuenta?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, cuenta } = await searchParams;
   const oauthError = error ? (OAUTH_ERRORS[error] ?? OAUTH_ERRORS.oauth) : undefined;
+  // Tras borrar la cuenta (ver eliminarMiCuenta) se acaba aquí. Sin este
+  // aviso, la pantalla de entrar aparece sin más y no queda claro si el
+  // borrado se hizo o si simplemente caducó la sesión.
+  const cuentaEliminada = cuenta === "eliminada";
 
   return (
     <>
@@ -28,6 +32,11 @@ export default async function LoginPage({
       <p className="mb-6 text-sm text-muted">
         Notas, tareas y calendario que se organizan solos — a tu manera, o compartidos con tu equipo.
       </p>
+      {cuentaEliminada && (
+        <p role="status" className="mb-4 rounded-lg border border-paper-line bg-paper p-3 text-sm text-muted">
+          Tu cuenta se ha eliminado. Gracias por haberla usado.
+        </p>
+      )}
       {oauthError && (
         <p role="alert" className="mb-4 text-sm text-danger">
           {oauthError}
