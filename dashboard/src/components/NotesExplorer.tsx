@@ -26,13 +26,25 @@ interface Filters {
 
 const INITIAL_FILTERS: Filters = { categoria: "todos", estado: "todos", prioridad: "todos", desde: "", hasta: "" };
 
+/**
+ * Cuántos resultados se piden por tanda. Mismo valor que `SEARCH_PAGE_SIZE`
+ * en data.ts — aquí se repite en vez de importarlo porque este es un
+ * componente de cliente y data.ts es "server-only".
+ */
+const PAGE_SIZE = 15;
+
 interface FetchState {
   query: string;
   etiqueta: string;
   filters: Filters;
   attempt: number;
+  /** Cuántos resultados se pidieron: forma parte de la identidad de la petición (ver `isStale`). */
+  limite: number;
   status: "error" | "done";
   results: Message[];
+  /** Total exacto — solo lo hay al FILTRAR sin texto (ver SearchResult en data.ts). */
+  total?: number;
+  hayMas: boolean;
 }
 
 const INITIAL_FETCH_STATE: FetchState = {
@@ -40,8 +52,10 @@ const INITIAL_FETCH_STATE: FetchState = {
   etiqueta: "",
   filters: INITIAL_FILTERS,
   attempt: 0,
+  limite: PAGE_SIZE,
   status: "done",
   results: [],
+  hayMas: false,
 };
 
 function sameFilters(a: Filters, b: Filters): boolean {
@@ -80,6 +94,30 @@ export function NotesExplorer({
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [fetchState, setFetchState] = useState<FetchState>(INITIAL_FETCH_STATE);
   const [attempt, setAttempt] = useState(0);
+  // Cuántos resultados se están pidiendo. Sube al pulsar "ver más" y vuelve
+  // a la primera tanda en cuanto cambia lo que se busca: si no, cambiar de
+  // filtro heredaría una lista larguísima de la búsqueda anterior.
+  const [limite, setLimite] = useState(PAGE_SIZE);
+
+  /**
+   * Cambiar lo que se busca vuelve a la primera tanda.
+   *
+   * Se envuelven los setters en vez de hacerlo con un efecto: un efecto que
+   * llama a setState provoca un render de más y, aquí, una petición de más
+   * (la del límite viejo con los filtros nuevos, abortada acto seguido).
+   */
+  const cambiarInput = (valor: string) => {
+    setInput(valor);
+    setLimite(PAGE_SIZE);
+  };
+  const cambiarEtiqueta = (valor: string) => {
+    setEtiquetaInput(valor);
+    setLimite(PAGE_SIZE);
+  };
+  const cambiarFiltros = (fn: (f: Filters) => Filters) => {
+    setFilters(fn);
+    setLimite(PAGE_SIZE);
+  };
   // Borrado con margen de deshacer (Tier 1.3): mientras un id está aquí, se
   // oculta de toda vista (agrupada y filtrada) — vuelve si se deshace, se
   // queda oculto para siempre si el margen expira y se borra de verdad.
@@ -101,6 +139,7 @@ export function NotesExplorer({
     setInput("");
     setEtiquetaInput("");
     setFilters(INITIAL_FILTERS);
+    setLimite(PAGE_SIZE);
   }
 
   useEffect(() => {
@@ -115,25 +154,39 @@ export function NotesExplorer({
     if (filters.desde) params.set("desde", filters.desde);
     if (filters.hasta) params.set("hasta", filters.hasta);
     if (etiqueta) params.set("etiqueta", etiqueta);
+    params.set("limite", String(limite));
 
     fetch(`/api/search?${params.toString()}`, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`La búsqueda falló (${res.status}).`);
-        return res.json() as Promise<{ results: Message[] }>;
+        return res.json() as Promise<{ results: Message[]; total?: number; hayMas: boolean }>;
       })
-      .then((data) => setFetchState({ query, etiqueta, filters, attempt, status: "done", results: data.results }))
+      .then((data) =>
+        setFetchState({
+          query,
+          etiqueta,
+          filters,
+          attempt,
+          limite,
+          status: "done",
+          results: data.results,
+          total: data.total,
+          hayMas: data.hayMas,
+        }),
+      )
       .catch((err) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setFetchState({ query, etiqueta, filters, attempt, status: "error", results: [] });
+        setFetchState({ query, etiqueta, filters, attempt, limite, status: "error", results: [], hayMas: false });
       });
 
     return () => controller.abort();
-  }, [query, etiqueta, filters, attempt, hasActiveFilters]);
+  }, [query, etiqueta, filters, attempt, limite, hasActiveFilters]);
 
   const isStale =
     fetchState.query !== query ||
     fetchState.etiqueta !== etiqueta ||
     !sameFilters(fetchState.filters, filters) ||
+    fetchState.limite !== limite ||
     fetchState.attempt !== attempt;
   const status = isStale ? "loading" : fetchState.status;
 
@@ -152,7 +205,7 @@ export function NotesExplorer({
         <Input
           type="search"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => cambiarInput(e.target.value)}
           placeholder="Buscar en tus notas…"
           aria-label="Buscar en tus notas"
         />
@@ -160,7 +213,7 @@ export function NotesExplorer({
         <div className="flex flex-wrap gap-2">
           <Select
             value={filters.categoria}
-            onChange={(e) => setFilters((f) => ({ ...f, categoria: e.target.value as Filters["categoria"] }))}
+            onChange={(e) => cambiarFiltros((f) => ({ ...f, categoria: e.target.value as Filters["categoria"] }))}
             aria-label="Filtrar por categoría"
           >
             <option value="todos">Cualquier categoría</option>
@@ -172,7 +225,7 @@ export function NotesExplorer({
           </Select>
           <Select
             value={filters.estado}
-            onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value as Filters["estado"] }))}
+            onChange={(e) => cambiarFiltros((f) => ({ ...f, estado: e.target.value as Filters["estado"] }))}
             aria-label="Filtrar por estado"
           >
             <option value="todos">Cualquier estado</option>
@@ -184,7 +237,7 @@ export function NotesExplorer({
           </Select>
           <Select
             value={filters.prioridad}
-            onChange={(e) => setFilters((f) => ({ ...f, prioridad: e.target.value as Filters["prioridad"] }))}
+            onChange={(e) => cambiarFiltros((f) => ({ ...f, prioridad: e.target.value as Filters["prioridad"] }))}
             aria-label="Filtrar por prioridad"
           >
             <option value="todos">Cualquier prioridad</option>
@@ -197,13 +250,13 @@ export function NotesExplorer({
           <input
             type="date"
             value={filters.desde}
-            onChange={(e) => setFilters((f) => ({ ...f, desde: e.target.value }))}
+            onChange={(e) => cambiarFiltros((f) => ({ ...f, desde: e.target.value }))}
             aria-label="Desde qué fecha"
           />
           <input
             type="date"
             value={filters.hasta}
-            onChange={(e) => setFilters((f) => ({ ...f, hasta: e.target.value }))}
+            onChange={(e) => cambiarFiltros((f) => ({ ...f, hasta: e.target.value }))}
             aria-label="Hasta qué fecha"
           />
           <div className="relative">
@@ -215,7 +268,7 @@ export function NotesExplorer({
             <input
               type="text"
               value={etiquetaInput}
-              onChange={(e) => setEtiquetaInput(e.target.value)}
+              onChange={(e) => cambiarEtiqueta(e.target.value)}
               placeholder="etiqueta"
               aria-label="Filtrar por etiqueta"
               className="w-28 pl-7 text-sm"
@@ -293,28 +346,53 @@ export function NotesExplorer({
       )}
 
       {hasActiveFilters && status === "done" && fetchState.results.length > 0 && (
-        /* `stagger`: los resultados entran escalonados (ver globals.css) en
-           vez de aparecer todos de golpe — el ojo sigue el orden de
-           relevancia en lugar de recibir un bloque entero de una vez. */
-        <ul className="stagger flex flex-col gap-3">
-          {fetchState.results
-            .filter((message) => !hiddenIds.has(message.id))
-            .map((message, i) => (
-              <MessageDetailDialog
-                key={message.id}
-                message={message}
-                onDeleted={hideMessage}
-                onUndoDelete={unhideMessage}
-              >
-                <MessageCard
+        <>
+          {/* Cuántos hay. Antes había un techo mudo de 15: no solo no se
+              podían ver más, es que no había forma de saber que faltaban.
+              El total solo se enseña cuando es EXACTO (filtrando sin texto);
+              en una búsqueda por relevancia no existe tal número, así que se
+              dice cuántos se están viendo y ya. */}
+          <p className="text-xs text-muted" aria-live="polite">
+            {fetchState.total !== undefined
+              ? `${fetchState.results.length} de ${fetchState.total}`
+              : `${fetchState.results.length} resultado${fetchState.results.length === 1 ? "" : "s"}`}
+          </p>
+
+          {/* `stagger`: los resultados entran escalonados (ver globals.css) en
+              vez de aparecer todos de golpe — el ojo sigue el orden de
+              relevancia en lugar de recibir un bloque entero de una vez. */}
+          <ul className="stagger flex flex-col gap-3">
+            {fetchState.results
+              .filter((message) => !hiddenIds.has(message.id))
+              .map((message, i) => (
+                <MessageDetailDialog
+                  key={message.id}
                   message={message}
-                  highlightQuery={query}
-                  className="cursor-pointer"
-                  style={{ "--i": i } as React.CSSProperties}
-                />
-              </MessageDetailDialog>
-            ))}
-        </ul>
+                  onDeleted={hideMessage}
+                  onUndoDelete={unhideMessage}
+                >
+                  <MessageCard
+                    message={message}
+                    highlightQuery={query}
+                    className="cursor-pointer"
+                    style={{ "--i": i } as React.CSSProperties}
+                  />
+                </MessageDetailDialog>
+              ))}
+          </ul>
+
+          {fetchState.hayMas && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="self-center"
+              disabled={isStale}
+              onClick={() => setLimite((n) => n + PAGE_SIZE)}
+            >
+              {isStale ? "Cargando…" : "Ver más"}
+            </Button>
+          )}
+        </>
       )}
     </section>
   );

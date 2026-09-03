@@ -42,9 +42,13 @@ const NAV_ENTRIES: PaletteItem[] = [
   { key: "nav-cuenta", label: "Cuenta", Icon: User, onSelect: (r) => r.push("/cuenta") },
 ];
 
+// `#capturar` / `#nuevo-evento` no son adornos: los lee la pantalla de
+// destino para dejar el cursor donde hace falta (ver CaptureForm). Sin
+// ellos, estos "comandos" solo navegaban y dejaban al usuario buscando
+// dónde escribir — parecían acciones y eran enlaces.
 const CREATE_ENTRIES: PaletteItem[] = [
-  { key: "crear-nota", label: "Anotar algo nuevo", sublabel: "nota, tarea o recordatorio", Icon: PenLine, onSelect: (r) => r.push("/notas") },
-  { key: "crear-evento", label: "Nuevo evento", sublabel: "en el calendario", Icon: CalendarDays, onSelect: (r) => r.push("/calendario") },
+  { key: "crear-nota", label: "Anotar algo nuevo", sublabel: "nota, tarea o recordatorio", Icon: PenLine, onSelect: (r) => r.push("/notas#capturar") },
+  { key: "crear-evento", label: "Nuevo evento", sublabel: "en el calendario", Icon: CalendarDays, onSelect: (r) => r.push("/calendario#nuevo-evento") },
 ];
 
 const TIPO_ICON: Record<QuickSearchResult["tipo"], LucideIcon> = {

@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import type { EstadoTarea, Prioridad } from "@prisma/client";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { isSessionActive } from "@/lib/sessionRevocation";
-import { searchMessages } from "@/lib/data";
+import { searchMessages, SEARCH_PAGE_SIZE } from "@/lib/data";
 import { getActiveWorkspace } from "@/lib/workspace";
 import { isCategory } from "@/lib/categories";
 import { ESTADOS_TABLERO, PRIORIDADES } from "@/lib/kanban";
@@ -56,7 +56,20 @@ export async function GET(request: NextRequest) {
   const hasta = parseHasta(params.get("hasta"));
   const etiqueta = params.get("etiqueta")?.trim() || null;
 
+  // Cuántos resultados pide el cliente. Sube al pulsar "ver más" (ver
+  // NotesExplorer): se vuelve a pedir la lista entera más larga en vez de
+  // paginar por desplazamiento, porque la búsqueda es por RELEVANCIA — al
+  // ampliarla, un resultado nuevo puede colocarse en medio de los ya
+  // vistos, y una "página 2" por offset se saltaría filas o repetiría.
+  const limiteParam = Number(params.get("limite"));
+  const limite = Number.isInteger(limiteParam) && limiteParam > 0 ? limiteParam : SEARCH_PAGE_SIZE;
+
   const { workspaceId } = await getActiveWorkspace(userId);
-  const results = await searchMessages(workspaceId, q, { categoria, estado, prioridad, desde, hasta, etiqueta });
-  return NextResponse.json({ query: q, results });
+  const { messages, total, hayMas } = await searchMessages(
+    workspaceId,
+    q,
+    { categoria, estado, prioridad, desde, hasta, etiqueta },
+    limite,
+  );
+  return NextResponse.json({ query: q, results: messages, total, hayMas });
 }

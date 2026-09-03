@@ -67,6 +67,26 @@ export function CalendarView({
 }) {
   const router = useRouter();
   const [view, setView] = useState<CalendarViewMode>("mes");
+
+  /**
+   * Cuántas veces se ha pedido abrir "Nuevo evento" desde fuera (la paleta
+   * de comandos navega a `/calendario#nuevo-evento`). Es un contador y no
+   * un booleano para que pedirlo DOS veces seguidas vuelva a abrir el
+   * modal: con un booleano, cerrarlo y repetir el comando no haría nada.
+   */
+  const [aperturasPedidas, setAperturasPedidas] = useState(0);
+  useEffect(() => {
+    const abrirSiToca = () => {
+      if (window.location.hash !== "#nuevo-evento") return;
+      setAperturasPedidas((n) => n + 1);
+      // Se limpia el hash: si no, recargar la página volvería a abrir el
+      // modal, y volver atrás en el historial también.
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    };
+    abrirSiToca();
+    window.addEventListener("hashchange", abrirSiToca);
+    return () => window.removeEventListener("hashchange", abrirSiToca);
+  }, []);
   const [cursor, setCursor] = useState(() => {
     // Si venimos de la notificación de un evento, arrancar en el mes en el
     // que cae ese evento — si no, nunca se vería su chip para poder abrirlo.
@@ -326,7 +346,16 @@ export function CalendarView({
               <CalendarCheck2 aria-hidden size={13} /> Hoy
             </button>
           )}
-          <EventDetailDialog members={members} onChanged={() => router.refresh()}>
+          {/* `key` + `defaultOpen`: `defaultOpen` solo se lee en el primer
+              render, así que llegar con `#nuevo-evento` estando YA en el
+              calendario no abriría nada. Cambiar la clave remonta el modal
+              ya abierto, que es lo que se pide. */}
+          <EventDetailDialog
+            key={`nuevo-${aperturasPedidas}`}
+            members={members}
+            defaultOpen={aperturasPedidas > 0}
+            onChanged={() => router.refresh()}
+          >
             <Button type="button" size="sm" className="ml-2">
               <Plus aria-hidden size={14} /> Nuevo
             </Button>

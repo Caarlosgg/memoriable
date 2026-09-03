@@ -66,8 +66,18 @@ export async function getCategoryGroups(
   });
 }
 
-/** Resultados devueltos por una búsqueda. */
-const SEARCH_LIMIT = 15;
+/**
+ * Cuántos resultados se traen por tanda.
+ *
+ * Antes era un techo DURO de 15, sin contador y sin "cargar más": buscar
+ * algo de hace tres meses era imposible y ni siquiera se sabía que faltaban
+ * resultados. Ahora es el tamaño de la primera tanda, y quien llama puede
+ * pedir más (ver `limite` en `searchMessages`).
+ */
+export const SEARCH_PAGE_SIZE = 15;
+
+/** Tope absoluto de una petición, para que nadie pida 100.000 filas de golpe por URL. */
+const SEARCH_MAX_LIMIT = 200;
 
 /** Traduce los filtros del buscador (Fase F) a un `where` de Prisma, reutilizado por texto y por conteo. */
 function filtersToWhere(filters: SearchFilters): Prisma.MessageWhereInput {
@@ -115,6 +125,20 @@ async function textSearch(
   });
 }
 
+export interface SearchResult {
+  messages: Message[];
+  /**
+   * Total exacto de coincidencias. Solo existe cuando se está FILTRANDO sin
+   * texto: ahí la pregunta tiene una respuesta exacta. En una búsqueda por
+   * relevancia no la tiene —la mitad semántica siempre puede devolver una
+   * nota un poco menos parecida que la anterior— y enseñar un número
+   * inventado sería peor que no enseñar ninguno.
+   */
+  total?: number;
+  /** Si quedan resultados más allá de los devueltos (para el botón de "ver más"). */
+  hayMas: boolean;
+}
+
 function hasAnyFilter(filters: SearchFilters): boolean {
   return Boolean(
     filters.categoria || filters.estado || filters.prioridad || filters.desde || filters.hasta || filters.etiqueta,
@@ -142,29 +166,51 @@ export async function searchMessages(
   workspaceId: string,
   query: string,
   filters: SearchFilters = {},
-): Promise<Message[]> {
+  limite: number = SEARCH_PAGE_SIZE,
+): Promise<SearchResult> {
   const needle = query.trim();
+  const take = Math.min(Math.max(1, limite), SEARCH_MAX_LIMIT);
 
   if (needle === "") {
-    if (!hasAnyFilter(filters)) return [];
-    return prisma.message.findMany({
-      where: { workspaceId, ...filtersToWhere(filters) },
-      orderBy: { fecha: "desc" },
-      take: SEARCH_LIMIT,
-    });
+    if (!hasAnyFilter(filters)) return { messages: [], hayMas: false };
+
+    const where = { workspaceId, ...filtersToWhere(filters) };
+    // Solo aquí se puede dar un total honesto: filtrar es una consulta con
+    // respuesta exacta. En una búsqueda por relevancia no lo es (ver abajo).
+    const [messages, total] = await Promise.all([
+      prisma.message.findMany({ where, orderBy: { fecha: "desc" }, take }),
+      prisma.message.count({ where }),
+    ]);
+    return { messages, total, hayMas: messages.length < total };
   }
 
-  return hybridSearch(needle, filters, SEARCH_LIMIT, {
+  // Se pide UNO más de los que se van a enseñar: es la forma barata de
+  // saber si quedan más sin hacer un `count` aparte — que además aquí sería
+  // mentira, porque la mitad semántica no tiene "total" (siempre hay una
+  // nota un poco menos parecida que la anterior).
+  const messages = await hybridSearch(needle, filters, take + 1, {
     textSearch: (q, f, limit) => textSearch(workspaceId, q, f, limit),
     embedder: resolveEmbedder(),
     findSimilar: (queryEmbedding, options) => findSimilarMessages(workspaceId, queryEmbedding, options),
   });
+
+  return { messages: messages.slice(0, take), hayMas: messages.length > take };
 }
 
 export interface BoardColumn {
   /** Id de la columna: el valor del enum en las por defecto, un cuid en las propias (ver boardColumns.ts). */
   columnaId: string;
   messages: Message[];
+  /**
+   * Cuántas hay EN TOTAL en esa columna, si se ha recortado la lista.
+   * Ausente cuando se traen todas (el caso normal).
+   *
+   * "Hecho" se corta a las 50 más recientes, y antes se cortaba en silencio:
+   * el tablero decía "50" y ya, sin distinguir entre tener exactamente 50 y
+   * tener 400. Un número que puede estar mal y no lo avisa es peor que no
+   * tenerlo.
+   */
+  totalReal?: number;
 }
 
 /**
@@ -197,21 +243,38 @@ export async function getBoardGroups(
   // siempre) — se trae aparte y limitada a las más recientes, mismo
   // criterio que `getCategoryGroups`. POR_HACER/EN_PROGRESO sin límite: se
   // autolimitan solas con el uso normal (trabajo activo, no historial).
-  const [pendientes, hechas] = await Promise.all([
+  const whereHechas = { workspaceId, categoria: { in: visibleActionable }, estado: "HECHO" as const };
+  const [pendientes, hechas, totalHechas] = await Promise.all([
     prisma.message.findMany({
       where: { workspaceId, categoria: { in: visibleActionable }, estado: { not: "HECHO" } },
       orderBy: { orden: "desc" },
     }),
     prisma.message.findMany({
-      where: { workspaceId, categoria: { in: visibleActionable }, estado: "HECHO" },
+      where: whereHechas,
       orderBy: { fecha: "desc" },
       take: BOARD_HECHO_LIMIT,
     }),
+    // El total real de "Hecho": se cuenta aparte para poder DECIR que la
+    // lista está recortada, en vez de enseñar un 50 que parece el total.
+    prisma.message.count({ where: whereHechas }),
   ]);
 
   const porColumna = new Map<string, Message[]>(columnas.map((c) => [c.id, []]));
   for (const m of [...pendientes, ...hechas]) {
     porColumna.get(columnaDeTarjeta(m, columnas))?.push(m);
   }
-  return columnas.map((c) => ({ columnaId: c.id, messages: porColumna.get(c.id) ?? [] }));
+
+  const recortada = totalHechas > hechas.length;
+  return columnas.map((c) => {
+    const messages = porColumna.get(c.id) ?? [];
+    // Solo las columnas de la FASE "HECHO" pueden estar recortadas: las
+    // otras se traen enteras. Se mira `fase` y no el id, porque un
+    // workspace puede tener varias columnas propias en esa misma fase.
+    const esHecho = c.fase === "HECHO";
+    return {
+      columnaId: c.id,
+      messages,
+      ...(esHecho && recortada ? { totalReal: totalHechas } : {}),
+    };
+  });
 }

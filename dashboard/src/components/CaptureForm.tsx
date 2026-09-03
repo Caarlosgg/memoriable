@@ -4,9 +4,10 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { PenLine, Check } from "lucide-react";
 import { capture, type CaptureState } from "@/app/(dashboard)/actions";
 import { presentCategory } from "@/lib/categories";
-import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
 import { Button } from "./ui/button";
 import { VoiceButton } from "./VoiceButton";
+import { useEsMac } from "@/lib/useEsMac";
 
 const initialState: CaptureState = {};
 
@@ -17,12 +18,13 @@ const initialState: CaptureState = {};
  */
 export function CaptureForm({ puedeGrabar }: { puedeGrabar: boolean }) {
   const [state, formAction, pending] = useActionState(capture, initialState);
+  const esMac = useEsMac();
   const formRef = useRef<HTMLFormElement>(null);
   // El campo es NO controlado (se lee por `name` al enviar el form, se
   // vacía con `formRef.current?.reset()`), así que dictar no puede pasar
   // por un `setState` — se escribe en el DOM directamente, igual que
   // cualquier otro cambio manual del usuario.
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   function handleTranscript(texto: string) {
     const el = inputRef.current;
     if (!el) return;
@@ -53,6 +55,41 @@ export function CaptureForm({ puedeGrabar }: { puedeGrabar: boolean }) {
     if (state.saved) formRef.current?.reset();
   }, [state.saved]);
 
+  /**
+   * Enfoca el campo cuando se llega con `#capturar` (lo pone "Anotar algo
+   * nuevo" en la paleta de comandos).
+   *
+   * Antes ese comando solo NAVEGABA a /notas y dejaba al usuario buscando
+   * dónde escribir — el mismo problema que tenían todos los comandos de la
+   * paleta: parecían acciones y solo eran enlaces.
+   *
+   * Se escucha también `hashchange` porque, estando ya en /notas, Next no
+   * remonta nada al navegar al mismo sitio con otro hash.
+   */
+  useEffect(() => {
+    const enfocarSiToca = () => {
+      if (window.location.hash !== "#capturar") return;
+      inputRef.current?.focus();
+      inputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    enfocarSiToca();
+    window.addEventListener("hashchange", enfocarSiToca);
+    return () => window.removeEventListener("hashchange", enfocarSiToca);
+  }, []);
+
+  /**
+   * Ctrl/Cmd+Enter guarda. En un `<input>` de una línea, Enter enviaba el
+   * formulario solo; al pasar a textarea, Enter tiene que hacer lo que se
+   * espera en un textarea (salto de línea) — sin este atajo, guardar
+   * obligaría a soltar el teclado e ir al botón con el ratón.
+   */
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      formRef.current?.requestSubmit();
+    }
+  }
+
   const saved = state.saved ? presentCategory(state.saved.categoria) : null;
 
   return (
@@ -67,33 +104,51 @@ export function CaptureForm({ puedeGrabar }: { puedeGrabar: boolean }) {
         <PenLine aria-hidden size={14} /> Anotar algo
       </h2>
 
-      <form ref={formRef} action={formAction} className="flex flex-col gap-2 sm:flex-row">
+      <form ref={formRef} action={formAction} className="flex flex-col gap-2">
         <label htmlFor="contenido" className="sr-only">
           Escribe una idea, tarea, pregunta o recordatorio
         </label>
-        <Input
+        {/* Textarea y no `<input>`: era de UNA línea, así que pegar un
+            párrafo o escribir algo con varios puntos era incómodo hasta el
+            punto de empujar a abrir Telegram para dictarlo. Crece con el
+            contenido (`field-sizing-content`) en vez de dejar un bloque
+            grande vacío ocupando la pantalla al entrar. */}
+        <Textarea
           ref={inputRef}
           id="contenido"
           name="contenido"
-          type="text"
           required
+          rows={2}
           placeholder="Una idea, una tarea, un recordatorio…"
-          aria-describedby={state.error ? "captura-error" : undefined}
+          aria-describedby={state.error ? "captura-error" : "captura-atajo"}
           onChange={() => setDismissed(true)}
-          className="flex-1"
+          onKeyDown={handleKeyDown}
+          className="field-sizing-content max-h-60 min-h-[calc(2lh+1.25rem)] resize-none"
         />
-        <VoiceButton puedeGrabar={puedeGrabar} onTranscript={handleTranscript} />
-        <Button type="submit" disabled={pending} className={justSaved ? "bg-accent-strong" : ""}>
-          {pending ? (
-            "Guardando…"
-          ) : justSaved ? (
-            <>
-              <Check aria-hidden size={16} /> Guardado
-            </>
-          ) : (
-            "Guardar"
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <p id="captura-atajo" className="mr-auto hidden text-xs text-muted sm:block">
+            <kbd className="rounded border border-paper-line bg-paper px-1 py-0.5 font-mono text-[10px]">
+              {esMac ? "⌘" : "Ctrl"}
+            </kbd>{" "}
+            +{" "}
+            <kbd className="rounded border border-paper-line bg-paper px-1 py-0.5 font-mono text-[10px]">
+              Enter
+            </kbd>{" "}
+            para guardar
+          </p>
+          <VoiceButton puedeGrabar={puedeGrabar} onTranscript={handleTranscript} />
+          <Button type="submit" disabled={pending} className={justSaved ? "bg-accent-strong" : ""}>
+            {pending ? (
+              "Guardando…"
+            ) : justSaved ? (
+              <>
+                <Check aria-hidden size={16} /> Guardado
+              </>
+            ) : (
+              "Guardar"
+            )}
+          </Button>
+        </div>
       </form>
 
       {state.error && (

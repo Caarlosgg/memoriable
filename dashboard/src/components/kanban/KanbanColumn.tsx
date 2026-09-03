@@ -30,6 +30,12 @@ interface KanbanColumnProps {
   columna: ColumnaTablero;
   /** Sin filtrar todavía — el filtrado ocurre aquí dentro (ver `useMemo` más abajo), no en KanbanBoard. */
   messages: Message[];
+  /**
+   * Total real de la columna cuando el servidor ha recortado la lista
+   * ("Hecho" se corta a las 50 más recientes, ver getBoardGroups). Ausente
+   * en el caso normal, que es tenerlas todas.
+   */
+  totalReal?: number;
   density: KanbanDensity;
   members?: WorkspaceMemberInfo[];
   currentUserId: string;
@@ -72,6 +78,7 @@ interface KanbanColumnProps {
 function KanbanColumnImpl({
   columna,
   messages,
+  totalReal,
   density,
   members,
   currentUserId,
@@ -255,8 +262,14 @@ function KanbanColumnImpl({
               <Pencil aria-hidden size={12} />
             </button>
           )}
-          <span className="ml-auto rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-muted">
-            {filtered.length}
+          {/* Si la columna viene recortada del servidor ("Hecho" se corta a
+              las 50 más recientes), se dice — antes ponía "50" a secas, sin
+              distinguir entre tener exactamente 50 y tener 400. */}
+          <span
+            className="ml-auto rounded-full bg-paper-line/60 px-2 py-0.5 text-xs font-medium text-muted"
+            title={totalReal ? `Se muestran las ${filtered.length} más recientes de ${totalReal}` : undefined}
+          >
+            {totalReal ? `${filtered.length} de ${totalReal}` : filtered.length}
           </span>
         </h3>
       )}

@@ -115,6 +115,16 @@ export function KanbanBoard({
   );
 
   /**
+   * Total real por columna cuando el servidor recortó la lista. NO va en
+   * estado: es un dato del servidor que no se toca de forma optimista —
+   * mover una tarjeta no cambia cuántas hay en total en "Hecho" de una
+   * manera que merezca la pena predecir aquí.
+   */
+  const totalPorColumna = Object.fromEntries(
+    initialColumns.flatMap((c) => (c.totalReal ? [[c.columnaId, c.totalReal] as const] : [])),
+  );
+
+  /**
    * Resincroniza las tarjetas cuando el servidor manda un JUEGO DE COLUMNAS
    * distinto.
    *
@@ -953,6 +963,7 @@ export function KanbanBoard({
                   columna={columnaMostrada}
                   canReorder={puedeReordenar}
                   messages={byEstado[columna.id] ?? EMPTY_LIST}
+                  totalReal={totalPorColumna[columna.id]}
                   density={density}
                   members={members}
                   currentUserId={currentUserId}
