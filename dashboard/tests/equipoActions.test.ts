@@ -32,6 +32,11 @@ vi.mock("@/lib/workspace", () => ({
 }));
 
 const createNotification = vi.fn();
+const logActivity = vi.fn();
+vi.mock("@/lib/activityLog", () => ({
+  logActivity: (...args: unknown[]) => logActivity(...args),
+}));
+
 vi.mock("@/lib/notifications", () => ({
   createNotification: (...args: unknown[]) => createNotification(...args),
 }));
@@ -89,6 +94,8 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 beforeEach(() => {
+  logActivity.mockReset();
+  logActivity.mockResolvedValue(undefined);
   revalidatePath.mockReset();
   setActiveWorkspaceCookie.mockReset();
   createPersonalWorkspace.mockReset();
@@ -586,5 +593,64 @@ describe("getWorkspaceMembers", () => {
       { userId: "u1", email: "yo@example.com", role: "OWNER", status: "ACTIVE", isSelf: true, accountPending: false },
       { userId: "u2", email: "compi@example.com", role: "MEMBER", status: "ACTIVE", isSelf: false, accountPending: true },
     ]);
+  });
+});
+
+/**
+ * Auditoría de las tres acciones que NO dejaban rastro. Echar a alguien es
+ * la acción más sensible del producto, y era justo la única sin registrar
+ * — invitar, añadir, cambiar de rol y transferir la propiedad sí lo
+ * estaban.
+ */
+describe("registro de actividad de las acciones sensibles", () => {
+  it("quitar a alguien del equipo queda registrado, con el rol que tenía", async () => {
+    membershipFindUnique
+      .mockResolvedValueOnce({ userId: "u1", workspaceId: "ws1", role: "OWNER", status: "ACTIVE" })
+      .mockResolvedValueOnce({ userId: "u2", workspaceId: "ws1", role: "MEMBER", status: "ACTIVE" });
+    transaction.mockResolvedValue([]);
+    const { removeMember } = await import("../src/app/(dashboard)/equipo/actions");
+
+    expect(await removeMember("ws1", "u2")).toEqual({});
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ tipo: "miembro_expulsado", entidadId: "u2", detalle: { role: "MEMBER" } }),
+    );
+  });
+
+  it("salirse del equipo también se registra: el resto tiene que saber por qué hay tareas sin asignar", async () => {
+    membershipFindUnique.mockResolvedValue({
+      role: "MEMBER",
+      status: "ACTIVE",
+      workspace: { personal: false },
+    });
+    transaction.mockResolvedValue([]);
+    const { leaveWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+
+    expect(await leaveWorkspace("ws1")).toEqual({});
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ tipo: "miembro_salio" }));
+  });
+
+  it("renombrar el equipo guarda el nombre ANTERIOR: sin él la entrada no dice nada", async () => {
+    membershipFindUnique.mockResolvedValue({ userId: "u1", workspaceId: "ws1", role: "OWNER", status: "ACTIVE" });
+    workspaceFindUnique.mockResolvedValue({ personal: false, nombre: "Antiguo" });
+    workspaceUpdate.mockResolvedValue({});
+    const { renameWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+
+    expect(await renameWorkspace("ws1", "Obrador")).toEqual({});
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipo: "equipo_renombrado",
+        detalle: { antes: "Antiguo", ahora: "Obrador" },
+      }),
+    );
+  });
+
+  it("un fallo al registrar NO tumba la acción: la auditoría es best-effort", async () => {
+    logActivity.mockRejectedValue(new Error("BD caída"));
+    membershipFindUnique.mockResolvedValue({ userId: "u1", workspaceId: "ws1", role: "OWNER", status: "ACTIVE" });
+    workspaceFindUnique.mockResolvedValue({ personal: false, nombre: "Antiguo" });
+    workspaceUpdate.mockResolvedValue({});
+    const { renameWorkspace } = await import("../src/app/(dashboard)/equipo/actions");
+
+    expect(await renameWorkspace("ws1", "Obrador")).toEqual({});
   });
 });

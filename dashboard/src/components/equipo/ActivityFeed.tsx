@@ -1,4 +1,4 @@
-import { History, StickyNote, CircleCheck, UserRound, UserPlus, ShieldCheck, Crown } from "lucide-react";
+import { History, StickyNote, CircleCheck, UserRound, UserPlus, UserMinus, ShieldCheck, Crown, Pencil, LogOut } from "lucide-react";
 import { listActivity } from "@/lib/activityLog";
 import { formatDate } from "@/lib/format";
 
@@ -10,6 +10,11 @@ const TIPO_LABEL: Record<string, { texto: string; Icon: typeof History }> = {
   miembro_añadido: { texto: "añadió a alguien al equipo", Icon: UserPlus },
   rol_cambiado: { texto: "cambió el rol de alguien", Icon: ShieldCheck },
   propiedad_transferida: { texto: "transfirió la propiedad del equipo", Icon: Crown },
+  // Las tres de abajo no se registraban: echar a alguien —la acción más
+  // sensible del producto— no dejaba rastro ninguno.
+  miembro_expulsado: { texto: "quitó a alguien del equipo", Icon: UserMinus },
+  miembro_salio: { texto: "salió del equipo", Icon: LogOut },
+  equipo_renombrado: { texto: "renombró el equipo", Icon: Pencil },
 };
 
 function activityLabel(tipo: string): string {

@@ -112,10 +112,25 @@ export async function renameWorkspace(workspaceId: string, nombre: string): Prom
       return { error: "No tienes permiso para renombrar este equipo." };
     }
 
-    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { personal: true } });
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { personal: true, nombre: true },
+    });
     if (!workspace || workspace.personal) return { error: "No se ha encontrado ese equipo." };
 
     await prisma.workspace.update({ where: { id: workspaceId }, data: { nombre: trimmed } });
+
+    // Con el nombre ANTERIOR: "renombrado a Obrador" no dice nada si no se
+    // sabe cómo se llamaba antes — y el equipo entero ve el cambio.
+    logActivity({
+      workspaceId,
+      userId,
+      tipo: "equipo_renombrado",
+      entidad: "workspace",
+      entidadId: workspaceId,
+      detalle: { antes: workspace.nombre, ahora: trimmed },
+    }).catch(() => {});
+
     revalidatePath("/equipo");
     revalidatePath("/", "layout");
     return {};
@@ -375,6 +390,19 @@ export async function removeMember(workspaceId: string, targetUserId: string): P
       prisma.evento.updateMany({ where: { workspaceId, assigneeId: targetUserId }, data: { assigneeId: null } }),
     ]);
 
+    // Echar a alguien es la acción MÁS sensible del producto y era la única
+    // que no dejaba rastro: invitar, añadir, cambiar de rol y transferir la
+    // propiedad sí se registraban. Se anota el rol que tenía, que es el
+    // dato que hace falta para entender lo que pasó al leer el historial.
+    logActivity({
+      workspaceId,
+      userId,
+      tipo: "miembro_expulsado",
+      entidad: "membership",
+      entidadId: targetUserId,
+      detalle: { role: target.role },
+    }).catch(() => {});
+
     revalidatePath("/equipo");
     revalidatePath("/pendientes");
     revalidatePath("/calendario");
@@ -418,6 +446,18 @@ export async function leaveWorkspace(workspaceId: string): Promise<MembershipAct
       prisma.message.updateMany({ where: { workspaceId, assigneeId: userId }, data: { assigneeId: null } }),
       prisma.evento.updateMany({ where: { workspaceId, assigneeId: userId }, data: { assigneeId: null } }),
     ]);
+
+    // Se registra AUNQUE la persona ya no esté en el equipo: el historial
+    // es del workspace, no de quien lo escribe, y el resto del equipo tiene
+    // que poder ver por qué de pronto hay tareas sin asignar.
+    logActivity({
+      workspaceId,
+      userId,
+      tipo: "miembro_salio",
+      entidad: "membership",
+      entidadId: userId,
+      detalle: { role: membership.role },
+    }).catch(() => {});
 
     revalidatePath("/", "layout");
     return {};
