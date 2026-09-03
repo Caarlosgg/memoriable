@@ -5,12 +5,10 @@ import type { WorkspaceRole } from "@prisma/client";
 import { UserPlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { addMemberByEmail, type AddMemberResult } from "@/app/(dashboard)/equipo/actions";
 
 const initialState: AddMemberResult = {};
-
-const SELECT_CLASSNAME =
-  "rounded-lg border border-paper-line bg-paper px-2.5 py-2 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
 
 export function AddMemberForm({ workspaceId }: { workspaceId: string }) {
   const action = async (_prev: AddMemberResult, formData: FormData): Promise<AddMemberResult> => {
@@ -37,11 +35,11 @@ export function AddMemberForm({ workspaceId }: { workspaceId: string }) {
         <label htmlFor={`add-role-${workspaceId}`} className="sr-only">
           Rol de la persona a añadir
         </label>
-        <select id={`add-role-${workspaceId}`} name="role" defaultValue="MEMBER" className={SELECT_CLASSNAME}>
+        <Select id={`add-role-${workspaceId}`} name="role" defaultValue="MEMBER">
           <option value="MEMBER">Miembro</option>
           <option value="ADMIN">Administrador</option>
           <option value="VIEWER">Solo lectura</option>
-        </select>
+        </Select>
         <Button type="submit" variant="secondary" size="sm" disabled={pending}>
           <UserPlus aria-hidden size={14} /> {pending ? "Añadiendo…" : "Añadir"}
         </Button>

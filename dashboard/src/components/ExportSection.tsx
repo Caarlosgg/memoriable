@@ -6,6 +6,7 @@ import { exportData, type ExportFormat } from "@/app/(dashboard)/cuenta/actions"
 import type { ExportScope } from "@/lib/exportData";
 import { CATEGORIES, CATEGORY_PRESENTATION, isCategory } from "@/lib/categories";
 import { Button } from "./ui/button";
+import { Select } from "@/components/ui/select";
 
 /** Tipo MIME por formato — el de Obsidian es el único binario (un .zip). */
 const MIME_BY_FORMAT: Record<ExportFormat, string> = {
@@ -28,9 +29,6 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
-
-const SELECT_CLASSNAME =
-  "rounded-lg border border-paper-line bg-paper px-3 py-2.5 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
 
 type ScopeValue = "todo" | "notas" | string;
 
@@ -98,14 +96,13 @@ export function ExportSection() {
         otro sitio.
       </p>
       <div className="flex flex-wrap gap-2">
-        <select
+        <Select
           value={scope}
           onChange={(e) => {
             setScope(e.target.value);
             resetFeedback();
           }}
           aria-label="Qué exportar"
-          className={SELECT_CLASSNAME}
         >
           <option value="todo">Todo (notas, calendario, ahorros)</option>
           <option value="notas">Solo notas y tareas</option>
@@ -114,21 +111,20 @@ export function ExportSection() {
               Solo {CATEGORY_PRESENTATION[c].label.toLowerCase()}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           value={format}
           onChange={(e) => {
             setFormat(e.target.value as ExportFormat);
             resetFeedback();
           }}
           aria-label="Formato de exportación"
-          className={SELECT_CLASSNAME}
         >
           <option value="markdown">Markdown</option>
           <option value="json">JSON</option>
           <option value="csv">CSV (hoja de cálculo)</option>
           <option value="obsidian">Vault de Obsidian (.zip)</option>
-        </select>
+        </Select>
         <Button type="button" onClick={handleExport} disabled={pending}>
           {pending ? (
             "Generando…"

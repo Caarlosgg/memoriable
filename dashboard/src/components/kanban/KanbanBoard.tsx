@@ -65,11 +65,9 @@ import { KanbanColumn } from "./KanbanColumn";
 import { KanbanCardContent } from "./KanbanCard";
 import { useKanbanDensity } from "./useKanbanDensity";
 import { GestionColumnasDialog } from "./GestionColumnasDialog";
+import { Select } from "@/components/ui/select";
 
 /** Mismas clases en ambos selects del filtro — un único sitio para que se vean iguales. */
-const FILTER_CLASSNAME =
-  "rounded-lg border border-paper-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
-
 /** Separación entre dos vecinas al insertar una tarjeta en un extremo (indexado fraccionario). */
 const ORDEN_STEP = 1000;
 
@@ -213,7 +211,7 @@ export function KanbanBoard({
     "todas",
   );
   // "todas" | "sin-asignar" | un userId — solo tiene sentido en modo equipo
-  // (con `members`), ver el <select> condicional más abajo.
+  // (con `members`), ver el <Select> condicional más abajo.
   const [filtroAsignado, setFiltroAsignado] = useState<string>(
     asignadoInicial ?? "todas",
   );
@@ -823,13 +821,12 @@ export function KanbanBoard({
       <div className="flex flex-wrap items-center gap-2">
         {/* Primero de la fila: es el filtro más "de intención" (qué vengo a
             resolver), y el que llega puesto desde las cifras de Inicio. */}
-        <select
+        <Select
           value={vista}
           onChange={(e) => setVista(e.target.value as VistaTablero)}
           aria-label="Vista rápida del tablero"
           className={cn(
-            FILTER_CLASSNAME,
-            vista !== "todas" && "border-accent text-accent-strong",
+                        vista !== "todas" && "border-accent text-accent-strong",
           )}
         >
           {VISTAS_TABLERO.filter((v) => v !== "mias" || members.length > 0).map(
@@ -839,14 +836,13 @@ export function KanbanBoard({
               </option>
             ),
           )}
-        </select>
-        <select
+        </Select>
+        <Select
           value={filtroCategoria}
           onChange={(e) =>
             setFiltroCategoria(e.target.value as Category | "todas")
           }
           aria-label="Filtrar el tablero por categoría"
-          className={FILTER_CLASSNAME}
         >
           <option value="todas">Cualquier categoría</option>
           {CATEGORIES.map((c) => (
@@ -854,14 +850,13 @@ export function KanbanBoard({
               {CATEGORY_PRESENTATION[c].label}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           value={filtroPrioridad}
           onChange={(e) =>
             setFiltroPrioridad(e.target.value as Prioridad | "todas")
           }
           aria-label="Filtrar el tablero por prioridad"
-          className={FILTER_CLASSNAME}
         >
           <option value="todas">Cualquier prioridad</option>
           {PRIORIDADES.map((p) => (
@@ -869,13 +864,12 @@ export function KanbanBoard({
               {PRIORIDAD_PRESENTATION[p].label}
             </option>
           ))}
-        </select>
+        </Select>
         {members.length > 0 && (
-          <select
+          <Select
             value={filtroAsignado}
             onChange={(e) => setFiltroAsignado(e.target.value)}
             aria-label="Filtrar el tablero por persona asignada"
-            className={FILTER_CLASSNAME}
           >
             <option value="todas">Cualquier persona</option>
             <option value="sin-asignar">Sin asignar</option>
@@ -884,7 +878,7 @@ export function KanbanBoard({
                 {m.email}
               </option>
             ))}
-          </select>
+          </Select>
         )}
         {hasFilters && (
           <button

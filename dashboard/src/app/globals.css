@@ -388,3 +388,150 @@ body {
     animation: none;
   }
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * CAPA DE MOVIMIENTO
+ * ---------------------------------------------------------------------------
+ * Hasta aquí la app entera tenía UN `transition-all` y UN `duration-*`: solo
+ * animaba el color de fondo al hover. Eso es exactamente lo que hace que una
+ * interfaz correcta se sienta muerta — nada confirma que tu acción ha
+ * ocurrido, las listas saltan al añadir o quitar, y los números cambian de
+ * golpe sin que el ojo lo registre.
+ *
+ * Todo lo de abajo respeta `prefers-reduced-motion` (bloque al final).
+ */
+
+/* Entrada escalonada de una lista: cada elemento entra un pelín después que
+   el anterior, así el ojo sigue el orden en vez de recibir todo de golpe.
+   El índice lo pone cada elemento con `style={{ '--i': n }}`.
+
+   COMPONIBLE a propósito: solo aporta el RETRASO, no una animación propia.
+   Los elementos de lista ya suelen traer la suya (`.fade-in` en
+   MessageCard, por ejemplo) — declarar aquí otra `animation` la pisaría,
+   porque la propiedad es una sola. Así las dos cosas se suman en vez de
+   competir. */
+.stagger > * {
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* Elementos que NO traen animación propia: se les da la de entrada estándar
+   para que el escalonado tenga algo que retrasar. */
+.stagger > *:not(.fade-in) {
+  animation: fade-in-up var(--duration-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* Confirmación de "hecho": un pulso corto de acento. Es la respuesta visual
+   que faltaba al completar una tarea — antes el cambio era instantáneo y no
+   quedaba claro que hubiera pasado algo. */
+@keyframes done-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 14px transparent;
+  }
+}
+
+.confirm-done {
+  animation: done-pulse 0.55s var(--ease-out) both;
+}
+
+/* Elemento que acaba de aparecer por una acción del usuario (una nota
+   recién capturada, un comentario recién publicado): un destello suave que
+   dice "esto es lo nuevo" sin robar el foco. */
+@keyframes just-added {
+  0% {
+    background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.just-added {
+  animation: just-added 1.4s var(--ease-out) both;
+}
+
+/* Toast: entra desde abajo con un punto de rebote, sale sin él (salir con
+   rebote se lee como un error). */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.98);
+  }
+}
+
+.toast-in {
+  animation: toast-in var(--duration-slow) var(--ease-spring) both;
+}
+
+.toast-out {
+  animation: toast-out var(--duration-base) var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger > *,
+  .stagger > *:not(.fade-in),
+  .confirm-done,
+  .just-added,
+  .toast-in,
+  .toast-out {
+    animation: none;
+  }
+}
+
+/*
+ * Conteo animado de una cifra, SIN JavaScript: `@property` hace que
+ * `--num` sea un entero interpolable, así que se puede animar como
+ * cualquier propiedad, y `counter()` lo pinta. Sin esto habría que
+ * convertir `StatTile` en componente de cliente y meter un temporizador
+ * solo para esto.
+ *
+ * El número real vive aparte en un `sr-only` (ver StatTile.tsx): lo que
+ * genera `content` no siempre lo anuncian los lectores de pantalla, así
+ * que esta parte es puramente visual y va `aria-hidden`.
+ */
+@property --num {
+  syntax: "<integer>";
+  initial-value: 0;
+  inherits: false;
+}
+
+@keyframes count-up {
+  from {
+    --num: 0;
+  }
+}
+
+.count-up {
+  --num: var(--target, 0);
+  animation: count-up var(--duration-slow) var(--ease-out) both;
+  counter-reset: num var(--num);
+}
+
+.count-up::after {
+  content: counter(num);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count-up {
+    animation: none;
+  }
+}

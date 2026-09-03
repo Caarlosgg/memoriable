@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Message, EstadoTarea, Prioridad } from "@prisma/client";
-import { Search, Tag } from "lucide-react";
+import { Search, Tag, StickyNote } from "lucide-react";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import { CATEGORIES, CATEGORY_PRESENTATION, presentCategory, type Category } from "@/lib/categories";
 import { ESTADOS_TABLERO, ESTADO_PRESENTATION, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
@@ -11,12 +11,10 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { MessageCard } from "./MessageCard";
 import { MessageDetailDialog } from "./MessageDetailDialog";
+import { Select } from "./ui/select";
+import { EmptyState } from "./ui/empty-state";
 
 const DEBOUNCE_MS = 300;
-
-/** Mismas clases en todos los selects/fechas del filtro — un único sitio para que se vean iguales. */
-const FILTER_CLASSNAME =
-  "rounded-lg border border-paper-line bg-paper px-3 py-2.5 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
 
 interface Filters {
   categoria: Category | "todos";
@@ -98,6 +96,13 @@ export function NotesExplorer({
 
   const hasActiveFilters = query !== "" || etiqueta !== "" || !isDefaultFilters(filters);
 
+  /** Devuelve la vista a "sin filtrar": lo piden tanto el botón de la barra como el estado vacío de "no coincide nada". */
+  function limpiarFiltros() {
+    setInput("");
+    setEtiquetaInput("");
+    setFilters(INITIAL_FILTERS);
+  }
+
   useEffect(() => {
     if (!hasActiveFilters) return;
 
@@ -153,11 +158,10 @@ export function NotesExplorer({
         />
 
         <div className="flex flex-wrap gap-2">
-          <select
+          <Select
             value={filters.categoria}
             onChange={(e) => setFilters((f) => ({ ...f, categoria: e.target.value as Filters["categoria"] }))}
             aria-label="Filtrar por categoría"
-            className={FILTER_CLASSNAME}
           >
             <option value="todos">Cualquier categoría</option>
             {CATEGORIES.map((c) => (
@@ -165,12 +169,11 @@ export function NotesExplorer({
                 {CATEGORY_PRESENTATION[c].label}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             value={filters.estado}
             onChange={(e) => setFilters((f) => ({ ...f, estado: e.target.value as Filters["estado"] }))}
             aria-label="Filtrar por estado"
-            className={FILTER_CLASSNAME}
           >
             <option value="todos">Cualquier estado</option>
             {ESTADOS_TABLERO.map((estado) => (
@@ -178,12 +181,11 @@ export function NotesExplorer({
                 {ESTADO_PRESENTATION[estado].label}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             value={filters.prioridad}
             onChange={(e) => setFilters((f) => ({ ...f, prioridad: e.target.value as Filters["prioridad"] }))}
             aria-label="Filtrar por prioridad"
-            className={FILTER_CLASSNAME}
           >
             <option value="todos">Cualquier prioridad</option>
             {PRIORIDADES.map((p) => (
@@ -191,20 +193,18 @@ export function NotesExplorer({
                 {PRIORIDAD_PRESENTATION[p].label}
               </option>
             ))}
-          </select>
+          </Select>
           <input
             type="date"
             value={filters.desde}
             onChange={(e) => setFilters((f) => ({ ...f, desde: e.target.value }))}
             aria-label="Desde qué fecha"
-            className={FILTER_CLASSNAME}
           />
           <input
             type="date"
             value={filters.hasta}
             onChange={(e) => setFilters((f) => ({ ...f, hasta: e.target.value }))}
             aria-label="Hasta qué fecha"
-            className={FILTER_CLASSNAME}
           />
           <div className="relative">
             <Tag
@@ -218,20 +218,11 @@ export function NotesExplorer({
               onChange={(e) => setEtiquetaInput(e.target.value)}
               placeholder="etiqueta"
               aria-label="Filtrar por etiqueta"
-              className={`${FILTER_CLASSNAME} w-28 pl-7`}
+              className="w-28 pl-7 text-sm"
             />
           </div>
           {hasActiveFilters && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setInput("");
-                setEtiquetaInput("");
-                setFilters(INITIAL_FILTERS);
-              }}
-            >
+            <Button type="button" variant="ghost" size="sm" onClick={limpiarFiltros}>
               Quitar filtros
             </Button>
           )}
@@ -239,12 +230,15 @@ export function NotesExplorer({
       </div>
 
       {!hasActiveFilters && !hasAnyMessages && (
-        <div className="rounded-xl border border-dashed border-paper-line bg-paper-raised/60 p-8 text-center">
-          <p className="text-muted">
-            Todavía no hay ningún mensaje guardado. Escríbele algo al bot de
-            Telegram y aparecerá aquí, categorizado y resumido.
-          </p>
-        </div>
+        /* El campo de captura está JUSTO ARRIBA en esta misma pantalla, así
+           que se señala eso primero: antes este vacío mandaba al bot de
+           Telegram como si fuera la única vía, y quien no quería usar
+           Telegram concluía que la aplicación no era para él. */
+        <EmptyState
+          Icon={StickyNote}
+          title="Aquí aparecerán tus notas"
+          description="Escribe la primera ahí arriba y la IA la categoriza y resume sola. También puedes mandársela al bot de Telegram desde el móvil."
+        />
       )}
 
       {!hasActiveFilters && hasAnyMessages && (
@@ -286,23 +280,38 @@ export function NotesExplorer({
       )}
 
       {hasActiveFilters && status === "done" && fetchState.results.length === 0 && (
-        <p className="rounded-lg border border-dashed border-paper-line p-4 text-sm text-muted">
-          No he encontrado nada que coincida. Prueba con otra palabra o quita algún filtro.
-        </p>
+        <EmptyState
+          Icon={Search}
+          title="Nada coincide con eso"
+          description="Prueba con otra palabra o quita algún filtro."
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={limpiarFiltros}>
+              Quitar los filtros
+            </Button>
+          }
+        />
       )}
 
       {hasActiveFilters && status === "done" && fetchState.results.length > 0 && (
-        <ul className="flex flex-col gap-3">
+        /* `stagger`: los resultados entran escalonados (ver globals.css) en
+           vez de aparecer todos de golpe — el ojo sigue el orden de
+           relevancia en lugar de recibir un bloque entero de una vez. */
+        <ul className="stagger flex flex-col gap-3">
           {fetchState.results
             .filter((message) => !hiddenIds.has(message.id))
-            .map((message) => (
+            .map((message, i) => (
               <MessageDetailDialog
                 key={message.id}
                 message={message}
                 onDeleted={hideMessage}
                 onUndoDelete={unhideMessage}
               >
-                <MessageCard message={message} highlightQuery={query} className="cursor-pointer" />
+                <MessageCard
+                  message={message}
+                  highlightQuery={query}
+                  className="cursor-pointer"
+                  style={{ "--i": i } as React.CSSProperties}
+                />
               </MessageDetailDialog>
             ))}
         </ul>

@@ -35,14 +35,21 @@ export function StatTile({
   return (
     <Link
       href={href}
-      className={`flex flex-col gap-1 rounded-2xl border p-4 transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${tonos.caja}`}
+      className={`flex flex-col gap-1 rounded-xl border p-4 shadow-xs transition-all duration-base hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none motion-reduce:hover:translate-y-0 ${tonos.caja}`}
     >
       <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
         <Icon aria-hidden size={14} className={tonos.icono} />
         {label}
       </span>
-      {/* La cifra manda: grande y tabular para que no "baile" al cambiar. */}
-      <span className={`font-display text-3xl leading-none font-semibold tabular-nums ${tonos.cifra}`}>{value}</span>
+      {/* La cifra manda: grande y tabular para que no "baile" al cambiar.
+          Cuenta desde cero al aparecer (CSS puro, ver `.count-up` en
+          globals.css). El número REAL va en el `sr-only`: lo que genera
+          `content` no siempre lo anuncia un lector de pantalla, así que la
+          parte animada es puramente visual. */}
+      <span className={`font-display text-3xl leading-none font-semibold tabular-nums ${tonos.cifra}`}>
+        <span className="sr-only">{value}</span>
+        <span aria-hidden className="count-up" style={{ "--target": value } as React.CSSProperties} />
+      </span>
     </Link>
   );
 }

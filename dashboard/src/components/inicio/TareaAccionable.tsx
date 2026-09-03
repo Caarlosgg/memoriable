@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, CalendarClock, Loader2 } from "lucide-react";
 import { updateTaskStatus, postponeMessage } from "@/app/(dashboard)/actions";
 import { presentCategory } from "@/lib/categories";
+import { useUndoToast } from "@/components/UndoToast";
 
 /**
  * Fila de tarea de la pantalla de inicio que además SE PUEDE RESOLVER ahí
@@ -39,13 +40,18 @@ export function TareaAccionable({
   const [pending, startTransition] = useTransition();
   const [oculta, setOculta] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useUndoToast();
 
-  function ejecutar(accion: () => Promise<void>) {
+  function ejecutar(accion: () => Promise<void>, confirmacion: string) {
     setError(null);
     setOculta(true);
     startTransition(async () => {
       try {
         await accion();
+        // La fila desaparece al instante, así que sin esto nada confirma
+        // que la acción se haya guardado de verdad — solo se ve algo
+        // esfumarse. El toast es la señal que faltaba.
+        toast(confirmacion);
         // Refresca las CIFRAS de arriba además de la lista: dejar "Vencidas
         // 3" cuando acabas de cerrar una es justo la incoherencia que hace
         // desconfiar del panel.
@@ -59,14 +65,14 @@ export function TareaAccionable({
   }
 
   function marcarHecha() {
-    ejecutar(() => updateTaskStatus(id, "HECHO"));
+    ejecutar(() => updateTaskStatus(id, "HECHO"), "Hecho");
   }
 
   function aplazarAManana() {
     const manana = new Date();
     manana.setDate(manana.getDate() + 1);
     manana.setHours(9, 0, 0, 0);
-    ejecutar(() => postponeMessage(id, manana));
+    ejecutar(() => postponeMessage(id, manana), "Aplazada a mañana");
   }
 
   if (oculta && !error) return null;

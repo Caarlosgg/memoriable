@@ -13,6 +13,7 @@ import { shortEmailName } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { SkeletonText } from "@/components/ui/skeleton";
 
 /** Fecha relativa corta ("hace 5 min") — en un hilo importa cuánto hace, no el timestamp exacto. */
 function haceCuanto(iso: string): string {
@@ -128,7 +129,7 @@ export function ComentariosThread({
       </p>
 
       {cargando ? (
-        <div className="skeleton h-12 rounded-lg" aria-hidden />
+        <SkeletonText lines={2} />
       ) : comentarios.length === 0 ? (
         <p className="text-sm text-muted">
           Nadie ha comentado todavía. Menciona a alguien con @ para avisarle.

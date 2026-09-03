@@ -20,10 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-
-/** Mismas clases que el select de categoría en NotesExplorer.tsx, para que todos los selects se vean igual. */
-const SELECT_CLASSNAME =
-  "rounded-lg border border-paper-line bg-paper px-3 py-2.5 text-sm text-ink outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40";
+import { Select } from "./ui/select";
 
 export interface EditableFields {
   resumen: string;
@@ -471,9 +468,8 @@ export function MessageDetailDialog({
                 <label htmlFor="detalle-categoria" className="text-sm font-medium text-ink">
                   Categoría
                 </label>
-                <select
+                <Select
                   id="detalle-categoria"
-                  className={SELECT_CLASSNAME}
                   value={fields.categoria}
                   onChange={(e) => setFields((f) => ({ ...f, categoria: e.target.value }))}
                 >
@@ -482,7 +478,7 @@ export function MessageDetailDialog({
                       {CATEGORY_PRESENTATION[c].label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               {esAccionable(fields.categoria) && (
                 <>
@@ -490,9 +486,8 @@ export function MessageDetailDialog({
                     <label htmlFor="detalle-estado" className="text-sm font-medium text-ink">
                       Estado
                     </label>
-                    <select
+                    <Select
                       id="detalle-estado"
-                      className={SELECT_CLASSNAME}
                       value={fields.estado}
                       onChange={(e) => setFields((f) => ({ ...f, estado: e.target.value as Message["estado"] }))}
                     >
@@ -501,15 +496,14 @@ export function MessageDetailDialog({
                           {ESTADO_PRESENTATION[estado].label}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label htmlFor="detalle-prioridad" className="text-sm font-medium text-ink">
                       Prioridad
                     </label>
-                    <select
+                    <Select
                       id="detalle-prioridad"
-                      className={SELECT_CLASSNAME}
                       value={fields.prioridad}
                       onChange={(e) => setFields((f) => ({ ...f, prioridad: e.target.value as Message["prioridad"] }))}
                     >
@@ -518,7 +512,7 @@ export function MessageDetailDialog({
                           {PRIORIDAD_PRESENTATION[p].label}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </>
               )}
@@ -534,9 +528,8 @@ export function MessageDetailDialog({
                 <label htmlFor="detalle-categoria-propia" className="text-sm font-medium text-ink">
                   Categoría propia
                 </label>
-                <select
+                <Select
                   id="detalle-categoria-propia"
-                  className={SELECT_CLASSNAME}
                   value={fields.customCategoryId ?? ""}
                   onChange={(e) => setFields((f) => ({ ...f, customCategoryId: e.target.value || null }))}
                 >
@@ -547,7 +540,7 @@ export function MessageDetailDialog({
                       {c.nombre}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             )}
             {esAccionable(fields.categoria) && (
@@ -604,16 +597,16 @@ export function MessageDetailDialog({
                     aria-label={`Nombre del campo extra ${i + 1}`}
                     className="flex-1"
                   />
-                  <select
+                  <Select
                     value={campo.tipo}
                     onChange={(e) => updateCampoExtra(i, { tipo: e.target.value as CampoExtra["tipo"] })}
                     aria-label={`Tipo del campo extra ${i + 1}`}
-                    className={`${SELECT_CLASSNAME} shrink-0`}
+                    className="shrink-0"
                   >
                     <option value="texto">Texto</option>
                     <option value="numero">Número</option>
                     <option value="fecha">Fecha</option>
-                  </select>
+                  </Select>
                   <Input
                     type={campo.tipo === "numero" ? "number" : campo.tipo === "fecha" ? "date" : "text"}
                     value={campo.valor}
