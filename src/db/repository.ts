@@ -28,6 +28,12 @@ export interface StoredMessage extends IncomingMessage, Analysis {
    */
   workspaceNombre?: string;
   /**
+   * Fecha límite, si la tiene. La pone el usuario desde el dashboard o con
+   * "⏰ Aplazar" en Telegram; `null`/`undefined` es lo normal en una nota
+   * que no vence.
+   */
+  fechaLimite?: Date | null;
+  /**
    * Etiqueta propia del usuario (Fase 3 del roadmap: "categorías
    * configurables"), APARTE de `categoria` — nunca la sustituye, ver el
    * comentario de `Message.customCategoryId` en schema.prisma. `undefined`
@@ -95,6 +101,53 @@ export interface MessageRepository {
    * `null` si el mensaje no existe o no es de este usuario.
    */
   setCustomCategory(userId: string, messageId: string, customCategoryId: string | null): Promise<StoredMessage | null>;
+  /**
+   * Cambia la fecha límite (o la quita, con `null`) — botón inline
+   * "⏰ Aplazar". Existía en el dashboard (`postponeMessage`) y no desde
+   * Telegram, que es justo donde llega el aviso de que algo vence: había
+   * que abrir la web para mover una fecha. `null` si el id no existe o no
+   * es de este usuario.
+   */
+  postpone(userId: string, messageId: string, fechaLimite: Date | null): Promise<StoredMessage | null>;
+  /**
+   * Borra una nota. Devuelve `true` si de verdad se borró algo — `false`
+   * para un id ajeno o inventado, sin lanzar (mismo criterio que el resto).
+   */
+  remove(userId: string, messageId: string): Promise<boolean>;
+  /**
+   * Una nota por id, solo si es de este usuario. Lectura pura: la usan los
+   * handlers que necesitan repintar la tarjeta sin escribir nada (p. ej.
+   * cancelar un borrado, que debe devolver el teclado que de verdad
+   * corresponde y no uno inventado). `null` si no existe o es ajena.
+   */
+  findById(userId: string, messageId: string): Promise<StoredMessage | null>;
+  /**
+   * Notas más parecidas POR SIGNIFICADO a un vector ya calculado — la mitad
+   * semántica de `/buscar`.
+   *
+   * Sin ella, buscar desde Telegram era `ILIKE` puro: "lo del fontanero" no
+   * encontraba "llamar al del agua", aunque la web sí lo encontrase. Que la
+   * misma búsqueda diera resultados distintos según por dónde entraras es lo
+   * que había que arreglar.
+   *
+   * Devuelve `[]` (nunca lanza) si no hay embeddings guardados o el vector
+   * viene vacío: la búsqueda de texto sigue funcionando sola.
+   */
+  searchSimilar(userId: string, queryEmbedding: number[], limit?: number): Promise<StoredMessage[]>;
+}
+
+/** Similitud coseno de dos vectores de la misma longitud. 0 si alguno es nulo. */
+function coseno(a: number[], b: number[]): number {
+  let producto = 0;
+  let normaA = 0;
+  let normaB = 0;
+  for (let i = 0; i < a.length; i++) {
+    producto += a[i]! * b[i]!;
+    normaA += a[i]! * a[i]!;
+    normaB += b[i]! * b[i]!;
+  }
+  const divisor = Math.sqrt(normaA) * Math.sqrt(normaB);
+  return divisor === 0 ? 0 : producto / divisor;
 }
 
 /**
@@ -154,6 +207,39 @@ export class InMemoryMessageRepository implements MessageRepository {
     if (!item) return null;
     item.customCategoryId = customCategoryId;
     return item;
+  }
+
+  async postpone(userId: string, messageId: string, fechaLimite: Date | null): Promise<StoredMessage | null> {
+    const item = this.findOwn(userId, messageId);
+    if (!item) return null;
+    item.fechaLimite = fechaLimite;
+    return item;
+  }
+
+  async remove(userId: string, messageId: string): Promise<boolean> {
+    const index = this.items.findIndex((m) => m.id === messageId && m.userId === userId);
+    if (index === -1) return false;
+    this.items.splice(index, 1);
+    return true;
+  }
+
+  async findById(userId: string, messageId: string): Promise<StoredMessage | null> {
+    return this.findOwn(userId, messageId) ?? null;
+  }
+
+  /**
+   * Similitud coseno a mano. La implementación real vive en pgvector; esto
+   * existe para que la simulación y los tests puedan ejercitar la búsqueda
+   * híbrida entera sin base de datos.
+   */
+  async searchSimilar(userId: string, queryEmbedding: number[], limit = 5): Promise<StoredMessage[]> {
+    if (queryEmbedding.length === 0) return [];
+    return this.forUser(userId)
+      .filter((m) => m.embedding && m.embedding.length === queryEmbedding.length)
+      .map((m) => ({ m, distancia: 1 - coseno(m.embedding!, queryEmbedding) }))
+      .sort((a, b) => a.distancia - b.distancia)
+      .slice(0, Math.max(0, limit))
+      .map(({ m }) => m);
   }
 
   private findOwn(userId: string, messageId: string): StoredMessage | undefined {

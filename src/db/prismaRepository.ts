@@ -33,12 +33,18 @@ export class PrismaMessageRepository implements MessageRepository {
       // restricción única compuesta — así de paso el `count` devuelto sirve
       // para saber si el id era ajeno/inventado, sin una consulta aparte.
       updateMany(args: unknown): Promise<{ count: number }>;
+      // `deleteMany` por el mismo motivo que `updateMany`: el `where` lleva
+      // id + userId, y el `count` dice si el id era ajeno sin otra consulta.
+      deleteMany(args: unknown): Promise<{ count: number }>;
     };
     // Solo para verificar propiedad en setCustomCategory — ver su comentario.
     customCategory: {
       findFirst(args: unknown): Promise<{ id: string } | null>;
     };
     $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
+    // Misma razón que $executeRaw: la similitud coseno sobre `embedding`
+    // (columna Unsupported) solo se puede consultar por SQL crudo.
+    $queryRaw<T>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   }> | null = null;
 
   private async getClient() {
@@ -211,5 +217,59 @@ export class PrismaMessageRepository implements MessageRepository {
     });
     if (count === 0) return null;
     return client.message.findFirst({ where: { id: messageId, userId } });
+  }
+
+  async postpone(
+    userId: string,
+    messageId: string,
+    fechaLimite: Date | null,
+  ): Promise<StoredMessage | null> {
+    const client = await this.getClient();
+    const { count } = await client.message.updateMany({
+      where: { id: messageId, userId },
+      data: { fechaLimite },
+    });
+    if (count === 0) return null;
+    return client.message.findFirst({ where: { id: messageId, userId } });
+  }
+
+  async remove(userId: string, messageId: string): Promise<boolean> {
+    const client = await this.getClient();
+    // `deleteMany` con userId en el propio `where`, no un `if` tras leer:
+    // mismo criterio que markDone/recategorize — un id ajeno simplemente
+    // no borra nada, en vez de hacerlo y comprobarlo después.
+    const { count } = await client.message.deleteMany({ where: { id: messageId, userId } });
+    return count > 0;
+  }
+
+  async findById(userId: string, messageId: string): Promise<StoredMessage | null> {
+    const client = await this.getClient();
+    return client.message.findFirst({ where: { id: messageId, userId } });
+  }
+
+  async searchSimilar(
+    userId: string,
+    queryEmbedding: number[],
+    limit: number = DEFAULT_SEARCH_LIMIT,
+  ): Promise<StoredMessage[]> {
+    if (queryEmbedding.length === 0) return [];
+    const client = await this.getClient();
+    // `embedding` es `Unsupported("vector(768)")`: Prisma lo excluye del
+    // cliente tipado, así que la similitud coseno (`<=>`) solo se puede
+    // consultar por SQL crudo. Se seleccionan las columnas una a una y NUNCA
+    // `SELECT *`, para no arrastrar el vector de 768 floats de vuelta.
+    //
+    // El filtro es por `userId` (no por workspace) porque es el mismo que
+    // usa `search()`: las dos mitades de la misma búsqueda tienen que ver lo
+    // mismo, o el resultado dependería de por cuál entró cada nota.
+    const literal = `[${queryEmbedding.join(',')}]`;
+    return client.$queryRaw<StoredMessage[]>`
+      SELECT "id", "tipo", "contenido", "categoria", "resumen", "hecho", "fecha", "userId", "fechaLimite", "customCategoryId"
+      FROM "messages"
+      WHERE "embedding" IS NOT NULL
+        AND "userId" = ${userId}
+      ORDER BY "embedding" <=> ${literal}::vector
+      LIMIT ${Math.max(0, limit)}
+    `;
   }
 }

@@ -48,9 +48,14 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
   del dashboard (`/vincular <código>`, generado desde "Cuenta" en el
   dashboard) — un chat sin vincular no guarda ni consulta nada, hasta que
   se vincula.
-- **Comandos de consulta**: `/buscar <texto>` (coincidencia de texto sobre
-  contenido y resumen) y `/pendientes` (tareas y recordatorios sin hacer),
-  con el menú publicado en Telegram vía `setMyCommands`.
+- **Comandos de consulta**: `/buscar <texto>` (búsqueda híbrida: coincidencia
+  literal primero, similitud por significado para rellenar) y `/pendientes`
+  (tareas y recordatorios sin hacer), con el menú publicado en Telegram vía
+  `setMyCommands`.
+- **El bot sabe dónde trabajas** (`/espacio`): elige si lo que le mandas se
+  guarda en tu espacio personal o en el de un equipo. Antes escribía SIEMPRE
+  en el personal, así que quien trabajaba en equipo dictaba notas al bot y su
+  equipo no las veía nunca.
 - **Resumen diario proactivo** (node-cron): a la hora configurable
   (`DAILY_SUMMARY_HOUR`) envía los pendientes y lo guardado el día anterior;
   idempotente ante reinicios del proceso.
@@ -173,10 +178,12 @@ npm run prisma:deploy
 | `GEMINI_API_KEY`        | API key de Gemini, para el embedding de cada mensaje (opcional) | — (sin ella, se guarda sin embedding) |
 | `GEMINI_MODEL`          | Modelo de embeddings a usar (opcional)                    | — (def. `gemini-embedding-001`) |
 | `MAX_MESSAGES_PER_DAY`  | Fusible de coste: máx. llamadas a Groq por día (opcional) | — (def. `50`)    |
-| `BUDGET_FILE`           | Fichero donde persiste el contador del fusible (opcional) | — (def. `.budget.json`) |
+| `BUDGET_FILE`           | Fichero donde persiste el contador del fusible, uno por usuario (opcional) | — (def. `.budget.json`) |
 | `TELEGRAM_CHAT_ID`      | Chat al que se envía el resumen diario proactivo          | Resumen diario        |
 | `DAILY_SUMMARY_HOUR`    | Hora local (0-23) del resumen diario (opcional)           | — (def. `9`)          |
 | `DAILY_SUMMARY_STATE_FILE` | Fichero donde persiste la marca del último resumen enviado (opcional) | — (def. `.daily-summary.json`) |
+| `BOT_TIMEZONE`          | Zona horaria (IANA) de las fechas que enseña el bot (opcional) | — (def. `Europe/Madrid`) |
+| `DASHBOARD_URL`         | Base del dashboard, para enlazar la nota desde la tarjeta (opcional) | — (sin ella, tarjeta sin enlace) |
 | `LOG_LEVEL`             | Nivel de log: `debug`\|`info`\|`warn`\|`error` (opcional) | — (def. `info`)       |
 
 Los secretos **nunca** se hardcodean: viven en `.env` (no versionado). El
@@ -230,12 +237,18 @@ con `setMyCommands`, sin tocar @BotFather):
 | Comando        | Qué hace                                                                 |
 | -------------- | ------------------------------------------------------------------------ |
 | `/vincular <código>` | Vincula este chat a una cuenta del dashboard (el código se genera en "Cuenta"). Sin vincular, el bot no guarda ni consulta nada. |
-| `/buscar <texto>` | Busca coincidencias de texto (case-insensitive) en el contenido y el resumen de tus mensajes; devuelve los más recientes como tarjetas. |
+| `/espacio`     | Elige dónde guarda el bot lo que le mandas: tu espacio personal o uno de tus equipos. Por defecto, el personal. |
+| `/buscar <texto>` | Búsqueda híbrida: primero coincidencias literales en contenido y resumen, y si sobran huecos las completa por significado (embeddings). Sin `GEMINI_API_KEY` se queda solo con el texto. |
 | `/pendientes`  | Lista tus tareas y recordatorios que aún no están hechos.                |
+| `/resumen`, `/hoy` | Tu día en claro: misión principal, plan y avisos.                     |
 | `/start`       | Mensaje de bienvenida.                                                    |
 
 Además, cualquier mensaje normal se categoriza, se resume y se guarda — siempre
 que el chat ya esté vinculado a una cuenta (ver `/vincular` arriba).
+
+Bajo cada tarjeta hay botones para marcarla hecha, **aplazarla** (hoy, mañana,
+en 3 días, en una semana, o quitar la fecha), recategorizarla y **borrarla**
+(con confirmación: es lo único irreversible, y en Telegram no hay "deshacer").
 
 **Resumen diario proactivo.** Si defines `TELEGRAM_CHAT_ID`, el bot te envía
 cada día a la hora `DAILY_SUMMARY_HOUR` (por defecto las 9:00, hora local) un

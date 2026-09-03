@@ -13,7 +13,13 @@ import { linkAttemptLimiter, type LinkAttemptLimiter } from './linkRateLimit.js'
 import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
-import { noteActionsKeyboard, categoryPickerKeyboard, workspacePickerKeyboard } from './actionsKeyboard.js';
+import {
+  noteActionsKeyboard,
+  categoryPickerKeyboard,
+  workspacePickerKeyboard,
+  snoozePickerKeyboard,
+  confirmDeleteKeyboard,
+} from './actionsKeyboard.js';
 import { isCategory, type Category } from '../ai/types.js';
 import { startDailySummary } from '../summary/scheduler.js';
 import { dayKey, buildDailySummary } from '../summary/dailySummary.js';
@@ -83,6 +89,52 @@ export async function registerCommands(
   }
 }
 
+/** Cuántos resultados devuelve `/buscar` como mucho. */
+const SEARCH_LIMIT = 5;
+
+/**
+ * Búsqueda híbrida para `/buscar`: coincidencia literal primero, similitud
+ * por significado para rellenar.
+ *
+ * Antes esto era `ILIKE` puro y la web sí buscaba por significado, así que
+ * "lo del fontanero" no encontraba desde Telegram "llamar al del agua" que sí
+ * salía en el dashboard. Que la MISMA búsqueda diera resultados distintos
+ * según por dónde entraras era el problema, más que la calidad de cada mitad.
+ *
+ * El texto va siempre primero y en su orden: una coincidencia literal es una
+ * certeza, y lo semántico es una conjetura — nunca debe desplazarla. Sin
+ * `embedder` (falta GEMINI_API_KEY) o si Gemini falla, se queda solo con el
+ * texto: exactamente el comportamiento de antes, nunca un error.
+ */
+async function buscarHibrido(
+  query: string,
+  userId: string,
+  pipeline: Pipeline,
+  logger?: Logger,
+): Promise<StoredMessage[]> {
+  const textuales = await pipeline.repository.search(userId, query, SEARCH_LIMIT);
+  if (textuales.length >= SEARCH_LIMIT || !pipeline.embedder) return textuales;
+
+  let vector: number[] | null = null;
+  try {
+    vector = await pipeline.embedder.embedQuery(query);
+  } catch (err) {
+    // No crítico: los resultados de texto ya están y valen.
+    logger?.warn('telegram.search_embedding_failed', errorContext(err));
+  }
+  if (!vector) return textuales;
+
+  const vistos = new Set(textuales.map((m) => m.id));
+  const semanticos = await pipeline.repository
+    .searchSimilar(userId, vector, SEARCH_LIMIT)
+    .catch((err) => {
+      logger?.warn('telegram.search_semantic_failed', errorContext(err));
+      return [] as StoredMessage[];
+    });
+
+  return [...textuales, ...semanticos.filter((m) => !vistos.has(m.id))].slice(0, SEARCH_LIMIT);
+}
+
 /**
  * Maneja `/buscar <texto>`: busca coincidencias de texto y las devuelve como
  * tarjetas, las más recientes primero. **Nunca lanza**: ante un fallo interno
@@ -98,7 +150,7 @@ export async function handleSearchCommand(
   if (q === '') return REPLIES.searchUsage;
 
   try {
-    const results = await pipeline.repository.search(userId, q);
+    const results = await buscarHibrido(q, userId, pipeline, logger);
     return formatMessageList(results, {
       header: `🔎 Resultados para «${escapeHtml(q)}»:`,
       empty: `🔍 No he encontrado nada que coincida con «${escapeHtml(q)}». Prueba con otra palabra.`,
@@ -129,6 +181,33 @@ export async function handlePendingCommand(
     logger?.error('telegram.pending_failed', errorContext(err));
     return REPLIES.error;
   }
+}
+
+/**
+ * Traduce el plazo de un botón de aplazar a una fecha límite concreta.
+ *
+ * `'x'` significa quitar la fecha (`null`), que no es lo mismo que un plazo
+ * inválido (`undefined`) — de ahí los tres valores posibles: aplazar
+ * indefinidamente es una opción legítima, y confundirla con un error dejaría
+ * al usuario sin salida de una tarea con fecha salvo darla por hecha o
+ * borrarla.
+ *
+ * La fecha se fija al FINAL del día elegido: una tarea "para mañana" no
+ * vence a las 00:00 de mañana, vence cuando acaba mañana.
+ */
+export function plazoAFecha(plazo: string, ahora: Date = new Date()): Date | null | undefined {
+  if (plazo === 'x') return null;
+  // `/^\d+$/` y no `Number(plazo)` a secas: `Number('')` es 0, y ' 2 ' es 2 —
+  // los dos colarían como plazos válidos donde solo debe entrar un número
+  // de días escrito tal cual por nuestros propios botones.
+  if (!/^\d+$/.test(plazo)) return undefined;
+  const dias = Number(plazo);
+  if (dias > 365) return undefined;
+
+  const fecha = new Date(ahora);
+  fecha.setDate(fecha.getDate() + dias);
+  fecha.setHours(23, 59, 59, 999);
+  return fecha;
 }
 
 export interface EspacioCommandResult {
@@ -592,6 +671,96 @@ export function createBot(
     }
     await ctx.answerCbQuery('Marcada como hecha ✅');
     await refreshCard(ctx, userId, updated);
+  });
+
+  bot.action(/^snooze:(.+)$/, async (ctx) => {
+    const messageId = ctx.match[1]!;
+    await ctx.answerCbQuery();
+    // Solo cambia el TECLADO: la tarjeta sigue siendo válida, lo único que
+    // pasa es que ahora ofrece los plazos (mismo criterio que `cat:`).
+    try {
+      await ctx.editMessageReplyMarkup(snoozePickerKeyboard(messageId).reply_markup);
+    } catch (err) {
+      logger.debug('telegram.snooze_picker_noop', errorContext(err));
+    }
+  });
+
+  bot.action(/^snz:([^:]+):(.+)$/, async (ctx) => {
+    const [, messageId, plazo] = ctx.match;
+    const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    const fechaLimite = plazoAFecha(plazo!);
+    if (fechaLimite === undefined) {
+      await ctx.answerCbQuery('Plazo no válido.');
+      return;
+    }
+    const updated = await pipeline.repository.postpone(userId, messageId!, fechaLimite);
+    if (!updated) {
+      await ctx.answerCbQuery('Esa nota ya no existe.');
+      return;
+    }
+    await ctx.answerCbQuery(fechaLimite ? 'Aplazada ⏰' : 'Fecha quitada');
+    await refreshCard(ctx, userId, updated);
+  });
+
+  bot.action(/^del:(.+)$/, async (ctx) => {
+    const messageId = ctx.match[1]!;
+    await ctx.answerCbQuery();
+    try {
+      await ctx.editMessageReplyMarkup(confirmDeleteKeyboard(messageId).reply_markup);
+    } catch (err) {
+      logger.debug('telegram.delete_confirm_noop', errorContext(err));
+    }
+  });
+
+  bot.action(/^delno:(.+)$/, async (ctx) => {
+    const messageId = ctx.match[1]!;
+    const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    await ctx.answerCbQuery();
+    // Se relee la nota en vez de reconstruir el teclado a ojo: "✅ Hecho" y
+    // "⏰ Aplazar" solo salen si sigue pendiente, y eso puede haber cambiado
+    // (desde el dashboard, u otro dispositivo) mientras el selector estaba
+    // abierto. Devolver botones que no corresponden sería peor que no
+    // devolver ninguno.
+    const nota = await pipeline.repository.findById(userId, messageId);
+    if (!nota) {
+      await ctx.editMessageText('🗑 <i>Esa nota ya no existe.</i>', { parse_mode: 'HTML' }).catch(() => {});
+      return;
+    }
+    try {
+      await ctx.editMessageReplyMarkup(noteActionsKeyboard(nota).reply_markup);
+    } catch (err) {
+      logger.debug('telegram.delete_cancel_noop', errorContext(err));
+    }
+  });
+
+  bot.action(/^delsi:(.+)$/, async (ctx) => {
+    const messageId = ctx.match[1]!;
+    const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    const borrada = await pipeline.repository.remove(userId, messageId);
+    if (!borrada) {
+      await ctx.answerCbQuery('Esa nota ya no existe.');
+      return;
+    }
+    await ctx.answerCbQuery('Borrada 🗑');
+    try {
+      // Se tacha la tarjeta y se le quita el teclado: dejarla intacta con
+      // botones sobre algo que ya no existe sería mentir.
+      await ctx.editMessageText('🗑 <i>Nota borrada.</i>', { parse_mode: 'HTML' });
+    } catch (err) {
+      logger.debug('telegram.delete_edit_noop', errorContext(err));
+    }
   });
 
   bot.action(/^cat:(.+)$/, async (ctx) => {

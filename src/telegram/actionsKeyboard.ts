@@ -25,12 +25,56 @@ const CATEGORY_BUTTON_LABEL: Record<Category, string> = {
  * invitaría a pulsarlo por error.
  */
 export function noteActionsKeyboard(message: Pick<StoredMessage, 'id' | 'categoria' | 'hecho'>) {
-  const buttons = [];
+  const primera = [];
   if (isPending(message)) {
-    buttons.push(Markup.button.callback('✅ Hecho', `done:${message.id}`));
+    primera.push(Markup.button.callback('✅ Hecho', `done:${message.id}`));
+    // Aplazar solo tiene sentido en algo que todavía está pendiente: mover
+    // la fecha de una idea, o de una tarea ya cerrada, no significa nada.
+    primera.push(Markup.button.callback('⏰ Aplazar', `snooze:${message.id}`));
   }
-  buttons.push(Markup.button.callback('🏷️ Recategorizar', `cat:${message.id}`));
-  return Markup.inlineKeyboard(buttons);
+  primera.push(Markup.button.callback('🏷️ Recategorizar', `cat:${message.id}`));
+  // Borrar en su propia fila y con confirmación aparte (ver
+  // confirmDeleteKeyboard): es la única acción irreversible del teclado, y
+  // no puede quedar pegada a "Hecho" donde se pulsa por inercia.
+  return Markup.inlineKeyboard([primera, [Markup.button.callback('🗑 Borrar', `del:${message.id}`)]]);
+}
+
+/**
+ * Opciones de aplazamiento. Fechas relativas y no un calendario: desde el
+ * móvil, "mañana" es lo que de verdad se quiere el 90% de las veces, y
+ * elegir un día concreto ya se puede hacer en el dashboard.
+ *
+ * "Quitar fecha" está porque aplazar indefinidamente es una opción legítima
+ * — sin ella, la única salida de una tarea con fecha sería darla por hecha
+ * o borrarla, y ninguna de las dos es verdad.
+ */
+export function snoozePickerKeyboard(messageId: string) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('Hoy', `snz:${messageId}:0`),
+      Markup.button.callback('Mañana', `snz:${messageId}:1`),
+    ],
+    [
+      Markup.button.callback('En 3 días', `snz:${messageId}:3`),
+      Markup.button.callback('En una semana', `snz:${messageId}:7`),
+    ],
+    [Markup.button.callback('Quitar fecha', `snz:${messageId}:x`)],
+  ]);
+}
+
+/**
+ * Confirmación de borrado. Un paso extra a propósito: es la única acción del
+ * teclado que no se puede deshacer, y en Telegram no hay "deshacer" como en
+ * el dashboard (ver UndoToast) — el botón de cancelar va primero para que el
+ * pulgar no caiga por inercia sobre el destructivo.
+ */
+export function confirmDeleteKeyboard(messageId: string) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('Cancelar', `delno:${messageId}`),
+      Markup.button.callback('🗑 Sí, borrar', `delsi:${messageId}`),
+    ],
+  ]);
 }
 
 /**

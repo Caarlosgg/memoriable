@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { noteActionsKeyboard, categoryPickerKeyboard } from '../src/telegram/actionsKeyboard.js';
+import {
+  noteActionsKeyboard,
+  categoryPickerKeyboard,
+  snoozePickerKeyboard,
+  confirmDeleteKeyboard,
+} from '../src/telegram/actionsKeyboard.js';
 import { CATEGORIES } from '../src/ai/types.js';
 
 /** Aplana los botones del teclado a sus `callback_data`, para comprobar sin depender de la forma exacta de Telegraf. */
@@ -10,19 +15,42 @@ function callbackData(keyboard: ReturnType<typeof noteActionsKeyboard>): string[
 }
 
 describe('noteActionsKeyboard', () => {
-  it('una tarea sin hacer lleva "Hecho" Y "Recategorizar"', () => {
+  it('una tarea sin hacer lleva "Hecho", "Aplazar", "Recategorizar" y "Borrar"', () => {
     const data = callbackData(noteActionsKeyboard({ id: 'm1', categoria: 'tarea', hecho: false }));
-    expect(data).toEqual(['done:m1', 'cat:m1']);
+    expect(data).toEqual(['done:m1', 'snooze:m1', 'cat:m1', 'del:m1']);
   });
 
-  it('una tarea YA hecha no repite el botón de "Hecho" (invitaría a pulsarlo por error)', () => {
+  it('una tarea YA hecha no repite "Hecho" ni ofrece aplazarla', () => {
+    // Mover la fecha de algo ya cerrado no significa nada, igual que
+    // "hacerlo" otra vez.
     const data = callbackData(noteActionsKeyboard({ id: 'm1', categoria: 'tarea', hecho: true }));
-    expect(data).toEqual(['cat:m1']);
+    expect(data).toEqual(['cat:m1', 'del:m1']);
   });
 
-  it('una nota (no accionable) nunca lleva "Hecho", aunque `hecho` fuera true por lo que sea', () => {
+  it('una nota (no accionable) nunca lleva "Hecho" ni "Aplazar"', () => {
     const data = callbackData(noteActionsKeyboard({ id: 'm1', categoria: 'nota', hecho: false }));
-    expect(data).toEqual(['cat:m1']);
+    expect(data).toEqual(['cat:m1', 'del:m1']);
+  });
+
+  it('"Borrar" va en su propia fila: es lo único irreversible del teclado', () => {
+    const filas = noteActionsKeyboard({ id: 'm1', categoria: 'tarea', hecho: false })
+      .reply_markup.inline_keyboard;
+    expect(filas).toHaveLength(2);
+    expect(filas[1]).toHaveLength(1);
+  });
+});
+
+describe('snoozePickerKeyboard', () => {
+  it('ofrece plazos relativos y la opción de quitar la fecha', () => {
+    const data = callbackData(snoozePickerKeyboard('m1'));
+    expect(data).toEqual(['snz:m1:0', 'snz:m1:1', 'snz:m1:3', 'snz:m1:7', 'snz:m1:x']);
+  });
+});
+
+describe('confirmDeleteKeyboard', () => {
+  it('pone "Cancelar" ANTES que el destructivo, para que el pulgar no caiga por inercia', () => {
+    const data = callbackData(confirmDeleteKeyboard('m1'));
+    expect(data).toEqual(['delno:m1', 'delsi:m1']);
   });
 });
 

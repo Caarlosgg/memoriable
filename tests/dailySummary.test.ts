@@ -38,6 +38,10 @@ function fakeRepo(pending: StoredMessage[], saved: StoredMessage[]) {
     markDone: vi.fn(),
     recategorize: vi.fn(),
     setCustomCategory: vi.fn(),
+    postpone: vi.fn(),
+    remove: vi.fn(),
+    findById: vi.fn(),
+    searchSimilar: vi.fn(),
   } satisfies MessageRepository;
 }
 

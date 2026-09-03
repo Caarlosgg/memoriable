@@ -294,6 +294,10 @@ describe('handleSearchCommand', () => {
       markDone: vi.fn(),
       recategorize: vi.fn(),
       setCustomCategory: vi.fn(),
+    postpone: vi.fn(),
+    remove: vi.fn(),
+    findById: vi.fn(),
+    searchSimilar: vi.fn(),
     };
 
     const reply = await handleSearchCommand(
@@ -336,6 +340,10 @@ describe('handlePendingCommand', () => {
       markDone: vi.fn(),
       recategorize: vi.fn(),
       setCustomCategory: vi.fn(),
+    postpone: vi.fn(),
+    remove: vi.fn(),
+    findById: vi.fn(),
+    searchSimilar: vi.fn(),
     };
 
     const reply = await handlePendingCommand(
@@ -422,6 +430,10 @@ describe('handleBriefingCommand', () => {
       markDone: vi.fn(),
       recategorize: vi.fn(),
       setCustomCategory: vi.fn(),
+    postpone: vi.fn(),
+    remove: vi.fn(),
+    findById: vi.fn(),
+    searchSimilar: vi.fn(),
     };
 
     const reply = await handleBriefingCommand(
