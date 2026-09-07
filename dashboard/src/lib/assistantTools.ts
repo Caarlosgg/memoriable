@@ -1242,7 +1242,7 @@ export function createAssistantTools(
     }),
     analizarEquipo: tool({
       description:
-        'Analiza cómo está repartido el trabajo del equipo AHORA MISMO: pendientes, en progreso, vencidas y completadas en la última semana, por persona, más el total del equipo — para dar un diagnóstico o consejo de gestión CONCRETO, con nombres y números reales ("¿cómo va el equipo?", "¿quién está más cargado?", "tengo un problema de organización, ayúdame", "¿cómo repartimos mejor las tareas?"). De solo lectura — nunca modifica nada. Solo tiene sentido en un workspace de equipo.',
+        'Analiza cómo está repartido el trabajo del equipo AHORA MISMO: pendientes, en progreso, vencidas y completadas en la última semana por persona (más sus tareas concretas, hasta 5 por persona) y el total del equipo — para dar un diagnóstico o consejo de gestión CONCRETO, con nombres, tareas y números reales ("¿cómo va el equipo?", "¿quién está más cargado?", "tengo un problema de organización, ayúdame", "¿cómo repartimos mejor las tareas?", "¿qué tareas tiene asignadas cada integrante?"). Llama a ESTA tool para preguntas sobre VARIAS personas del equipo a la vez — llamar a consultarPersona una por una para lo mismo es más lento y caro. De solo lectura — nunca modifica nada. Solo tiene sentido en un workspace de equipo.',
       inputSchema: z.object({}),
       execute: async () => {
         if (members.length === 0) {
@@ -1262,12 +1262,14 @@ export function createAssistantTools(
                 estado: { in: ["POR_HACER", "EN_PROGRESO"] },
               },
               select: {
+                resumen: true,
                 assigneeId: true,
                 estado: true,
                 fechaLimite: true,
                 categoria: true,
                 enProgresoPorId: true,
               },
+              orderBy: { fechaLimite: "asc" },
             }),
             prisma.message.findMany({
               where: {
@@ -1289,6 +1291,7 @@ export function createAssistantTools(
                 vencidas: 0,
                 completadasUltimaSemana: 0,
                 trabajandoAhora: false,
+                tareas: [] as { resumen: string; estado: string; vencida: boolean }[],
               },
             ]),
           );
@@ -1310,6 +1313,14 @@ export function createAssistantTools(
             if (t.estado === "EN_PROGRESO") entry.enProgreso++;
             if (vencida) entry.vencidas++;
             if (t.enProgresoPorId) entry.trabajandoAhora = true;
+            // Máx. 5 por persona: es un resumen del equipo entero en una
+            // sola respuesta, no la ficha completa de una persona (esa es
+            // consultarPersona, con hasta 10) — sin tope, un equipo grande
+            // con mucho trabajo abierto puede volver a desbordar el límite
+            // de tokens por minuto de Groq en una sola llamada.
+            if (entry.tareas.length < 5) {
+              entry.tareas.push({ resumen: t.resumen, estado: t.estado, vencida });
+            }
           }
           for (const t of completadasRecientes) {
             const entry = t.assigneeId

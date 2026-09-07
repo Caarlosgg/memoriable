@@ -1209,6 +1209,7 @@ describe("createAssistantTools", () => {
       .mockResolvedValueOnce([
         // Abiertas (POR_HACER/EN_PROGRESO)
         {
+          resumen: "Preparar la demo",
           assigneeId: "u-benito",
           estado: "POR_HACER",
           fechaLimite: new Date("2026-08-10T00:00:00.000Z"),
@@ -1216,6 +1217,7 @@ describe("createAssistantTools", () => {
           enProgresoPorId: null,
         }, // vencida
         {
+          resumen: "Revisar el PR",
           assigneeId: "u-benito",
           estado: "EN_PROGRESO",
           fechaLimite: null,
@@ -1223,6 +1225,7 @@ describe("createAssistantTools", () => {
           enProgresoPorId: "u-benito",
         },
         {
+          resumen: "Pensar el naming",
           assigneeId: "u-ana",
           estado: "POR_HACER",
           fechaLimite: new Date("2026-08-20T00:00:00.000Z"),
@@ -1230,6 +1233,7 @@ describe("createAssistantTools", () => {
           enProgresoPorId: null,
         },
         {
+          resumen: "Sin asignar",
           assigneeId: null,
           estado: "POR_HACER",
           fechaLimite: null,
@@ -1259,6 +1263,10 @@ describe("createAssistantTools", () => {
           vencidas: 1,
           completadasUltimaSemana: 0,
           trabajandoAhora: true,
+          tareas: [
+            { resumen: "Preparar la demo", estado: "POR_HACER", vencida: true },
+            { resumen: "Revisar el PR", estado: "EN_PROGRESO", vencida: false },
+          ],
         },
         {
           email: "ana@example.com",
@@ -1267,12 +1275,40 @@ describe("createAssistantTools", () => {
           vencidas: 0,
           completadasUltimaSemana: 2,
           trabajandoAhora: false,
+          tareas: [{ resumen: "Pensar el naming", estado: "POR_HACER", vencida: false }],
         },
       ],
       totalPendientesYEnProgreso: 4,
       totalVencidas: 1,
       categoriaMasFrecuente: "tarea",
     });
+  });
+
+  it("analizarEquipo tope a 5 tareas por persona (evita volver a desbordar el límite de tokens de Groq)", async () => {
+    messageFindMany
+      .mockResolvedValueOnce(
+        Array.from({ length: 8 }, (_, i) => ({
+          resumen: `Tarea ${i}`,
+          assigneeId: "u-benito",
+          estado: "POR_HACER",
+          fechaLimite: null,
+          categoria: "tarea",
+          enProgresoPorId: null,
+        })),
+      )
+      .mockResolvedValueOnce([]);
+    const tools = createAssistantTools("u1", "w1", "MEMBER", TEAM_MEMBERS);
+
+    const result = await tools.analizarEquipo.execute!(
+      {},
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    const porMiembro = (
+      result as { porMiembro: { email: string; pendientes: number; tareas: unknown[] }[] }
+    ).porMiembro;
+    expect(porMiembro.find((m) => m.email === "benitoelrey@example.com")?.tareas).toHaveLength(5);
+    expect(porMiembro.find((m) => m.email === "benitoelrey@example.com")?.pendientes).toBe(8);
   });
 
   it("en el workspace personal, ni se ofrece analizarEquipo al modelo (no solo falla al usarla)", () => {

@@ -23,7 +23,10 @@ function fakeImageFile(overrides: Partial<{ type: string; size: number }> = {}):
 describe("uploadImage", () => {
   beforeEach(() => {
     put.mockReset();
-    put.mockResolvedValue({ url: "https://blob.vercel-storage.com/notas/u1/abc.png" });
+    put.mockResolvedValue({
+      url: "https://storeid.private.blob.vercel-storage.com/notas/u1/abc.png",
+      pathname: "notas/u1/abc.png",
+    });
     getActiveWorkspace.mockReset();
     getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
   });
@@ -63,7 +66,7 @@ describe("uploadImage", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
-  it("sube la imagen bajo notas/<userId>/ y devuelve la URL pública", async () => {
+  it("sube la imagen bajo notas/<userId>/ en privado y devuelve la URL servida por /api/blob", async () => {
     const fd = new FormData();
     fd.set("file", fakeImageFile());
     const { uploadImage } = await import("../src/app/(dashboard)/actions");
@@ -72,9 +75,9 @@ describe("uploadImage", () => {
     expect(put).toHaveBeenCalledWith(
       expect.stringMatching(/^notas\/u1\/.+\.png$/),
       expect.anything(),
-      { access: "public" },
+      { access: "private" },
     );
-    expect(result.url).toBe("https://blob.vercel-storage.com/notas/u1/abc.png");
+    expect(result.url).toBe("/api/blob/notas/u1/abc.png");
   });
 
   it("sin BLOB_READ_WRITE_TOKEN (put lanza), devuelve un error legible en vez de una excepción cruda", async () => {

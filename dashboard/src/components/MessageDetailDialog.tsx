@@ -349,7 +349,7 @@ export function MessageDetailDialog({
             {message.imagenes.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {message.imagenes.map((url) => (
-                  // eslint-disable-next-line @next/next/no-img-element -- Blob URLs son públicas, no hace falta el optimizador de next/image.
+                  // eslint-disable-next-line @next/next/no-img-element -- Se sirven desde /api/blob (privado), no un host externo: next/image no aporta nada aquí.
                   <img key={url} src={url} alt="" className="h-20 w-20 rounded-lg border border-paper-line object-cover" />
                 ))}
               </div>
@@ -684,7 +684,7 @@ export function MessageDetailDialog({
                 <div className="flex flex-wrap gap-2">
                   {fields.imagenes.map((url) => (
                     <div key={url} className="group relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- Blob URLs son públicas, no hace falta el optimizador de next/image. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element -- Se sirven desde /api/blob (privado), no un host externo: next/image no aporta nada aquí. */}
                       <img src={url} alt="" className="h-20 w-20 rounded-lg border border-paper-line object-cover" />
                       <button
                         type="button"

@@ -44,8 +44,14 @@ export async function uploadImageToBlob(pathPrefix: string, file: File): Promise
   }
   try {
     const extension = file.type.split("/")[1];
-    const blob = await put(`${pathPrefix}/${randomUUID()}.${extension}`, file, { access: "public" });
-    return { url: blob.url };
+    // `private`: el almacén de Vercel Blob del proyecto está creado como
+    // privado (subir con "public" falla siempre con "Cannot use public
+    // access on a private store" — el fallo real detrás de "no se ha
+    // podido subir la imagen"). Además es lo correcto: las imágenes de una
+    // nota no deben quedar accesibles por URL sin sesión. Se sirven a
+    // través de `/api/blob/[...path]`, que exige sesión antes de leerlas.
+    const blob = await put(`${pathPrefix}/${randomUUID()}.${extension}`, file, { access: "private" });
+    return { url: `/api/blob/${blob.pathname}` };
   } catch (err) {
     console.error("Error al subir la imagen a Vercel Blob:", err);
     // La EXCEPCIÓN completa, no solo un texto: antes solo se mandaba a

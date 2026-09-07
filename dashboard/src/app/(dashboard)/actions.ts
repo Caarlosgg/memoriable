@@ -464,8 +464,9 @@ export interface UploadImageResult {
 }
 
 /**
- * Sube una imagen adjunta a una nota (Fase D) a Vercel Blob y devuelve su
- * URL pública — el propio dueño la añade a `imagenes` con `updateMessage`
+ * Sube una imagen adjunta a una nota (Fase D) a Vercel Blob (almacén
+ * privado) y devuelve la URL de `/api/blob` que la sirve tras comprobar
+ * sesión — el propio dueño la añade a `imagenes` con `updateMessage`
  * (esto solo sube el fichero, no toca la nota). Sin `BLOB_READ_WRITE_TOKEN`
  * configurada, `put()` lanza — se captura y se devuelve un error legible en
  * vez de una excepción cruda, mismo criterio que el resto de integraciones
