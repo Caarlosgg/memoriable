@@ -145,30 +145,41 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Categoría (fecha): contenido");
   });
 
-  it("menciona la herramienta crearEvento para citas con fecha/hora concreta", () => {
+  // Antes había un test por herramienta exigiendo que el prompt la
+  // nombrara y explicara. Eso blindaba una DUPLICACIÓN cara: cada
+  // herramienta ya viaja a Groq con su propio campo `description` (es lo
+  // que el modelo usa para elegirla), así que narrarlas otra vez en el
+  // prompt mandaba el mismo texto dos veces. Entre eso y las descripciones
+  // reales, el coste fijo de CADA pregunta rozaba los 8000 tokens/minuto
+  // que permite el plan de Groq — y cualquier pregunta con datos reales
+  // fallaba con "Request too large" (visto en producción, Sentry).
+  // El catálogo de herramientas ahora vive solo en assistantTools.ts, y es
+  // assistantTools.test.ts quien comprueba que estén todas.
+  it("no vuelve a narrar herramienta por herramienta (esa duplicación desbordaba el límite de Groq)", () => {
     const prompt = buildSystemPrompt("x");
-    expect(prompt).toContain("crearEvento");
+    for (const tool of [
+      "crearNota",
+      "completarTarea",
+      "registrarAhorro",
+      "editarEvento",
+      "borrarEvento",
+      "consultarAhorros",
+      "consultarAgenda",
+      "asignarTarea",
+      "consultarMisEquipos",
+    ]) {
+      expect(prompt).not.toContain(tool);
+    }
   });
 
-  it("menciona la herramienta completarTarea para marcar pendientes como hechas", () => {
-    const prompt = buildSystemPrompt("x");
-    expect(prompt).toContain("completarTarea");
-  });
-
-  it("menciona la herramienta registrarAhorro para ingresos/retiradas por voz", () => {
-    const prompt = buildSystemPrompt("x");
-    expect(prompt).toContain("registrarAhorro");
-  });
-
-  it("menciona las herramientas editarEvento y borrarEvento para gestionar citas existentes", () => {
-    const prompt = buildSystemPrompt("x");
-    expect(prompt).toContain("editarEvento");
-    expect(prompt).toContain("borrarEvento");
-  });
-
-  it("menciona la herramienta consultarAhorros, de solo lectura", () => {
-    const prompt = buildSystemPrompt("x");
-    expect(prompt).toContain("consultarAhorros");
+  it("mantiene el coste fijo del prompt dentro de presupuesto", () => {
+    // Con el límite de 8000 tokens/minuto de Groq, el prompt es solo una
+    // parte del coste fijo (las descripciones de las 18 herramientas son
+    // otros ~2200 tokens). Este tope deja sitio de verdad para la pregunta,
+    // el historial y las notas citadas; si alguien vuelve a engordar el
+    // prompt, este test lo dice ANTES de que falle en producción.
+    const prompt = buildSystemPrompt("");
+    expect(prompt.length).toBeLessThan(7000);
   });
 
   it("incluye la fecha/hora actual (pasada explícitamente), para poder calcular fechas relativas", () => {

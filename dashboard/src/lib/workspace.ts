@@ -33,6 +33,13 @@ export interface ActiveWorkspace {
   workspaceId: string;
   isPersonal: boolean;
   role: WorkspaceRole;
+  /**
+   * Nombre del workspace de equipo, o `null` en el personal (ahí no se
+   * enseña en ningún sitio). Viene de la MISMA consulta que ya resolvía la
+   * membresía: pedirlo aquí le ahorra a `ActiveWorkspaceBadge` una
+   * consulta propia por cada pantalla que lo pinta.
+   */
+  nombre: string | null;
 }
 
 /**
@@ -77,10 +84,15 @@ export const getActiveWorkspace = cache(async (userId: string): Promise<ActiveWo
   if (requested) {
     const membership = await prisma.membership.findUnique({
       where: { userId_workspaceId: { userId, workspaceId: requested } },
-      select: { role: true, status: true, workspace: { select: { personal: true } } },
+      select: { role: true, status: true, workspace: { select: { personal: true, nombre: true } } },
     });
     if (membership && membership.status === "ACTIVE") {
-      return { workspaceId: requested, isPersonal: membership.workspace.personal, role: membership.role };
+      return {
+        workspaceId: requested,
+        isPersonal: membership.workspace.personal,
+        role: membership.role,
+        nombre: membership.workspace.nombre,
+      };
     }
   }
 
@@ -100,7 +112,7 @@ export const getActiveWorkspace = cache(async (userId: string): Promise<ActiveWo
  */
 async function getPersonalWorkspace(userId: string): Promise<ActiveWorkspace> {
   const workspaceId = await getPersonalWorkspaceId(userId);
-  return { workspaceId, isPersonal: true, role: "OWNER" };
+  return { workspaceId, isPersonal: true, role: "OWNER", nombre: null };
 }
 
 /**

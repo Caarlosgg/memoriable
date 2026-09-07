@@ -426,7 +426,7 @@ export function createAssistantTools(
         fechaInicio: z
           .string()
           .describe(
-            "Fecha y hora de inicio de la PRIMERA ocurrencia, en formato ISO 8601 (con zona horaria si se conoce).",
+            'Fecha y hora de inicio de la PRIMERA ocurrencia, en ISO 8601. La hora que da el usuario es SIEMPRE hora de España: usa el desfase de España indicado en el prompt, nunca "Z" ni UTC directo (con desfase +02:00, "las 5 de la tarde" es "...T17:00:00+02:00", NO "...T17:00:00Z" ni "...T15:00:00Z").',
           ),
         fechaFin: z
           .string()

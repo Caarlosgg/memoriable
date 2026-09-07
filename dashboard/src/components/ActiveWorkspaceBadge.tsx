@@ -1,7 +1,7 @@
+import { Suspense } from "react";
 import { Users, Eye } from "lucide-react";
 import { verifySession } from "@/lib/dal";
 import { getActiveWorkspace } from "@/lib/workspace";
-import { prisma } from "@/lib/prisma";
 
 /**
  * "Compartido en: X" — a petición explícita del usuario: cambiar de
@@ -14,19 +14,20 @@ import { prisma } from "@/lib/prisma";
  * se encuentre con el error — el servidor sigue siendo quien de verdad
  * lo impide (ver canWrite en lib/workspace.ts), esto es solo el aviso.
  */
-export async function ActiveWorkspaceBadge() {
+async function Badge() {
   const userId = await verifySession();
-  const { isPersonal, workspaceId, role } = await getActiveWorkspace(userId);
-  if (isPersonal) return null;
-
-  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { nombre: true } });
-  if (!workspace) return null;
+  // `getActiveWorkspace` ya trae el nombre y está cacheada por petición
+  // (el layout la llama antes que nadie), así que en la práctica esto NO
+  // añade ninguna consulta. Antes este componente hacía una tercera
+  // consulta propia a `workspace` solo para leer el nombre.
+  const { isPersonal, role, nombre } = await getActiveWorkspace(userId);
+  if (isPersonal || !nombre) return null;
 
   if (role === "VIEWER") {
     return (
       <p className="-mt-2 flex items-center gap-1.5 text-xs font-medium text-muted">
         <Eye aria-hidden size={13} />
-        Compartido en «{workspace.nombre}» — acceso de solo lectura, no puedes crear ni editar aquí.
+        Compartido en «{nombre}» — acceso de solo lectura, no puedes crear ni editar aquí.
       </p>
     );
   }
@@ -34,7 +35,25 @@ export async function ActiveWorkspaceBadge() {
   return (
     <p className="-mt-2 flex items-center gap-1.5 text-xs font-medium text-accent-strong">
       <Users aria-hidden size={13} />
-      Compartido en «{workspace.nombre}» — solo lo ven los miembros de este equipo.
+      Compartido en «{nombre}» — solo lo ven los miembros de este equipo.
     </p>
+  );
+}
+
+/**
+ * El `<Suspense>` va DENTRO del propio componente, no en cada página que
+ * lo usa, a propósito: es un componente `async`, y las cuatro pantallas
+ * principales (Inicio, Notas, Tablero, Calendario) lo pintaban suelto,
+ * arriba del todo. Eso bloqueaba el HTML de TODA la pantalla —incluidos
+ * los skeletons que esas mismas páginas sí tenían bien puestos— hasta que
+ * resolvía, por una línea de texto decorativa. Encapsulándolo aquí, la
+ * pantalla se pinta ya y esta línea aparece cuando esté, y ninguna página
+ * nueva puede volver a reintroducir el bloqueo por olvidarse del Suspense.
+ */
+export function ActiveWorkspaceBadge() {
+  return (
+    <Suspense fallback={null}>
+      <Badge />
+    </Suspense>
   );
 }
