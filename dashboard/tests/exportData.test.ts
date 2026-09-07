@@ -4,12 +4,18 @@ const messageFindMany = vi.fn();
 const eventoFindMany = vi.fn();
 const cuentaFindMany = vi.fn();
 const movimientoFindMany = vi.fn();
+const comentarioFindMany = vi.fn();
+const customCategoryFindMany = vi.fn();
+const assistantMemoryFindMany = vi.fn();
 vi.mock("../src/lib/prisma", () => ({
   prisma: {
     message: { findMany: (...args: unknown[]) => messageFindMany(...args) },
     evento: { findMany: (...args: unknown[]) => eventoFindMany(...args) },
     cuentaAhorro: { findMany: (...args: unknown[]) => cuentaFindMany(...args) },
     movimientoAhorro: { findMany: (...args: unknown[]) => movimientoFindMany(...args) },
+    comentario: { findMany: (...args: unknown[]) => comentarioFindMany(...args) },
+    customCategory: { findMany: (...args: unknown[]) => customCategoryFindMany(...args) },
+    assistantMemory: { findMany: (...args: unknown[]) => assistantMemoryFindMany(...args) },
   },
 }));
 
@@ -58,6 +64,9 @@ function fakePayload(overrides: Partial<ExportPayload> = {}): ExportPayload {
     scope: { type: "todo" },
     notas: [],
     eventos: [],
+    comentarios: [],
+    categoriasPropias: [],
+    memoriaAsistente: [],
     ahorros: [],
     ...overrides,
   };
@@ -168,6 +177,37 @@ describe("buildExportData", () => {
     cuentaFindMany.mockResolvedValue([]);
     movimientoFindMany.mockReset();
     movimientoFindMany.mockResolvedValue([]);
+    for (const m of [comentarioFindMany, customCategoryFindMany, assistantMemoryFindMany]) {
+      m.mockReset();
+      m.mockResolvedValue([]);
+    }
+  });
+
+  it("exporta también comentarios, categorías propias y memoria — la portabilidad que promete la política de privacidad", async () => {
+    // Faltaban: una exportación que se deja fuera la mitad de lo que uno ha
+    // escrito no cumple el derecho de portabilidad.
+    comentarioFindMany.mockResolvedValue([
+      { texto: "revisado", createdAt: new Date("2026-09-01T10:00:00Z"), editadoAt: null },
+    ]);
+    customCategoryFindMany.mockResolvedValue([{ nombre: "Recetas", emoji: "🍳" }]);
+    assistantMemoryFindMany.mockResolvedValue([{ hecho: "Prefiere respuestas cortas" }]);
+
+    const payload = await buildExportData("u1", { type: "todo" });
+
+    expect(payload.comentarios).toEqual([
+      { texto: "revisado", createdAt: "2026-09-01T10:00:00.000Z", editadoAt: null },
+    ]);
+    expect(payload.categoriasPropias).toEqual([{ nombre: "Recetas", emoji: "🍳" }]);
+    expect(payload.memoriaAsistente).toEqual(["Prefiere respuestas cortas"]);
+  });
+
+  it("los comentarios se filtran por userId, no por workspace: es «lo que YO he escrito»", async () => {
+    // Con workspaceId, cualquier miembro se descargaría los comentarios de
+    // todo el equipo con su propio botón de exportar.
+    await buildExportData("u1", { type: "todo" });
+    expect(comentarioFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: "u1" } }),
+    );
   });
 
   it("con alcance 'todo' consulta notas, eventos y cuentas de ahorro, todo ligado al usuario", async () => {

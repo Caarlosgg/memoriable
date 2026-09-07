@@ -246,13 +246,10 @@ export async function handlePreguntaCommand(
 
   try {
     const workspace = await resolver(userId);
-    const respuesta = await client.ask({
-      userId,
-      pregunta: q,
-      workspaceId: workspace.id,
-      isPersonal: workspace.personal,
-      role: workspace.role,
-    });
+    // No se mandan `isPersonal` ni `role`: los resuelve el dashboard contra
+    // la base de datos. Mandarlos desde aquí sería pedirle al servidor que
+    // se fíe de lo que le digan sobre los permisos de quien pregunta.
+    const respuesta = await client.ask({ userId, pregunta: q, workspaceId: workspace.id });
     // El Asistente redacta en Markdown (es lo que renderiza la web); aquí
     // hay que traducirlo o Telegram rechaza el mensaje entero al primer
     // `<` suelto — ver markdownToHtml.ts.

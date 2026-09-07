@@ -20,6 +20,17 @@ export interface ExportPayload {
   notas: Message[];
   eventos: Evento[];
   ahorros: { cuenta: CuentaAhorro; movimientos: MovimientoAhorro[] }[];
+  /**
+   * Lo que el usuario ha escrito COMENTANDO trabajo (ver el modelo
+   * Comentario). Faltaba: la política de privacidad promete el derecho de
+   * portabilidad, y una exportación que se deja fuera la mitad de lo que
+   * uno ha escrito no lo cumple.
+   */
+  comentarios: { texto: string; createdAt: string; editadoAt: string | null }[];
+  /** Categorías propias del usuario — parte de cómo tiene organizado lo suyo. */
+  categoriasPropias: { nombre: string; emoji: string | null }[];
+  /** Lo que le ha pedido al Asistente que recuerde siempre. */
+  memoriaAsistente: string[];
 }
 
 /**
@@ -44,12 +55,39 @@ export async function buildExportData(userId: string, scope: ExportScope): Promi
   const notas = await prisma.message.findMany({ where: notasWhere, orderBy: { fecha: "asc" } });
 
   if (scope.type !== "todo") {
-    return { generatedAt: new Date().toISOString(), scope, notas, eventos: [], ahorros: [] };
+    return {
+      generatedAt: new Date().toISOString(),
+      scope,
+      notas,
+      eventos: [],
+      ahorros: [],
+      comentarios: [],
+      categoriasPropias: [],
+      memoriaAsistente: [],
+    };
   }
 
-  const [eventos, cuentas] = await Promise.all([
+  const [eventos, cuentas, comentariosRaw, categoriasPropiasRaw, memoriaRaw] = await Promise.all([
     prisma.evento.findMany({ where: { userId }, orderBy: { fechaInicio: "asc" } }),
     prisma.cuentaAhorro.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+    // `userId` y no `workspaceId`, igual que el resto: esto es "lo que YO he
+    // escrito", no "lo que veo" — si no, cualquier miembro se descargaría
+    // los comentarios de todo el equipo con su propio botón de exportar.
+    prisma.comentario.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      select: { texto: true, createdAt: true, editadoAt: true },
+    }),
+    prisma.customCategory.findMany({
+      where: { userId },
+      orderBy: { nombre: "asc" },
+      select: { nombre: true, emoji: true },
+    }),
+    prisma.assistantMemory.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      select: { hecho: true },
+    }),
   ]);
   const movimientosPorCuenta = await Promise.all(
     cuentas.map((cuenta) =>
@@ -58,7 +96,20 @@ export async function buildExportData(userId: string, scope: ExportScope): Promi
   );
   const ahorros = cuentas.map((cuenta, i) => ({ cuenta, movimientos: movimientosPorCuenta[i]! }));
 
-  return { generatedAt: new Date().toISOString(), scope, notas, eventos, ahorros };
+  return {
+    generatedAt: new Date().toISOString(),
+    scope,
+    notas,
+    eventos,
+    ahorros,
+    comentarios: comentariosRaw.map((c) => ({
+      texto: c.texto,
+      createdAt: c.createdAt.toISOString(),
+      editadoAt: c.editadoAt?.toISOString() ?? null,
+    })),
+    categoriasPropias: categoriasPropiasRaw,
+    memoriaAsistente: memoriaRaw.map((m) => m.hecho),
+  };
 }
 
 export function toExportJson(payload: ExportPayload): string {

@@ -2,8 +2,33 @@ import { autenticarPeticion } from "@/lib/apiTokens";
 import { getPersonalWorkspaceId } from "@/lib/workspace";
 import { searchMessages, SEARCH_PAGE_SIZE } from "@/lib/data";
 import { captureMessage } from "@/lib/pipeline";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const maxDuration = 30;
+
+/**
+ * Topes por token y hora.
+ *
+ * Sin esto, `POST` era un endpoint de GASTO sin medir: cada nota creada
+ * dispara una llamada a Groq (categorizar y resumir) y otra a Gemini
+ * (embedding), y un token es algo que por definición usa un script — un
+ * bucle mal escrito, o un token filtrado, vaciaría la cuota de las dos APIs
+ * sin que nadie se enterase hasta ver la factura.
+ *
+ * La lectura también se limita, mucho más alto: no cuesta dinero pero sí
+ * base de datos, y un cliente que sondee en bucle no debe poder tumbarla.
+ */
+const LIMITE_ESCRITURA = 60;
+const LIMITE_LECTURA = 600;
+const VENTANA_MS = 60 * 60 * 1000;
+
+/** Respuesta 429 con `Retry-After`, para que un cliente automático sepa cuánto esperar en vez de reintentar en bucle. */
+function demasiadasPeticiones(segundos: number): Response {
+  return Response.json(
+    { error: `Demasiadas peticiones. Reinténtalo en ${segundos}s.` },
+    { status: 429, headers: { "Retry-After": String(segundos) } },
+  );
+}
 
 /**
  * API pública v1 de notas.
@@ -33,6 +58,9 @@ function noAutorizado(): Response {
 export async function GET(req: Request) {
   const userId = await autenticarPeticion(req);
   if (!userId) return noAutorizado();
+
+  const limite429 = await checkRateLimit(`api:lectura:${userId}`, LIMITE_LECTURA, VENTANA_MS);
+  if (!limite429.allowed) return demasiadasPeticiones(limite429.retryAfterSeconds);
 
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
@@ -70,6 +98,11 @@ const MAX_CONTENIDO = 10_000;
 export async function POST(req: Request) {
   const userId = await autenticarPeticion(req);
   if (!userId) return noAutorizado();
+
+  // Antes de leer el cuerpo: si está limitado, no hay por qué gastar en
+  // parsear nada.
+  const limite429 = await checkRateLimit(`api:escritura:${userId}`, LIMITE_ESCRITURA, VENTANA_MS);
+  if (!limite429.allowed) return demasiadasPeticiones(limite429.retryAfterSeconds);
 
   let body: { contenido?: unknown };
   try {

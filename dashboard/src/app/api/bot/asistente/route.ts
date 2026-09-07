@@ -4,6 +4,7 @@ import { generateText, stepCountIs } from "ai";
 import { timingSafeEqual } from "node:crypto";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import { prepararAsistente } from "@/lib/assistantRun";
+import { prisma } from "@/lib/prisma";
 
 /** Mismo presupuesto de tiempo que la ruta web: encadenar tools tarda. */
 export const maxDuration = 60;
@@ -56,8 +57,6 @@ interface BotAsistenteBody {
   pregunta?: string;
   /** Dónde trabaja el bot ahora mismo (ver `/espacio` y `resolveBotWorkspace`). */
   workspaceId?: string;
-  isPersonal?: boolean;
-  role?: string;
 }
 
 export async function POST(req: Request) {
@@ -98,16 +97,37 @@ export async function POST(req: Request) {
     console.error("No se pudo comprobar el fusible del Asistente (se continúa):", err);
   }
 
+  // Defensa en profundidad: el bot ya comprueba la membresía antes de
+  // llamar (ver resolveBotWorkspace), pero `userId` y `workspaceId` llegan
+  // en el CUERPO y lo único que los avala es el secreto compartido. Si ese
+  // secreto se filtrara, sin esto bastaría con pedir cualquier par para
+  // leer el espacio de cualquiera. Se vuelve a comprobar aquí, y el ROL que
+  // se usa es el de la base de datos, no el que venga en la petición.
+  let role: "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
+  let isPersonal: boolean;
+  try {
+    const membership = await prisma.membership.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId } },
+      select: { role: true, status: true, workspace: { select: { personal: true } } },
+    });
+    if (!membership || membership.status !== "ACTIVE") {
+      return Response.json({ error: "Sin acceso a ese espacio." }, { status: 403 });
+    }
+    role = membership.role;
+    isPersonal = membership.workspace.personal;
+  } catch (err) {
+    console.error("No se pudo comprobar la membresía del bot:", err);
+    Sentry.captureException(err);
+    return Response.json({ error: "No se ha podido comprobar el acceso." }, { status: 502 });
+  }
+
   try {
     const { system, tools } = await prepararAsistente({
       userId,
       pregunta,
       workspaceId,
-      isPersonal: body.isPersonal ?? true,
-      // El rol lo manda el bot desde la membresía que ya ha resuelto; ante
-      // cualquier valor raro se cae a VIEWER, que es el que MENOS puede
-      // hacer — un rol dudoso nunca debe ampliar permisos.
-      role: body.role === "OWNER" || body.role === "ADMIN" || body.role === "MEMBER" ? body.role : "VIEWER",
+      isPersonal,
+      role,
     });
 
     const { text, toolCalls } = await generateText({

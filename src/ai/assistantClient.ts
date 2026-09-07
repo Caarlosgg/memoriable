@@ -14,13 +14,7 @@ import { errorContext, logger as rootLogger, type Logger } from '../logging/inde
  */
 export interface AssistantClient {
   /** `null` si no se ha podido obtener respuesta; el llamante avisa al usuario. */
-  ask(params: {
-    userId: string;
-    pregunta: string;
-    workspaceId: string;
-    isPersonal: boolean;
-    role: string;
-  }): Promise<string | null>;
+  ask(params: { userId: string; pregunta: string; workspaceId: string }): Promise<string | null>;
 }
 
 /**
@@ -40,13 +34,7 @@ export class HttpAssistantClient implements AssistantClient {
     private readonly logger: Logger = rootLogger,
   ) {}
 
-  async ask(params: {
-    userId: string;
-    pregunta: string;
-    workspaceId: string;
-    isPersonal: boolean;
-    role: string;
-  }): Promise<string | null> {
+  async ask(params: { userId: string; pregunta: string; workspaceId: string }): Promise<string | null> {
     // `AbortSignal.timeout` y no un setTimeout a mano: sin esto, una
     // respuesta que nunca llega deja la petición colgada para siempre y el
     // usuario sin ninguna respuesta, ni buena ni mala.
