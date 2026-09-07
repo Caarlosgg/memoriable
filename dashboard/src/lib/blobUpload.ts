@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { put } from "@vercel/blob";
+import * as Sentry from "@sentry/nextjs";
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 export const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -47,6 +48,11 @@ export async function uploadImageToBlob(pathPrefix: string, file: File): Promise
     return { url: blob.url };
   } catch (err) {
     console.error("Error al subir la imagen a Vercel Blob:", err);
+    // La EXCEPCIÓN completa, no solo un texto: antes solo se mandaba a
+    // Sentry un `captureMessage` con este mismo mensaje genérico desde
+    // `actions.ts`, así que un fallo real de subida era invisible en
+    // Sentry — no había forma de saber por qué, solo que había pasado.
+    Sentry.captureException(err, { extra: { pathPrefix, fileType: file.type, fileSize: file.size } });
     return { error: "No se ha podido subir la imagen. Inténtalo de nuevo en un momento." };
   }
 }

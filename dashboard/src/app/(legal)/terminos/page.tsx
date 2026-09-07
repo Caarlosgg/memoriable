@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = { title: "Términos de uso · MemorIAble" };
 
@@ -52,7 +53,7 @@ export default function TerminosPage() {
         (correos de verificación), Supabase (base de datos), Vercel (alojamiento) y Telegram
         (captura). El contenido que envías pasa por ellos en la medida necesaria para darte el
         servicio. La lista completa y actualizada está en la{" "}
-        <a href="/privacidad">política de privacidad</a>.
+        <Link href="/privacidad">política de privacidad</Link>.
       </p>
 
       <h2>Disponibilidad y responsabilidad</h2>

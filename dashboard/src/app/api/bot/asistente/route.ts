@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { generateText, stepCountIs } from "ai";
 import { timingSafeEqual } from "node:crypto";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
-import { prepararAsistente } from "@/lib/assistantRun";
+import { prepararAsistente, esErrorDePeticionDemasiadoGrande } from "@/lib/assistantRun";
 import { prisma } from "@/lib/prisma";
 
 /** Mismo presupuesto de tiempo que la ruta web: encadenar tools tarda. */
@@ -151,9 +151,9 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("Fallo del Asistente desde Telegram:", err);
     Sentry.captureException(err);
-    return Response.json(
-      { error: "No he podido responder ahora mismo. Inténtalo en un momento." },
-      { status: 502 },
-    );
+    const mensaje = esErrorDePeticionDemasiadoGrande(err)
+      ? "Esa pregunta necesita repasar demasiadas notas a la vez. Prueba a preguntar algo más concreto."
+      : "No he podido responder ahora mismo. Inténtalo en un momento.";
+    return Response.json({ error: mensaje }, { status: 502 });
   }
 }

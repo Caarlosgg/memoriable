@@ -1,8 +1,8 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
+import { User, Send, Bell, Palette, Download, type LucideIcon } from "lucide-react";
 
-export interface SettingsEntry {
+interface SettingsEntry {
   /** Debe coincidir con el `id` del `<Grupo>` correspondiente (ver CuentaSection). */
   id: string;
   titulo: string;
@@ -10,6 +10,39 @@ export interface SettingsEntry {
   contiene: string;
   Icon: LucideIcon;
 }
+
+/**
+ * Qué hay en cada sección. `contiene` no es decorativo: es lo que evita
+ * tener que abrir un desplegable llamado "Apariencia y contenido" para
+ * descubrir que ahí se cambia el tema. Los `id` deben coincidir con los del
+ * `<Grupo>` de CuentaSection.tsx.
+ *
+ * Definida AQUÍ, en el componente cliente, y no en CuentaSection (el Server
+ * Component que monta esto) — un icono de lucide-react es un componente de
+ * función, y una función no se puede pasar de un Server Component a un
+ * Client Component como prop: React la rechaza en tiempo de ejecución
+ * ("Functions cannot be passed directly to Client Components"), y toda la
+ * pantalla de Cuenta se caía por ello. Como estos datos son estáticos y no
+ * dependen de nada que resuelva el servidor, no hay motivo para que crucen
+ * esa frontera: viven donde se usan.
+ */
+const SECCIONES: SettingsEntry[] = [
+  { id: "acceso", titulo: "Cuenta y acceso", contiene: "Email, contraseña, cerrar sesiones", Icon: User },
+  { id: "captura", titulo: "Captura", contiene: "Vincular Telegram", Icon: Send },
+  { id: "avisos", titulo: "Avisos", contiene: "Qué te notificamos, avisos en el móvil", Icon: Bell },
+  {
+    id: "apariencia",
+    titulo: "Apariencia y contenido",
+    contiene: "Tema, tamaño de texto, categorías",
+    Icon: Palette,
+  },
+  {
+    id: "datos",
+    titulo: "Tus datos",
+    contiene: "Exportar, tokens de API, eliminar la cuenta",
+    Icon: Download,
+  },
+];
 
 /**
  * Índice de los ajustes: qué secciones hay y qué contiene cada una.
@@ -28,7 +61,7 @@ export interface SettingsEntry {
  * Abre el grupo además de saltar a él. Un ancla a secas dejaría al usuario
  * mirando un desplegable cerrado, que es exactamente donde estaba.
  */
-export function SettingsIndex({ entries }: { entries: SettingsEntry[] }) {
+export function SettingsIndex() {
   function abrir(id: string) {
     const grupo = document.getElementById(`cuenta-grupo-${id}`);
     if (!(grupo instanceof HTMLDetailsElement)) return;
@@ -39,7 +72,7 @@ export function SettingsIndex({ entries }: { entries: SettingsEntry[] }) {
   return (
     <nav aria-label="Secciones de ajustes" className="flex flex-col gap-2">
       <ul className="grid gap-2 sm:grid-cols-2">
-        {entries.map(({ id, titulo, contiene, Icon }) => (
+        {SECCIONES.map(({ id, titulo, contiene, Icon }) => (
           <li key={id}>
             <button
               type="button"

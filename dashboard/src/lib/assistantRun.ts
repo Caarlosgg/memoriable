@@ -19,6 +19,23 @@ import { createAssistantTools, type AssistantTools } from "./assistantTools";
 import { listAssistantMemories } from "./assistantMemory";
 import { getPersonalWorkspaceId } from "./workspace";
 
+/**
+ * Detecta si un fallo del Asistente es "la petición era demasiado grande"
+ * (el límite de tokens por minuto de Groq), para poder avisar de eso en vez
+ * del genérico "no se ha podido generar una respuesta" — que no dice qué
+ * hacer para que funcione la próxima vez.
+ *
+ * Se mira el TEXTO del mensaje y no `statusCode`: Groq puede devolver esto
+ * como 413 o como 429 según el caso, y el texto ("tokens per minute",
+ * "Request too large") es la señal estable de las dos. Nunca se enseña el
+ * mensaje de Groq tal cual al usuario — solo se usa para elegir CUÁL de los
+ * dos mensajes, ya redactados aquí, mostrar.
+ */
+export function esErrorDePeticionDemasiadoGrande(err: unknown): boolean {
+  const mensaje = err instanceof Error ? err.message : String(err);
+  return /tokens per minute|request too large|too large for model/i.test(mensaje);
+}
+
 /** Cuántas notas se citan como fuente automática de una respuesta. */
 export const SOURCES_PER_ANSWER = 5;
 

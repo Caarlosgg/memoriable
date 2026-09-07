@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { Message } from "@prisma/client";
-import { Clock } from "lucide-react";
+import { Clock, MessageSquare } from "lucide-react";
 import { presentCategory } from "@/lib/categories";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,13 @@ interface MessageCardProps extends React.HTMLAttributes<HTMLElement> {
   /** Nota citada por el Asistente y a la que se ha navegado directamente. */
   highlighted?: boolean;
   /**
+   * Cuántos comentarios tiene — la conversación del equipo sobre esta nota
+   * (ver el modelo `Comentario`, la sustituta del chat suelto). Ausente o
+   * en `0` no pinta nada: sin esta señal, esa conversación era invisible
+   * hasta que a alguien se le ocurría abrir la nota a ciegas.
+   */
+  commentCount?: number;
+  /**
    * Etiqueta del elemento raíz. Por defecto `li`, que es como se usa en
    * todas las listas. `div` hace falta cuando la tarjeta va DENTRO de un
    * `<li>` que ya existe (la lista con casillas de selección de Notas):
@@ -34,7 +41,16 @@ interface MessageCardProps extends React.HTMLAttributes<HTMLElement> {
  * `<li>` real y el modal no se abriría al hacer clic.
  */
 export const MessageCard = React.forwardRef<HTMLElement, MessageCardProps>(function MessageCard(
-  { message, showCategory = true, highlightQuery, highlighted = false, as: Root = "li", className, ...rest },
+  {
+    message,
+    showCategory = true,
+    highlightQuery,
+    highlighted = false,
+    commentCount = 0,
+    as: Root = "li",
+    className,
+    ...rest
+  },
   ref,
 ) {
   const { Icon, label, color, borderAccent } = presentCategory(message.categoria);
@@ -78,6 +94,12 @@ export const MessageCard = React.forwardRef<HTMLElement, MessageCardProps>(funct
         <p className="flex items-center gap-1 text-xs text-muted">
           <Clock aria-hidden size={12} /> {formatDate(message.fecha)}
         </p>
+        {commentCount > 0 && (
+          <p className="flex items-center gap-1 text-xs font-medium text-accent-strong">
+            <MessageSquare aria-hidden size={12} />
+            {commentCount}
+          </p>
+        )}
       </div>
     </Root>
   );

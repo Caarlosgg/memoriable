@@ -45,12 +45,36 @@ export function toAssistantSources(messages: Message[]): AssistantSource[] {
  * más falla puede introducir si se rompe (p. ej. citar mal una fecha), así
  * que se mantiene separada de la orquestación de la ruta.
  */
+/**
+ * Tope de caracteres del contenido ORIGINAL de cada fuente citada.
+ *
+ * Una nota puede llegar a tener 4000 caracteres (`MAX_CONTENT_LENGTH` en
+ * pipeline/sanitize.ts). Sin este tope, citar 5 notas largas mandaba hasta
+ * ~5000 tokens solo en "Contenido original" — sumado al prompt base
+ * (~3400 tokens) y a las herramientas, superaba de sobra el límite de 8000
+ * tokens por minuto de Groq. Es justo el fallo real que vio un usuario al
+ * preguntar por las tareas del equipo: "Request too large... Requested
+ * 8267, Limit 8000".
+ *
+ * 600 es generoso para el caso normal (una nota rara vez pasa de dos o tres
+ * frases) y acota el peor caso a algo que sí cabe siempre.
+ */
+const MAX_CONTENIDO_EN_CONTEXTO = 600;
+
+function truncarContenido(contenido: string): string {
+  if (contenido.length <= MAX_CONTENIDO_EN_CONTEXTO) return contenido;
+  return `${contenido.slice(0, MAX_CONTENIDO_EN_CONTEXTO)}…`;
+}
+
 export function buildContextBlock(sources: AssistantSource[]): string {
   if (sources.length === 0) {
     return "No se ha encontrado ninguna nota guardada relevante para esta pregunta.";
   }
   return sources
-    .map((s, i) => `[${i + 1}] (${s.label}, ${s.fecha}) ${s.resumen}\nContenido original: ${s.contenido}`)
+    .map(
+      (s, i) =>
+        `[${i + 1}] (${s.label}, ${s.fecha}) ${s.resumen}\nContenido original: ${truncarContenido(s.contenido)}`,
+    )
     .join("\n\n");
 }
 

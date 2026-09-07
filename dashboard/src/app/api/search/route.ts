@@ -8,6 +8,7 @@ import { searchMessages, SEARCH_PAGE_SIZE } from "@/lib/data";
 import { getActiveWorkspace } from "@/lib/workspace";
 import { isCategory } from "@/lib/categories";
 import { ESTADOS_TABLERO, PRIORIDADES } from "@/lib/kanban";
+import { contarComentariosPorMensaje } from "@/lib/comentarios";
 
 function parseDate(value: string | null): Date | null {
   if (!value) return null;
@@ -71,5 +72,12 @@ export async function GET(request: NextRequest) {
     { categoria, estado, prioridad, desde, hasta, etiqueta },
     limite,
   );
-  return NextResponse.json({ query: q, results: messages, total, hayMas });
+
+  // Mismo contador que la vista agrupada (ver NotesSection): sin esto, una
+  // nota con conversación del equipo solo lo enseñaba en la pantalla de
+  // inicio de Notas y volvía a ser invisible en cuanto se filtraba o se
+  // buscaba, que es justo cuando más se usa el buscador.
+  const comentarios = Object.fromEntries(await contarComentariosPorMensaje(messages.map((m) => m.id)));
+
+  return NextResponse.json({ query: q, results: messages, total, hayMas, comentarios });
 }

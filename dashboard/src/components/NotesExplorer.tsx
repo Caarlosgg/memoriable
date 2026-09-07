@@ -47,6 +47,8 @@ interface FetchState {
   /** Total exacto — solo lo hay al FILTRAR sin texto (ver SearchResult en data.ts). */
   total?: number;
   hayMas: boolean;
+  /** Comentarios por nota de estos resultados (ver /api/search). */
+  comentarios: Record<string, number>;
 }
 
 const INITIAL_FETCH_STATE: FetchState = {
@@ -58,6 +60,7 @@ const INITIAL_FETCH_STATE: FetchState = {
   status: "done",
   results: [],
   hayMas: false,
+  comentarios: {},
 };
 
 function sameFilters(a: Filters, b: Filters): boolean {
@@ -106,9 +109,12 @@ export function filtersFromParams(params: URLSearchParams | ReadonlyURLSearchPar
 export function NotesExplorer({
   initialGroups,
   highlightId,
+  comentariosPorMensaje,
 }: {
   initialGroups: CategoryGroup[];
   highlightId?: string;
+  /** Cuántos comentarios tiene cada nota de `initialGroups` (ver NotesSection). */
+  comentariosPorMensaje?: Record<string, number>;
 }) {
   // Los filtros arrancan de la URL: así una búsqueda se puede compartir,
   // guardar en marcadores y sobrevive a ir a otra pantalla y volver. Antes
@@ -275,7 +281,12 @@ export function NotesExplorer({
     fetch(`/api/search?${params.toString()}`, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`La búsqueda falló (${res.status}).`);
-        return res.json() as Promise<{ results: Message[]; total?: number; hayMas: boolean }>;
+        return res.json() as Promise<{
+          results: Message[];
+          total?: number;
+          hayMas: boolean;
+          comentarios?: Record<string, number>;
+        }>;
       })
       .then((data) =>
         setFetchState({
@@ -288,11 +299,22 @@ export function NotesExplorer({
           results: data.results,
           total: data.total,
           hayMas: data.hayMas,
+          comentarios: data.comentarios ?? {},
         }),
       )
       .catch((err) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setFetchState({ query, etiqueta, filters, attempt, limite, status: "error", results: [], hayMas: false });
+        setFetchState({
+          query,
+          etiqueta,
+          filters,
+          attempt,
+          limite,
+          status: "error",
+          results: [],
+          hayMas: false,
+          comentarios: {},
+        });
       });
 
     return () => controller.abort();
@@ -422,6 +444,7 @@ export function NotesExplorer({
               hiddenIds={hiddenIds}
               onDeleted={hideMessage}
               onUndoDelete={unhideMessage}
+              comentariosPorMensaje={comentariosPorMensaje}
             />
           ))}
         </div>
@@ -502,6 +525,7 @@ export function NotesExplorer({
                       as="div"
                       message={message}
                       highlightQuery={query}
+                      commentCount={fetchState.comentarios[message.id]}
                       className="flex-1 cursor-pointer"
                       style={{ "--i": i } as React.CSSProperties}
                     />
@@ -539,12 +563,14 @@ function CategoryColumn({
   hiddenIds,
   onDeleted,
   onUndoDelete,
+  comentariosPorMensaje,
 }: {
   group: CategoryGroup;
   highlightId?: string;
   hiddenIds: Set<string>;
   onDeleted: (id: string) => void;
   onUndoDelete: (id: string) => void;
+  comentariosPorMensaje?: Record<string, number>;
 }) {
   const messages = group.messages.filter((m) => !hiddenIds.has(m.id));
   const { Icon, label, color, colorSoft } = presentCategory(group.categoria);
@@ -574,6 +600,7 @@ function CategoryColumn({
                 message={message}
                 showCategory={false}
                 highlighted={message.id === highlightId}
+                commentCount={comentariosPorMensaje?.[message.id]}
                 className="cursor-pointer"
               />
             </MessageDetailDialog>

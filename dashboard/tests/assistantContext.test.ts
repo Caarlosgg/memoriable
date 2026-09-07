@@ -82,6 +82,41 @@ describe("buildContextBlock", () => {
     expect(block).toContain("Recordatorios");
     expect(block).toContain("Ideas");
   });
+
+  it("recorta el contenido original de una fuente muy larga", () => {
+    // Una nota puede llegar a tener 4000 caracteres (MAX_CONTENT_LENGTH). Sin
+    // tope, citar varias así de largas era justo lo que hacía que Groq
+    // rechazara la petición por tamaño ("Request too large... Requested
+    // 8267, Limit 8000") — el error real que vio un usuario en producción.
+    const sources = toAssistantSources([fakeMessage({ contenido: "x".repeat(4000) })]);
+
+    const block = buildContextBlock(sources);
+
+    expect(block.length).toBeLessThan(1000);
+    expect(block).toContain("…");
+  });
+
+  it("no toca el contenido de una fuente corta (el caso normal)", () => {
+    const sources = toAssistantSources([fakeMessage({ contenido: "Llamar al fontanero" })]);
+
+    const block = buildContextBlock(sources);
+
+    expect(block).toContain("Llamar al fontanero");
+    expect(block).not.toContain("…");
+  });
+
+  it("el recorte no depende de cuántas fuentes haya: cada una se acota por separado", () => {
+    const sources = toAssistantSources([
+      fakeMessage({ id: "a", contenido: "x".repeat(4000) }),
+      fakeMessage({ id: "b", contenido: "y".repeat(4000) }),
+    ]);
+
+    const block = buildContextBlock(sources);
+
+    // Dos fuentes recortadas, cada una a su propio tope — no un tope global
+    // que dejara a la segunda vacía por haberse gastado todo en la primera.
+    expect(block.split("…")).toHaveLength(3);
+  });
 });
 
 describe("buildSystemPrompt", () => {

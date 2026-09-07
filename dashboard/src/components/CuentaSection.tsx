@@ -10,7 +10,7 @@ import { ThemeSettings } from "@/components/ThemeSettings";
 import { NotificationPrefsForm } from "@/components/NotificationPrefsForm";
 import { HiddenCategoriesForm } from "@/components/HiddenCategoriesForm";
 import { CustomCategoriesForm } from "@/components/CustomCategoriesForm";
-import { SettingsIndex, type SettingsEntry } from "@/components/cuenta/SettingsIndex";
+import { SettingsIndex } from "@/components/cuenta/SettingsIndex";
 import { DeleteAccountForm } from "@/components/cuenta/DeleteAccountForm";
 import { ApiTokensForm } from "@/components/cuenta/ApiTokensForm";
 import { listApiTokens } from "@/lib/apiTokens";
@@ -41,7 +41,7 @@ export async function CuentaSection() {
           y eso dejaba el tema, los avisos push, las categorías propias y la
           exportación INVISIBLES salvo que se te ocurriera abrir el grupo
           correcto. El índice dice qué hay dentro de cada uno y lo abre. */}
-      <SettingsIndex entries={SECCIONES} />
+      <SettingsIndex />
 
       {/* Agrupada en bloques con encabezado: eran diez tarjetas seguidas sin
           jerarquía, así que encontrar "silenciar avisos" o "exportar" era
@@ -99,30 +99,6 @@ export async function CuentaSection() {
     </div>
   );
 }
-
-/**
- * Qué hay en cada sección. `contiene` no es decorativo: es lo que evita
- * tener que abrir un desplegable llamado "Apariencia y contenido" para
- * descubrir que ahí se cambia el tema. Los `id` deben coincidir con los del
- * `<Grupo>` de arriba.
- */
-const SECCIONES: SettingsEntry[] = [
-  { id: "acceso", titulo: "Cuenta y acceso", contiene: "Email, contraseña, cerrar sesiones", Icon: User },
-  { id: "captura", titulo: "Captura", contiene: "Vincular Telegram", Icon: Send },
-  { id: "avisos", titulo: "Avisos", contiene: "Qué te notificamos, avisos en el móvil", Icon: Bell },
-  {
-    id: "apariencia",
-    titulo: "Apariencia y contenido",
-    contiene: "Tema, tamaño de texto, categorías",
-    Icon: Palette,
-  },
-  {
-    id: "datos",
-    titulo: "Tus datos",
-    contiene: "Exportar, tokens de API, eliminar la cuenta",
-    Icon: Download,
-  },
-];
 
 /**
  * Bloque PLEGABLE dentro de /cuenta. Agrupar ya puso jerarquía, pero la

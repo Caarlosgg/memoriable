@@ -8,7 +8,7 @@ import { isSessionActive } from "@/lib/sessionRevocation";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import type { AssistantSource } from "@/lib/assistantContext";
 import type { AssistantTools } from "@/lib/assistantTools";
-import { prepararAsistente, construirConsultaRAG } from "@/lib/assistantRun";
+import { prepararAsistente, construirConsultaRAG, esErrorDePeticionDemasiadoGrande } from "@/lib/assistantRun";
 import { ensureConversation, saveExchange } from "@/lib/assistantHistory";
 import { getActiveWorkspace } from "@/lib/workspace";
 
@@ -221,6 +221,12 @@ export async function POST(req: Request) {
       // el usuario como "no funciona", no un best-effort de segundo plano.
       onError: (err) => {
         Sentry.captureException(err);
+        // Caso concreto y accionable: la pregunta (con el historial y las
+        // notas citadas) pesaba más de lo que Groq admite de una vez. El
+        // mensaje genérico no decía qué hacer; este sí.
+        if (esErrorDePeticionDemasiadoGrande(err)) {
+          return "Esta conversación se ha quedado demasiado larga para el modelo. Prueba a empezar una conversación nueva o a preguntar algo más concreto.";
+        }
         return "No se ha podido generar una respuesta. Inténtalo de nuevo en un momento.";
       },
     }),

@@ -479,9 +479,12 @@ export async function uploadImage(formData: FormData): Promise<UploadImageResult
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "No se ha recibido ningún fichero." };
 
-  const result = await uploadImageToBlob(`notas/${userId}`, file);
-  if (result.error) Sentry.captureMessage(`Fallo al subir imagen de nota: ${result.error}`);
-  return result;
+  // `uploadImageToBlob` ya manda la excepción REAL a Sentry cuando de
+  // verdad falla (ver blobUpload.ts) — un `captureMessage` aquí con solo el
+  // texto genérico era ruido sin stack trace, y además disparaba por
+  // errores de validación (fichero demasiado grande, tipo no admitido) que
+  // no son bugs, son al usuario equivocándose de fichero.
+  return uploadImageToBlob(`notas/${userId}`, file);
 }
 
 export interface DeleteMessageResult {
