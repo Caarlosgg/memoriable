@@ -12,11 +12,15 @@ import {
   ShieldCheck,
   MessagesSquare,
   AlarmClock,
+  Undo2,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   markAsRead,
   markAllAsRead,
+  markAsUnread,
+  deleteNotification,
 } from "@/app/(dashboard)/notificaciones/actions";
 import { cn } from "@/lib/utils";
 import { haceCuanto } from "@/lib/format";
@@ -57,6 +61,14 @@ export function NotificationsList({
   const router = useRouter();
   const [, startTransition] = useTransition();
   const hasUnread = notifications.some((n) => !n.read);
+
+  /** Lanza una acción de fila y refresca — el patrón común de los botones de cada notificación. */
+  function run(accion: () => Promise<void>) {
+    startTransition(async () => {
+      await accion();
+      router.refresh();
+    });
+  }
 
   function handleClick(n: Notification) {
     startTransition(async () => {
@@ -102,7 +114,7 @@ export function NotificationsList({
           const Icon = TYPE_ICON[n.type];
 
           return (
-            <li key={n.id}>
+            <li key={n.id} className="group/notif relative">
               <button
                 type="button"
                 onClick={() => handleClick(n)}
@@ -139,6 +151,33 @@ export function NotificationsList({
                   />
                 )}
               </button>
+
+              {/* FUERA del botón principal, no dentro: si estuvieran dentro,
+                  pulsarlas navegaría además a la notificación. Aparecen al
+                  pasar por encima o al enfocar con teclado, para no llenar
+                  la bandeja de iconos. */}
+              <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/notif:opacity-100">
+                {n.read && (
+                  <button
+                    type="button"
+                    aria-label={`Marcar como no leída: ${n.title}`}
+                    title="Marcar como no leída"
+                    onClick={() => run(() => markAsUnread(n.id))}
+                    className="rounded-full bg-paper p-1.5 text-muted transition-colors hover:text-accent-strong focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+                  >
+                    <Undo2 aria-hidden size={13} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Borrar la notificación: ${n.title}`}
+                  title="Borrar"
+                  onClick={() => run(() => deleteNotification(n.id))}
+                  className="rounded-full bg-paper p-1.5 text-muted transition-colors hover:text-danger focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+                >
+                  <Trash2 aria-hidden size={13} />
+                </button>
+              </div>
             </li>
           );
         })}

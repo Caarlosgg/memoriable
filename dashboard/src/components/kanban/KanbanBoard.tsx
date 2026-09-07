@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -214,12 +215,18 @@ export function KanbanBoard({
 
   // Filtro visual (Fase F): no toca `byEstado` (los datos reales, con los
   // que trabajan drag/optimista), solo lo que se pasa a renderizar.
-  const [filtroCategoria, setFiltroCategoria] = useState<Category | "todas">(
-    "todas",
-  );
-  const [filtroPrioridad, setFiltroPrioridad] = useState<Prioridad | "todas">(
-    "todas",
-  );
+  // Arrancan de la URL: los filtros llegaban por URL desde Inicio, pero
+  // cualquier cambio posterior no se reflejaba y recargar los perdía — así
+  // que un tablero filtrado no se podía ni compartir ni recuperar.
+  const searchParams = useSearchParams();
+  const [filtroCategoria, setFiltroCategoria] = useState<Category | "todas">(() => {
+    const v = searchParams.get("categoria");
+    return v && (CATEGORIES as readonly string[]).includes(v) ? (v as Category) : "todas";
+  });
+  const [filtroPrioridad, setFiltroPrioridad] = useState<Prioridad | "todas">(() => {
+    const v = searchParams.get("prioridad");
+    return v && (PRIORIDADES as readonly string[]).includes(v) ? (v as Prioridad) : "todas";
+  });
   // "todas" | "sin-asignar" | un userId — solo tiene sentido en modo equipo
   // (con `members`), ver el <Select> condicional más abajo.
   const [filtroAsignado, setFiltroAsignado] = useState<string>(
@@ -229,6 +236,29 @@ export function KanbanBoard({
   // estado normal del tablero (se puede cambiar y quitar aquí mismo, sin
   // volver a navegar).
   const [vista, setVista] = useState<VistaTablero>(vistaInicial);
+
+  /**
+   * Refleja los filtros en la URL con `history.replaceState`, no con
+   * `router.replace`: lo segundo es una navegación de Next y volvería a
+   * pedir el tablero entero al servidor en cada cambio de desplegable.
+   * Mismo criterio que en Notas.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const set = (clave: string, valor: string, porDefecto: string) => {
+      if (valor === porDefecto) params.delete(clave);
+      else params.set(clave, valor);
+    };
+    set("categoria", filtroCategoria, "todas");
+    set("prioridad", filtroPrioridad, "todas");
+    set("asignado", filtroAsignado, "todas");
+    set("vista", vista, "todas");
+
+    const nueva = params.toString();
+    if (nueva !== window.location.search.replace(/^\?/, "")) {
+      history.replaceState(null, "", nueva ? `${window.location.pathname}?${nueva}` : window.location.pathname);
+    }
+  }, [filtroCategoria, filtroPrioridad, filtroAsignado, vista]);
   const hasFilters =
     filtroCategoria !== "todas" ||
     filtroPrioridad !== "todas" ||
