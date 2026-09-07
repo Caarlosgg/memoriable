@@ -42,8 +42,8 @@ export default function PrivacidadPage() {
       <p>Solo con los proveedores necesarios para que funcione:</p>
       <ul>
         <li>
-          <strong>Groq</strong> — categoriza y resume tu contenido, y genera las respuestas del
-          Asistente.
+          <strong>Groq</strong> — categoriza y resume tu contenido, genera las respuestas del
+          Asistente, transcribe las notas de voz y lee las fotos que le mandas al bot.
         </li>
         <li>
           <strong>Google (Gemini)</strong> — calcula los vectores que permiten la búsqueda por
@@ -60,7 +60,8 @@ export default function PrivacidadPage() {
           <strong>Telegram</strong> — solo si vinculas el bot, para recibir lo que le dictas.
         </li>
         <li>
-          <strong>Resend</strong> — envío de los correos de verificación y recuperación.
+          <strong>Google (Gmail)</strong> — envío de los correos de verificación y de recuperación
+          de contraseña.
         </li>
         <li>
           <strong>Sentry</strong> — registro de errores técnicos.

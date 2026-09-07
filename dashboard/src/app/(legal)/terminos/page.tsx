@@ -48,9 +48,11 @@ export default function TerminosPage() {
       <h2>Servicios de terceros</h2>
       <p>
         Para funcionar, MemorIAble se apoya en proveedores externos: Groq (categorización y
-        respuestas), Google Gemini (búsqueda por significado), Supabase (base de datos), Vercel
-        (alojamiento) y Telegram (captura). El contenido que envías pasa por ellos en la medida
-        necesaria para darte el servicio.
+        respuestas, voz e imágenes), Google Gemini (búsqueda por significado), Google Gmail
+        (correos de verificación), Supabase (base de datos), Vercel (alojamiento) y Telegram
+        (captura). El contenido que envías pasa por ellos en la medida necesaria para darte el
+        servicio. La lista completa y actualizada está en la{" "}
+        <a href="/privacidad">política de privacidad</a>.
       </p>
 
       <h2>Disponibilidad y responsabilidad</h2>
