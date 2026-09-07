@@ -431,6 +431,37 @@ Notas:
 - Las tres claves (`TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, `DATABASE_URL`)
   se pasan por `--env-file .env`; nunca se hornean en la imagen.
 
+### Dejarlo corriendo 24/7 (Fly.io)
+
+`docker run` en el portátil sirve para probar, pero el bot deja de leer
+mensajes en cuanto cierras el ordenador. Para que esté siempre activo hay
+un [`fly.toml`](./fly.toml) listo, que ejecuta el mismo `Dockerfile`:
+
+```bash
+fly auth login
+fly launch --no-deploy --copy-config --name memoriable-bot --region mad
+fly volumes create bot_data --size 1 --region mad
+
+# Secretos: NUNCA en fly.toml (está versionado). Mínimo imprescindible:
+fly secrets set \
+  DATABASE_URL="..." \
+  TELEGRAM_BOT_TOKEN="..." \
+  GROQ_API_KEY="..."
+
+fly deploy
+fly logs          # debería verse el arranque del bot
+```
+
+Por qué Fly y no Vercel: el bot usa *polling*, o sea un proceso vivo
+permanentemente, y eso no cabe en una función serverless. El dashboard sí
+va en Vercel — son dos despliegues independientes que solo comparten la
+base de datos.
+
+Importante: **una sola instancia**. Dos procesos haciendo polling del
+mismo bot se roban los mensajes entre sí (Telegram entrega cada update a
+un único lector) y el resumen diario saldría duplicado. Si arrancas el bot
+en Fly, no lo dejes corriendo también en local.
+
 ---
 
 ## 📊 Dashboard web

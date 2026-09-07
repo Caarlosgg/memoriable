@@ -1,0 +1,55 @@
+# Despliegue del BOT de Telegram (no del dashboard: ese va en Vercel).
+#
+# El bot usa polling, así que necesita un proceso vivo permanentemente —
+# eso no cabe en una función serverless. Aquí queda descrito para Fly.io,
+# que ejecuta directamente el Dockerfile del repo.
+#
+# Puesta en marcha (una sola vez):
+#
+#   fly auth login
+#   fly launch --no-deploy --copy-config --name memoriable-bot --region mad
+#   fly volumes create bot_data --size 1 --region mad
+#   fly secrets set DATABASE_URL="..." TELEGRAM_BOT_TOKEN="..." GROQ_API_KEY="..."
+#   fly deploy
+#
+# Los secretos se ponen SIEMPRE con `fly secrets set`, nunca en este
+# fichero: esto está versionado en git (regla 1 de CLAUDE.md).
+
+app = "memoriable-bot"
+primary_region = "mad"   # Madrid: cerca de ti y de la BD (eu-west-1)
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Sin sección [http_service] ni [[services]] A PROPÓSITO: el bot no expone
+# ningún puerto (hace polling contra la API de Telegram, nadie le llama a
+# él). Declarar un servicio HTTP haría que Fly esperara respuestas en un
+# puerto que nunca va a abrirse, y marcaría la máquina como caída.
+
+[env]
+  NODE_ENV = "production"
+  # Ambos ficheros de estado viven en el volumen persistente de abajo: si
+  # no, el fusible de gasto y el "resumen ya enviado hoy" se reiniciarían
+  # en cada despliegue o reinicio de la máquina.
+  BUDGET_FILE = "/data/budget.json"
+  DAILY_SUMMARY_STATE_FILE = "/data/daily-summary.json"
+  BOT_TIMEZONE = "Europe/Madrid"
+
+[mounts]
+  source = "bot_data"
+  destination = "/data"
+
+# Una sola máquina, siempre encendida. Al no declarar ningún servicio
+# HTTP arriba, Fly no aplica parada automática por inactividad — que es
+# justo lo que hace falta: el bot no recibe peticiones entrantes (solo
+# hace salientes), así que cualquier apagado "por no recibir tráfico" lo
+# dejaría mudo sin que nada lo avisara.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[deploy]
+  # Nunca dos instancias a la vez: dos procesos haciendo polling del mismo
+  # bot se roban los mensajes entre sí (Telegram entrega cada update a un
+  # solo lector) y el resumen diario se enviaría por duplicado.
+  strategy = "immediate"
