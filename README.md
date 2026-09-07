@@ -231,6 +231,25 @@ mensaje, no una conexión larga y persistente.
 
 ## 🕹️ Uso
 
+### API pública (v1)
+
+Para que otras herramientas —un servidor MCP, un script propio, otra IA—
+lean y escriban tus notas sin una sesión de navegador. Crea un token en
+**Cuenta → Tus datos → Tokens de API**; se enseña una sola vez (solo se
+guarda su hash).
+
+Alcance: tu **espacio personal**, no el workspace activo. Un token que
+escribiera por defecto en el espacio compartido de un equipo es la forma
+fácil de que algo automático publique donde no debía.
+
+```bash
+# Buscar (búsqueda híbrida, la misma que la web)
+curl -H "Authorization: Bearer mia_..."   "https://<tu-dashboard>/api/v1/notas?q=fontanero"
+
+# Crear una nota (pasa por el mismo pipeline: categoriza, resume, embebe)
+curl -X POST -H "Authorization: Bearer mia_..."   -H "Content-Type: application/json"   -d '{"contenido":"Llamar al fontanero el jueves"}'   "https://<tu-dashboard>/api/v1/notas"
+```
+
 ### Comandos del bot
 
 Al escribir `/` en el chat, Telegram muestra el menú (se publica al arrancar

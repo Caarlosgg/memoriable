@@ -90,6 +90,7 @@ model User {
   cuentasAhorro    CuentaAhorro[]
   verificationTokens  VerificationToken[]
   passwordResetTokens PasswordResetToken[]
+  apiTokens           ApiToken[]
   memberships      Membership[]
   notifications    Notification[]
   chatMessages     ChatMessage[]
@@ -197,6 +198,41 @@ model Membership {
 }
 
 /// Ver ../../prisma/schema.prisma: token de un solo uso para confirmar el
+
+/// Token de API personal, para que herramientas de fuera (un servidor MCP,
+/// un script, otra IA) puedan leer y escribir en MemorIAble sin una sesión
+/// de navegador.
+///
+/// Es lo que faltaba para que el producto sea "tu memoria, y tus otras IAs
+/// leen de ella": hasta ahora TODO iba por cookie de sesión, así que nada
+/// externo podía integrarse — ni el propio servidor MCP.
+///
+/// `tokenHash` y no el token en claro: quien vuelque esta tabla no debe
+/// poder usar lo que hay dentro, exactamente igual que con las contraseñas.
+/// El token solo se ve UNA vez, al crearlo.
+model ApiToken {
+  id        String    @id @default(cuid())
+  /// SHA-256 del token. Único: es por donde se busca al autenticar.
+  tokenHash String    @unique
+  /// Nombre que le pone el usuario ("Claude Desktop", "script de backup") —
+  /// sin esto, una lista de tokens es una lista de fechas indistinguibles.
+  nombre    String
+  /// Primeros caracteres del token, para poder reconocerlo en la lista sin
+  /// guardar el secreto entero.
+  prefijo   String
+  createdAt DateTime  @default(now())
+  /// Último uso, para poder revocar con criterio los que ya no usa nadie.
+  lastUsedAt DateTime?
+  /// Caducidad opcional: null = no caduca (lo normal en una integración).
+  expiresAt DateTime?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_tokens")
+}
+
 /// email al registrarse (registro/login profesional del dashboard).
 model VerificationToken {
   id        String   @id @default(cuid())

@@ -12,6 +12,8 @@ import { HiddenCategoriesForm } from "@/components/HiddenCategoriesForm";
 import { CustomCategoriesForm } from "@/components/CustomCategoriesForm";
 import { SettingsIndex, type SettingsEntry } from "@/components/cuenta/SettingsIndex";
 import { DeleteAccountForm } from "@/components/cuenta/DeleteAccountForm";
+import { ApiTokensForm } from "@/components/cuenta/ApiTokensForm";
+import { listApiTokens } from "@/lib/apiTokens";
 import { PushNotificationsToggle } from "@/components/PushNotificationsToggle";
 import {
   hasPushSubscription,
@@ -31,6 +33,7 @@ export async function CuentaSection() {
     listCustomCategories(),
   ]);
   const hiddenCategories = await getHiddenCategories(userId, workspaceId);
+  const apiTokens = await listApiTokens(userId);
 
   return (
     <div className="flex flex-col gap-8">
@@ -86,6 +89,9 @@ export async function CuentaSection() {
 
       <Grupo id="datos" titulo="Tus datos" Icon={Download}>
         <ExportSection />
+        {/* Entre exportar y borrar: los tres son "qué puedo hacer con lo
+            mío desde fuera de la app". */}
+        <ApiTokensForm tokens={apiTokens} />
         {/* Después de exportar a propósito: quien viene a borrar su cuenta
             se encuentra primero la forma de llevarse una copia. */}
         <DeleteAccountForm tienePassword={Boolean(user.passwordHash)} />
@@ -110,7 +116,12 @@ const SECCIONES: SettingsEntry[] = [
     contiene: "Tema, tamaño de texto, categorías",
     Icon: Palette,
   },
-  { id: "datos", titulo: "Tus datos", contiene: "Exportar todo lo tuyo, eliminar la cuenta", Icon: Download },
+  {
+    id: "datos",
+    titulo: "Tus datos",
+    contiene: "Exportar, tokens de API, eliminar la cuenta",
+    Icon: Download,
+  },
 ];
 
 /**

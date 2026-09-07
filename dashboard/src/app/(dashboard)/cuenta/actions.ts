@@ -8,6 +8,7 @@ import { generateLinkCode, hashPassword, verifyPassword, verifyPasswordConstantT
 import { validarPassword } from "@/lib/passwordPolicy";
 import { createSession, deleteSession } from "@/lib/session";
 import { eliminarCuenta } from "@/lib/eliminarCuenta";
+import { createApiToken, revokeApiToken } from "@/lib/apiTokens";
 import { revokeAllSessions } from "@/lib/sessionRevocation";
 import { prisma } from "@/lib/prisma";
 import {
@@ -355,4 +356,28 @@ export async function eliminarMiCuenta(confirmacion: string): Promise<EliminarMi
   // de las combinaciones.
   await deleteSession();
   redirect("/login?cuenta=eliminada");
+}
+
+export interface ApiTokenActionResult {
+  error?: string;
+  /** El token en claro. Solo viaja UNA vez, al crearlo: no se guarda y no se puede recuperar. */
+  token?: string;
+}
+
+/** Crea un token de API personal. Ver lib/apiTokens.ts para el porqué del formato y del hash. */
+export async function crearApiToken(nombre: string): Promise<ApiTokenActionResult> {
+  const userId = await verifySession();
+  const { error, creado } = await createApiToken(userId, nombre);
+  if (error) return { error };
+  revalidatePath("/cuenta");
+  return { token: creado!.token };
+}
+
+/** Revoca un token. Efecto inmediato: la siguiente petición que lo use recibe un 401. */
+export async function revocarApiToken(id: string): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  const ok = await revokeApiToken(userId, id);
+  if (!ok) return { error: "Ese token ya no existe." };
+  revalidatePath("/cuenta");
+  return {};
 }
