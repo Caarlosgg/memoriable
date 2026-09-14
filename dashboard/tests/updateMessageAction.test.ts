@@ -24,6 +24,9 @@ vi.mock("@/lib/customCategories", () => ({
 const revalidatePath = vi.fn();
 vi.mock("next/cache", () => ({ revalidatePath: (path: string) => revalidatePath(path) }));
 
+const spawnSiguienteOcurrencia = vi.fn();
+vi.mock("@/lib/recurringTasks", () => ({ spawnSiguienteOcurrencia: (...a: unknown[]) => spawnSiguienteOcurrencia(...a) }));
+
 beforeEach(() => {
   getActiveWorkspace.mockReset();
   getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: false, role: "OWNER" });
@@ -31,6 +34,7 @@ beforeEach(() => {
   messageUpdateMany.mockResolvedValue({ count: 1 });
   findOwnCustomCategory.mockReset();
   revalidatePath.mockReset();
+  spawnSiguienteOcurrencia.mockReset();
 });
 
 describe("updateMessage", () => {
@@ -44,13 +48,20 @@ describe("updateMessage", () => {
     });
   });
 
-  it("al marcar HECHA, limpia enProgresoPorId/enProgresoDesde", async () => {
+  it("al marcar HECHA, limpia enProgresoPorId/enProgresoDesde y comprueba si hay que generar la siguiente ocurrencia", async () => {
     const { updateMessage } = await import("../src/app/(dashboard)/actions");
     await updateMessage("m1", { estado: "HECHO" });
     expect(messageUpdateMany).toHaveBeenCalledWith({
       where: { id: "m1", workspaceId: "ws1" },
       data: { estado: "HECHO", hecho: true, enProgresoPorId: null, enProgresoDesde: null },
     });
+    expect(spawnSiguienteOcurrencia).toHaveBeenCalledWith("m1");
+  });
+
+  it("editar sin tocar el estado no comprueba la recurrencia", async () => {
+    const { updateMessage } = await import("../src/app/(dashboard)/actions");
+    await updateMessage("m1", { resumen: "Nuevo resumen" });
+    expect(spawnSiguienteOcurrencia).not.toHaveBeenCalled();
   });
 
   it("cambiar SOLO la categoría a una no accionable también limpia 'en curso ahora', aunque el estado no cambie a HECHO", async () => {

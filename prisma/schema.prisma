@@ -610,6 +610,18 @@ enum Prioridad {
   ALTA
 }
 
+/// Cada cuánto se repite una tarea o un evento recurrente — mismo enum
+/// para las dos cosas (ver `Message.serieFrecuencia` y la tool
+/// `crearEvento`, que hasta ahora solo la manejaba en TypeScript, sin
+/// persistirla: un evento repetido se materializa entero de una vez, no
+/// necesita recordar la regla después de crearse).
+enum Frecuencia {
+  DIARIA
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+}
+
 /// Columna propia del tablero de un workspace ("En diseño", "En revisión",
 /// "Esperando al cliente"...). Un obrador, una asesoría y un estudio no
 /// llevan las tareas igual, y tres columnas fijas no dan para todos.
@@ -692,6 +704,23 @@ model Message {
   /// nivel de esquema — igual que `estado`/`prioridad`, que ya conviven
   /// sin usarse en categorías no accionables.
   fechaLimite DateTime?
+
+  /// Tareas/recordatorios recurrentes: null en todas las notas normales.
+  /// `serieId` agrupa las ocurrencias de una misma serie — se usa el `id`
+  /// de la PRIMERA como valor, así que no hace falta una tabla "Serie"
+  /// aparte para algo tan pequeño. Solo existe UNA fila "viva" a la vez
+  /// por serie (a diferencia de un evento recurrente, que materializa
+  /// TODAS sus ocurrencias de golpe): al completarse una, se genera la
+  /// siguiente con la fecha desplazada — así es como se espera que
+  /// funcione una tarea recurrente de verdad ("sacar la basura" reaparece
+  /// la semana que viene, no existen ya las 52 de golpe desde el primer
+  /// día). `serieIndice`/`serieVeces` deciden cuándo parar: se deja de
+  /// generar la siguiente al llegar a `serieVeces` (mismo tope 2-20 que ya
+  /// usa `crearEvento`, mismo parámetro `repetir` del Asistente).
+  serieId         String?
+  serieFrecuencia Frecuencia?
+  serieIndice     Int?
+  serieVeces      Int?
 
   /// Etiquetas libres (Fase F/J): a mayores de la categoría fija, texto
   /// suelto que el usuario añade desde el modal de detalle para filtrar

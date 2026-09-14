@@ -6,6 +6,7 @@ import type { EstadoTarea, Prioridad, Prisma, Message } from "@prisma/client";
 import { verifySession } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { captureMessage, refrescarEmbedding } from "@/lib/pipeline";
+import { spawnSiguienteOcurrencia } from "@/lib/recurringTasks";
 import { isCategory, esAccionable } from "@/lib/categories";
 import { shouldClearEnProgreso, ESTADOS_TABLERO } from "@/lib/kanban";
 import { resolverColumnas } from "@/lib/boardColumns";
@@ -182,6 +183,7 @@ export async function updateTaskStatus(id: string, estado: EstadoTarea, columnaI
     prisma.message.findUnique({ where: { id }, select: { resumen: true } }).then((m) => {
       logActivity({ workspaceId, userId, tipo: "tarea_completada", entidad: "mensaje", entidadId: id, detalle: { resumen: m?.resumen } }).catch(() => {});
     }).catch(() => {});
+    void spawnSiguienteOcurrencia(id);
   }
 }
 
@@ -197,7 +199,7 @@ export async function moveTask(id: string, estado: EstadoTarea, orden: number, c
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
-  await prisma.message.updateMany({
+  const updated = await prisma.message.updateMany({
     where: { id, workspaceId },
     data: {
       estado,
@@ -208,6 +210,7 @@ export async function moveTask(id: string, estado: EstadoTarea, orden: number, c
     },
   });
   revalidatePath("/pendientes");
+  if (updated.count > 0 && estado === "HECHO") void spawnSiguienteOcurrencia(id);
 }
 
 /** Cambia la prioridad de una tarjeta del tablero. Mismo criterio de acceso que arriba. */
@@ -449,6 +452,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
     if (contenido !== undefined || resumen !== undefined) {
       void refrescarEmbedding(id, [contenido, resumen].filter(Boolean).join(" "));
     }
+    if (input.estado === "HECHO") void spawnSiguienteOcurrencia(id);
 
     revalidatePath("/notas");
     revalidatePath("/pendientes");

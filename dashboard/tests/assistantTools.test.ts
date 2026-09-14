@@ -124,6 +124,11 @@ vi.mock("../src/lib/ahorros", () => ({
   getCuentasConSaldo: (...args: unknown[]) => getCuentasConSaldo(...args),
 }));
 
+const spawnSiguienteOcurrencia = vi.fn();
+vi.mock("../src/lib/recurringTasks", () => ({
+  spawnSiguienteOcurrencia: (...args: unknown[]) => spawnSiguienteOcurrencia(...args),
+}));
+
 function fakePendiente(
   overrides: Partial<import("@prisma/client").Message> = {},
 ) {
@@ -258,6 +263,7 @@ describe("createAssistantTools", () => {
     messageUpdateMany.mockResolvedValue({ count: 1 });
     messageUpdate.mockReset();
     messageUpdate.mockResolvedValue({});
+    spawnSiguienteOcurrencia.mockReset();
     cuentaAhorroFindMany.mockReset();
     cuentaAhorroFindMany.mockResolvedValue([]);
     cuentaAhorroCreate.mockReset();
@@ -296,6 +302,31 @@ describe("createAssistantTools", () => {
     });
     expect(revalidatePath).toHaveBeenCalledWith("/pendientes");
     expect(revalidatePath).toHaveBeenCalledWith("/notas");
+  });
+
+  it("crearNota con repetir: configura la serie sobre la propia nota recién creada (su id ES el serieId)", async () => {
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    await tools.crearNota.execute!(
+      { contenido: "Sacar la basura", repetir: { frecuencia: "SEMANAL", veces: 5 } },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdate).toHaveBeenCalledWith({
+      where: { id: "m1" },
+      data: { serieId: "m1", serieFrecuencia: "SEMANAL", serieIndice: 0, serieVeces: 5 },
+    });
+  });
+
+  it("crearNota sin repetir no configura ninguna serie", async () => {
+    const tools = createAssistantTools("u1", "w1", "MEMBER");
+
+    await tools.crearNota.execute!(
+      { contenido: "Llamar al banco" },
+      { toolCallId: "c", messages: [], context: undefined },
+    );
+
+    expect(messageUpdate).not.toHaveBeenCalled();
   });
 
   it("crearNota con asignadoA resuelve el miembro real y actualiza la nota ya guardada con su assigneeId", async () => {
@@ -534,6 +565,9 @@ describe("createAssistantTools", () => {
       },
     });
     expect(result).toMatchObject({ id: "p1", resumen: "Llamar al fontanero" });
+    // Por si es una tarea recurrente — spawnSiguienteOcurrencia decide por
+    // sí sola si de verdad hay una serie que continuar (ver su propio test).
+    expect(spawnSiguienteOcurrencia).toHaveBeenCalledWith("p1");
   });
 
   it("completarTarea ignora candidatos semánticos que ya están hechos o no son accionables", async () => {

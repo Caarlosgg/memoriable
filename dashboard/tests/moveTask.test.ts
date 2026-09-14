@@ -19,6 +19,9 @@ vi.mock("@/lib/prisma", () => ({
 const revalidatePath = vi.fn();
 vi.mock("next/cache", () => ({ revalidatePath: (path: string) => revalidatePath(path) }));
 
+const spawnSiguienteOcurrencia = vi.fn();
+vi.mock("@/lib/recurringTasks", () => ({ spawnSiguienteOcurrencia: (...a: unknown[]) => spawnSiguienteOcurrencia(...a) }));
+
 describe("moveTask", () => {
   beforeEach(() => {
     messageUpdateMany.mockReset();
@@ -26,6 +29,7 @@ describe("moveTask", () => {
     revalidatePath.mockReset();
     getActiveWorkspace.mockReset();
     getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
+    spawnSiguienteOcurrencia.mockReset();
   });
 
   it("rechaza mover una tarjeta con rol VIEWER, sin tocar la base de datos", async () => {
@@ -56,5 +60,21 @@ describe("moveTask", () => {
       where: { id: "m1", workspaceId: "ws1" },
       data: { estado: "HECHO", hecho: true, orden: 500, enProgresoPorId: null, enProgresoDesde: null },
     });
+    // Por si es una tarea recurrente — spawnSiguienteOcurrencia decide por
+    // sí sola si de verdad hay una serie que continuar (ver su propio test).
+    expect(spawnSiguienteOcurrencia).toHaveBeenCalledWith("m1");
+  });
+
+  it("NO intenta generar la siguiente ocurrencia si la columna destino no es HECHO", async () => {
+    const { moveTask } = await import("../src/app/(dashboard)/actions");
+    await moveTask("m1", "EN_PROGRESO", 1234.5);
+    expect(spawnSiguienteOcurrencia).not.toHaveBeenCalled();
+  });
+
+  it("si la tarjeta ya no estaba en este workspace (count 0), no intenta generar la siguiente", async () => {
+    messageUpdateMany.mockResolvedValue({ count: 0 });
+    const { moveTask } = await import("../src/app/(dashboard)/actions");
+    await moveTask("m1", "HECHO", 500);
+    expect(spawnSiguienteOcurrencia).not.toHaveBeenCalled();
   });
 });

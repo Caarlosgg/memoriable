@@ -420,6 +420,14 @@ enum Prioridad {
   ALTA
 }
 
+/// Ver ../../prisma/schema.prisma: cada cuánto se repite una tarea/evento recurrente.
+enum Frecuencia {
+  DIARIA
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+}
+
 /// Ver ../../prisma/schema.prisma: columna propia del tablero de un
 /// workspace. NO sustituye a Message.estado: cada columna declara su fase,
 /// y el estado se sigue guardando, para que el resto de la app (cifras,
@@ -468,6 +476,13 @@ model Message {
 
   /// Ver ../../prisma/schema.prisma: fecha límite/recordatorio ("aplazar tarea").
   fechaLimite DateTime?
+
+  /// Ver ../../prisma/schema.prisma: tareas recurrentes — `serieId` agrupa
+  /// las ocurrencias (el id de la primera), solo una fila "viva" a la vez.
+  serieId         String?
+  serieFrecuencia Frecuencia?
+  serieIndice     Int?
+  serieVeces      Int?
 
   /// Ver ../../prisma/schema.prisma: etiquetas libres (Fase F/J).
   etiquetas String[] @default([])

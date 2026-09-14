@@ -15,6 +15,7 @@ import { findSimilarMessages } from "./vectorSearch";
 import { searchMessages } from "./data";
 import { getCuentasConSaldo } from "./ahorros";
 import { FRECUENCIAS, fechaRepeticion } from "./calendar";
+import { spawnSiguienteOcurrencia } from "./recurringTasks";
 import {
   canWrite,
   READONLY_ROLE_MESSAGE,
@@ -341,7 +342,7 @@ export function createAssistantTools(
   const todas = {
     crearNota: tool({
       description:
-        "Crea y guarda una nota, tarea o recordatorio nuevo SIN fecha/hora concreta, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas. NO la uses si lo que pide tiene fecha/hora concreta (una cita, quedar con alguien) o se repite periódicamente ('todos los jueves', 'cada semana') — para eso usa crearEvento (con su parámetro repetir si se repite), aunque suene a 'tarea'. Si pide ASIGNARLA a un compañero de equipo (\"apunta a María que revise esto\", \"que sea de Pedro\"), usa `asignadoA`.",
+        "Crea y guarda una nota, tarea o recordatorio nuevo SIN fecha/hora concreta, categorizándolo automáticamente (igual que la captura rápida del dashboard). Llámala directamente en el mismo turno cuando el usuario pida crear, apuntar, anotar o recordar algo — no preguntes primero si quiere que lo hagas. NO la uses si lo que pide tiene fecha/hora CONCRETA (una cita, quedar con alguien a una hora) — para eso usa crearEvento, aunque suene a 'tarea'. Si se REPITE pero sin hora concreta ('cada martes saca la basura', 'recuérdame regar las plantas cada 3 días'), SÍ es esta — usa su parámetro `repetir`: no se crean todas las repeticiones de golpe, solo la primera; la siguiente aparece sola al completar la anterior, como una tarea recurrente de verdad. Si pide ASIGNARLA a un compañero de equipo (\"apunta a María que revise esto\", \"que sea de Pedro\"), usa `asignadoA`.",
       inputSchema: z.object({
         contenido: z
           .string()
@@ -355,8 +356,11 @@ export function createAssistantTools(
           .describe(
             "Nombre o email de la persona del EQUIPO a la que se asigna, solo en un workspace de equipo.",
           ),
+        repetir: RepetirSchema.optional().describe(
+          "Solo si la tarea/recordatorio se repite periódicamente SIN hora concreta. Se crea únicamente la primera — la siguiente se genera sola al completar la anterior, hasta `veces` ocurrencias en total.",
+        ),
       }),
-      execute: async ({ contenido, asignadoA }) => {
+      execute: async ({ contenido, asignadoA, repetir }) => {
         requireWrite();
         let saved;
         try {
@@ -389,6 +393,29 @@ export function createAssistantTools(
               err,
             );
             asignacionGuardada = null;
+          }
+        }
+
+        if (repetir) {
+          try {
+            // El `id` de esta primera nota ES el `serieId` — no hace falta
+            // una tabla "Serie" aparte para algo tan pequeño. `serieIndice:
+            // 0` = la primera; `spawnSiguienteOcurrencia` (recurringTasks.ts)
+            // genera la siguiente al completarse, hasta `serieVeces`.
+            await prisma.message.update({
+              where: { id: saved.id },
+              data: {
+                serieId: saved.id,
+                serieFrecuencia: repetir.frecuencia,
+                serieIndice: 0,
+                serieVeces: repetir.veces,
+              },
+            });
+          } catch (err) {
+            console.error(
+              "La tool crearNota no pudo configurar la repetición (se guarda sin repetir):",
+              err,
+            );
           }
         }
 
@@ -588,6 +615,7 @@ export function createAssistantTools(
             throw new Error(
               "La tarea encontrada ya no está en este workspace.",
             );
+          void spawnSiguienteOcurrencia(tarea.id);
         } catch (err) {
           console.error(
             "La tool completarTarea no pudo marcarla como hecha:",
