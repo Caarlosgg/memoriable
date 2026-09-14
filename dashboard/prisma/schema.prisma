@@ -70,6 +70,9 @@ model User {
   /// Ver ../../prisma/schema.prisma: cierre manual de la tarjeta de "primeros pasos".
   onboardingDismissed Boolean @default(false)
 
+  /// Ver ../../prisma/schema.prisma: resumen semanal por correo, activado por defecto.
+  weeklyDigestEmail Boolean @default(true)
+
   /// Ver ../../prisma/schema.prisma: workspace personal autocreado (Fase Equipo).
   personalWorkspaceId String?    @unique
   personalWorkspace   Workspace? @relation("PersonalWorkspace", fields: [personalWorkspaceId], references: [id])

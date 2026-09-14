@@ -113,6 +113,15 @@ model User {
   /// esperar a terminar los pasos.
   onboardingDismissed Boolean @default(false)
 
+  /// Resumen semanal por correo ("cuánto has guardado, qué vence pronto",
+  /// ver weeklyDigest.ts) — activado por defecto, como cualquier aviso
+  /// nuevo del producto: si empezara desactivado, nadie lo encontraría
+  /// nunca en un ajuste que no sabe que existe. Campo aparte de
+  /// `notificationPrefs` a propósito: ese mapa está tipado y escrito
+  /// específicamente para avisos EN LA APP (`NotificationType`), un correo
+  /// es un canal distinto y mezclarlo ahí rompería ese contrato.
+  weeklyDigestEmail Boolean @default(true)
+
   /// Workspace personal, autocreado al registrarse (Fase Equipo): el
   /// espacio privado 1-a-1 que ya existía implícitamente (userId como
   /// dueño único) ahora es un Workspace real con `personal = true`.

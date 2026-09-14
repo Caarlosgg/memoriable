@@ -8,6 +8,7 @@ import { CloseOtherSessionsForm } from "@/app/(dashboard)/cuenta/CloseOtherSessi
 import { ExportSection } from "@/components/ExportSection";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { NotificationPrefsForm } from "@/components/NotificationPrefsForm";
+import { WeeklyDigestToggle } from "@/components/WeeklyDigestToggle";
 import { HiddenCategoriesForm } from "@/components/HiddenCategoriesForm";
 import { CustomCategoriesForm } from "@/components/CustomCategoriesForm";
 import { SettingsIndex } from "@/components/cuenta/SettingsIndex";
@@ -26,7 +27,7 @@ export async function CuentaSection() {
   const [user, { workspaceId }, pushEnabled, customCategories] = await Promise.all([
     prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { email: true, telegramChatId: true, passwordHash: true, notificationPrefs: true },
+      select: { email: true, telegramChatId: true, passwordHash: true, notificationPrefs: true, weeklyDigestEmail: true },
     }),
     getActiveWorkspace(userId),
     hasPushSubscription(),
@@ -79,6 +80,7 @@ export async function CuentaSection() {
       <Grupo id="avisos" titulo="Avisos" Icon={Bell}>
         <NotificationPrefsForm initialPrefs={(user.notificationPrefs as NotificationPrefs | null) ?? {}} />
         <PushNotificationsToggle initialEnabled={pushEnabled} />
+        <WeeklyDigestToggle initialEnabled={user.weeklyDigestEmail} />
       </Grupo>
 
       <Grupo id="apariencia" titulo="Apariencia y contenido" Icon={Palette}>

@@ -208,3 +208,60 @@ export async function sendTelegramAccountSetupEmail(to: string, setupUrl: string
     return false;
   }
 }
+
+export interface WeeklyDigestData {
+  notasNuevas: number;
+  pendientesCount: number;
+  vencidasCount: number;
+  eventosProximos: { titulo: string; fecha: string }[];
+  /** A dónde lleva el botón — el espacio personal, siempre (ver el comentario en weeklyDigest.ts). */
+  url: string;
+}
+
+/**
+ * Correo pasivo semanal: "cuánto has guardado, qué vence pronto" — no
+ * depende de que abras la app para saber cómo vas. Reutiliza las MISMAS
+ * cifras que ya calcula `resolveAmbientStats` para el Asistente
+ * (assistantAmbient.ts), no un cálculo nuevo aparte.
+ */
+export async function sendWeeklyDigestEmail(to: string, data: WeeklyDigestData): Promise<boolean> {
+  const transporter = resolveTransporter();
+  if (!transporter) {
+    console.error("GMAIL_USER/GMAIL_APP_PASSWORD no configuradas: no se envió el resumen semanal a", to);
+    return false;
+  }
+
+  const eventosHtml = data.eventosProximos.length
+    ? `<ul style="padding-left: 18px; margin: 4px 0;">${data.eventosProximos
+        .map((e) => `<li style="font-size: 14px; color: #1c1b18;">${e.titulo} — ${e.fecha}</li>`)
+        .join("")}</ul>`
+    : "";
+
+  try {
+    await transporter.sendMail({
+      from: `MemorIAble <${process.env.GMAIL_USER}>`,
+      to,
+      subject: "Tu semana en MemorIAble",
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #1c1b18;">
+          <p style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #157a5f;">MemorIAble</p>
+          <h1 style="font-size: 20px; margin: 8px 0 16px;">Tu semana en claro</h1>
+          <p style="font-size: 14px; line-height: 1.6;">
+            ${data.notasNuevas > 0 ? `Guardaste ${data.notasNuevas} nota${data.notasNuevas === 1 ? "" : "s"} esta semana. ` : ""}
+            Tienes ${data.pendientesCount} pendiente${data.pendientesCount === 1 ? "" : "s"}${data.vencidasCount > 0 ? `, ${data.vencidasCount} ya vencida${data.vencidasCount === 1 ? "" : "s"}` : ""}.
+          </p>
+          ${eventosHtml}
+          <p style="margin: 24px 0;">
+            <a href="${data.url}" style="background: #157a5f; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">Ver mi semana</a>
+          </p>
+          <p style="font-size: 12px; color: #6b6a66;">Puedes desactivar este correo desde Cuenta → Avisos.</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (err) {
+    console.error("Fallo al enviar el resumen semanal:", err);
+    Sentry.captureException(err);
+    return false;
+  }
+}

@@ -228,6 +228,20 @@ export async function setNotificationPref(type: NotificationType, enabled: boole
   }
 }
 
+/** Activa/desactiva el resumen semanal por correo (ver weeklyDigest.ts) — campo aparte de `notificationPrefs`, no un aviso EN LA APP. */
+export async function setWeeklyDigestEmail(enabled: boolean): Promise<{ error?: string }> {
+  const userId = await verifySession();
+  try {
+    await prisma.user.update({ where: { id: userId }, data: { weeklyDigestEmail: enabled } });
+    revalidatePath("/cuenta");
+    return {};
+  } catch (err) {
+    console.error("No se pudo guardar la preferencia del resumen semanal:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido guardar. Inténtalo de nuevo." };
+  }
+}
+
 export interface PushSubscriptionInput {
   endpoint: string;
   keys: { p256dh: string; auth: string };

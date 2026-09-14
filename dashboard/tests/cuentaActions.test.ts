@@ -257,3 +257,24 @@ describe("deleteCustomCategory", () => {
     expect(result.error).toMatch(/no existe/i);
   });
 });
+
+describe("setWeeklyDigestEmail", () => {
+  it("guarda la preferencia del usuario de la sesión", async () => {
+    userUpdate.mockResolvedValue({});
+    const { setWeeklyDigestEmail } = await import("../src/app/(dashboard)/cuenta/actions");
+
+    const result = await setWeeklyDigestEmail(false);
+
+    expect(userUpdate).toHaveBeenCalledWith({ where: { id: "u1" }, data: { weeklyDigestEmail: false } });
+    expect(result.error).toBeUndefined();
+  });
+
+  it("un fallo se traduce a un mensaje genérico en español", async () => {
+    userUpdate.mockRejectedValue(new Error("ECONNREFUSED 10.0.0.1:5432"));
+    const { setWeeklyDigestEmail } = await import("../src/app/(dashboard)/cuenta/actions");
+
+    const result = await setWeeklyDigestEmail(true);
+    expect(result.error).toBeDefined();
+    expect(result.error).not.toMatch(/ECONNREFUSED|5432/);
+  });
+});
