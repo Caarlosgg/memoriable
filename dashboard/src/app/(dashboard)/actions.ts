@@ -15,6 +15,7 @@ import { createNotification } from "@/lib/notifications";
 import type { StoredMessage } from "@/lib/botPipeline/repository";
 import { campoTemplateToArray, campoTemplateToJson, type CampoTemplateField } from "@/lib/campoTemplates";
 import { uploadImageToBlob } from "@/lib/blobUpload";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { logActivity } from "@/lib/activityLog";
 import { findOwnCustomCategory } from "@/lib/customCategories";
 
@@ -472,10 +473,25 @@ export interface UploadImageResult {
  * vez de una excepción cruda, mismo criterio que el resto de integraciones
  * opcionales (Groq/Gemini/Sentry).
  */
+/**
+ * Por usuario, no por IP: ya está autenticado (mismo criterio que
+ * `/api/transcribir`, el único otro camino de subida de ficheros del
+ * proyecto). Antes esta era la ÚNICA escritura autenticada sin ningún
+ * límite — una cuenta comprometida o un bucle mal escrito podía subir sin
+ * fin a Vercel Blob, que sí cuesta dinero y espacio.
+ */
+const UPLOAD_IMAGE_LIMIT = 30;
+const UPLOAD_IMAGE_WINDOW_MS = 60 * 60 * 1000;
+
 export async function uploadImage(formData: FormData): Promise<UploadImageResult> {
   const userId = await verifySession();
   const { role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  const limite = await checkRateLimit(`blob:${userId}`, UPLOAD_IMAGE_LIMIT, UPLOAD_IMAGE_WINDOW_MS);
+  if (!limite.allowed) {
+    return { error: `Demasiadas imágenes seguidas. Espera ${limite.retryAfterSeconds}s e inténtalo de nuevo.` };
+  }
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "No se ha recibido ningún fichero." };
@@ -668,5 +684,85 @@ export async function bulkDelete(ids: string[]): Promise<BulkResult> {
     console.error("Error al borrar en bloque:", err);
     Sentry.captureException(err);
     return { error: "No se han podido borrar. Inténtalo de nuevo." };
+  }
+}
+
+/** Igual que la etiqueta individual (ver MessageDetailDialog.tsx): sin tope conocido hasta ahora, se fija uno prudente aquí. */
+const MAX_ETIQUETA = 40;
+
+/**
+ * Añade la MISMA etiqueta a varias notas de golpe.
+ *
+ * No es un `updateMany` con `data: { etiquetas: [...] }` a secas: cada nota
+ * ya puede tener sus propias etiquetas, así que "añadir" tiene que
+ * CONSERVARLAS, no reemplazarlas — y cada una puede tener un conjunto
+ * distinto, así que no hay un único array que valga para todas. Por eso va
+ * por SQL (`array_append`), no por el cliente tipado de Prisma: es la única
+ * forma de decir "añade esto a lo que ya tenga cada fila" en una sola
+ * consulta, en vez de traer las 200 notas al servidor para recalcular cada
+ * array en JS. El `NOT (... = ANY(...))` evita duplicar la etiqueta en una
+ * nota que ya la tuviera (mismo criterio que `handleEtiquetaAdd` en
+ * KanbanBoard.tsx para el caso de una sola).
+ */
+export async function bulkAddEtiqueta(ids: string[], etiqueta: string): Promise<BulkResult> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  if (ids.length === 0) return { afectadas: 0 };
+  if (ids.length > MAX_BULK) return { error: `No se pueden etiquetar más de ${MAX_BULK} notas a la vez.` };
+  const limpia = etiqueta.trim();
+  if (!limpia) return { error: "Escribe una etiqueta." };
+  if (limpia.length > MAX_ETIQUETA) return { error: `La etiqueta no puede tener más de ${MAX_ETIQUETA} caracteres.` };
+
+  try {
+    const count = await prisma.$executeRaw`
+      UPDATE "messages"
+      SET "etiquetas" = array_append("etiquetas", ${limpia})
+      WHERE "id" = ANY(${ids}) AND "workspaceId" = ${workspaceId} AND NOT (${limpia} = ANY("etiquetas"))
+    `;
+    revalidatePath("/notas");
+    revalidatePath("/pendientes");
+    return { afectadas: count };
+  } catch (err) {
+    console.error("Error al etiquetar en bloque:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido etiquetar. Inténtalo de nuevo." };
+  }
+}
+
+/**
+ * Asigna (o quita, con `assigneeId: null`) varias notas de golpe a un
+ * miembro del workspace activo — misma comprobación de membresía que
+ * `assignMessage` (la versión de una sola), pero SIN notificar: avisar de
+ * una asignación individual tiene sentido, pero disparar hasta `MAX_BULK`
+ * notificaciones de golpe sería spam, no aviso. Quien reciba el lote las
+ * verá igual la próxima vez que mire el Tablero.
+ */
+export async function bulkAssign(ids: string[], assigneeId: string | null): Promise<BulkResult> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  if (ids.length === 0) return { afectadas: 0 };
+  if (ids.length > MAX_BULK) return { error: `No se pueden asignar más de ${MAX_BULK} notas a la vez.` };
+  if (assigneeId && !(await isActiveMember(assigneeId, workspaceId))) {
+    return { error: "Esa persona no es miembro de este workspace." };
+  }
+
+  try {
+    const { count } = await prisma.message.updateMany({
+      where: { id: { in: ids }, workspaceId },
+      data: { assigneeId },
+    });
+    revalidatePath("/notas");
+    revalidatePath("/pendientes");
+    revalidatePath("/calendario");
+    revalidatePath("/inicio");
+    return { afectadas: count };
+  } catch (err) {
+    console.error("Error al asignar en bloque:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido asignar. Inténtalo de nuevo." };
   }
 }

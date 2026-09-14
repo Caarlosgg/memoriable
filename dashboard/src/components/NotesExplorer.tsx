@@ -8,6 +8,7 @@ import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import { CATEGORIES, CATEGORY_PRESENTATION, presentCategory, type Category } from "@/lib/categories";
 import { ESTADOS_TABLERO, ESTADO_PRESENTATION, PRIORIDADES, PRIORIDAD_PRESENTATION } from "@/lib/kanban";
 import type { CategoryGroup } from "@/lib/data";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { MessageCard } from "./MessageCard";
@@ -110,11 +111,14 @@ export function NotesExplorer({
   initialGroups,
   highlightId,
   comentariosPorMensaje,
+  members = [],
 }: {
   initialGroups: CategoryGroup[];
   highlightId?: string;
   /** Cuántos comentarios tiene cada nota de `initialGroups` (ver NotesSection). */
   comentariosPorMensaje?: Record<string, number>;
+  /** Miembros del workspace activo, para "Asignar a…" en bloque (ver BulkBar) — vacío en modo personal. */
+  members?: WorkspaceMemberInfo[];
 }) {
   // Los filtros arrancan de la URL: así una búsqueda se puede compartir,
   // guardar en marcadores y sobrevive a ir a otra pantalla y volver. Antes
@@ -538,6 +542,7 @@ export function NotesExplorer({
             seleccionados={[...seleccion]}
             onLimpiar={() => setSeleccion(new Set())}
             onAplicado={() => setAttempt((n) => n + 1)}
+            members={members}
           />
 
           {fetchState.hayMas && (

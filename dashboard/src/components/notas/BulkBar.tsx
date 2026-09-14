@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trash2, X } from "lucide-react";
-import { bulkRecategorize, bulkDelete } from "@/app/(dashboard)/actions";
+import { Trash2, X, Tag } from "lucide-react";
+import { bulkRecategorize, bulkDelete, bulkAddEtiqueta, bulkAssign } from "@/app/(dashboard)/actions";
 import { CATEGORIES, presentCategory } from "@/lib/categories";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { AssigneeControl } from "@/components/AssigneeControl";
+import type { WorkspaceMemberInfo } from "@/lib/workspace";
 
 /**
  * Barra de acciones en bloque, visible solo cuando hay algo seleccionado.
@@ -22,14 +25,18 @@ export function BulkBar({
   seleccionados,
   onLimpiar,
   onAplicado,
+  members = [],
 }: {
   seleccionados: string[];
   onLimpiar: () => void;
   /** Se llama tras un cambio con éxito, para que la lista se recargue. */
   onAplicado: () => void;
+  /** Miembros del workspace activo — sin ellos no tiene sentido ofrecer "Asignar a…" (mismo criterio que AssigneeControl en otros sitios). */
+  members?: WorkspaceMemberInfo[];
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [etiqueta, setEtiqueta] = useState("");
 
   if (seleccionados.length === 0) return null;
 
@@ -54,6 +61,13 @@ export function BulkBar({
       return;
     }
     aplicar(() => bulkDelete(seleccionados));
+  }
+
+  function etiquetar() {
+    const limpia = etiqueta.trim();
+    if (!limpia) return;
+    aplicar(() => bulkAddEtiqueta(seleccionados, limpia));
+    setEtiqueta("");
   }
 
   return (
@@ -83,6 +97,34 @@ export function BulkBar({
             </option>
           ))}
         </Select>
+
+        <div className="flex items-center gap-1">
+          <Input
+            aria-label="Añadir etiqueta a las notas seleccionadas"
+            placeholder="Añadir etiqueta…"
+            value={etiqueta}
+            disabled={pending}
+            onChange={(e) => setEtiqueta(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                etiquetar();
+              }
+            }}
+            className="h-9 w-36"
+          />
+          <Button type="button" variant="secondary" size="sm" disabled={pending || !etiqueta.trim()} onClick={etiquetar}>
+            <Tag aria-hidden size={14} />
+          </Button>
+        </div>
+
+        {members.length > 0 && (
+          <AssigneeControl
+            assigneeId={null}
+            members={members}
+            onChange={(assigneeId) => aplicar(() => bulkAssign(seleccionados, assigneeId))}
+          />
+        )}
 
         <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={borrar}>
           <Trash2 aria-hidden size={14} /> Borrar

@@ -13,6 +13,11 @@ vi.mock("@/lib/workspace", () => ({
 const put = vi.fn();
 vi.mock("@vercel/blob", () => ({ put: (...args: unknown[]) => put(...args) }));
 
+const checkRateLimit = vi.fn();
+vi.mock("@/lib/rateLimit", () => ({
+  checkRateLimit: (...args: unknown[]) => checkRateLimit(...args),
+}));
+
 function fakeImageFile(overrides: Partial<{ type: string; size: number }> = {}): File {
   const type = overrides.type ?? "image/png";
   const size = overrides.size ?? 1024;
@@ -29,6 +34,26 @@ describe("uploadImage", () => {
     });
     getActiveWorkspace.mockReset();
     getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
+    checkRateLimit.mockReset();
+    checkRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
+  });
+
+  it("demasiadas imágenes seguidas: no llama a Vercel Blob y avisa cuánto esperar", async () => {
+    checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 });
+    const fd = new FormData();
+    fd.set("file", fakeImageFile());
+    const { uploadImage } = await import("../src/app/(dashboard)/actions");
+    const result = await uploadImage(fd);
+    expect(result.error).toMatch(/42s/);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("comprueba el límite por userId, no globalmente", async () => {
+    const fd = new FormData();
+    fd.set("file", fakeImageFile());
+    const { uploadImage } = await import("../src/app/(dashboard)/actions");
+    await uploadImage(fd);
+    expect(checkRateLimit).toHaveBeenCalledWith("blob:u1", expect.any(Number), expect.any(Number));
   });
 
   it("rechaza subir con rol VIEWER, sin llamar a Vercel Blob", async () => {
