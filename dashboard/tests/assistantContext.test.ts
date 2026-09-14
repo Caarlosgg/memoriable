@@ -32,6 +32,7 @@ function fakeMessage(overrides: Partial<Message> = {}): Message {
     serieFrecuencia: null,
     serieIndice: null,
     serieVeces: null,
+    shareToken: null,
     boardStatusId: null,
     customCategoryId: null,
     enProgresoPorId: null,

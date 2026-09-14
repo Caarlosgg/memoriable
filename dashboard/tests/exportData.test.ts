@@ -53,6 +53,7 @@ function fakeMessage(overrides: Partial<ExportPayload["notas"][number]> = {}): E
     serieFrecuencia: null,
     serieIndice: null,
     serieVeces: null,
+    shareToken: null,
     boardStatusId: null,
     customCategoryId: null,
     enProgresoPorId: null,

@@ -722,6 +722,16 @@ model Message {
   serieIndice     Int?
   serieVeces      Int?
 
+  /// Enlace público de solo lectura ("Compartir"): null = no compartida.
+  /// Token largo y aleatorio, no el `id` de la nota — el `id` es
+  /// predecible/enumerable en otros contextos (URLs internas, exportación),
+  /// y usarlo también como clave pública dejaría CUALQUIER nota compartible
+  /// por fuerza bruta con solo probar ids. Revocar es tan simple como
+  /// volver a null: no hace falta borrar ni guardar histórico de tokens
+  /// viejos, quien tuviera el enlace antiguo simplemente deja de poder
+  /// abrirlo.
+  shareToken String? @unique
+
   /// Etiquetas libres (Fase F/J): a mayores de la categoría fija, texto
   /// suelto que el usuario añade desde el modal de detalle para filtrar
   /// más fino en el buscador. Sin tabla de definición aparte — un array

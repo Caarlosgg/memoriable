@@ -40,7 +40,10 @@ export async function proxy(request: NextRequest) {
     pathname === "/verificar-email" ||
     pathname === "/restablecer-password" ||
     pathname === "/terminos" ||
-    pathname === "/privacidad"
+    pathname === "/privacidad" ||
+    // Nota compartida por enlace público (ver toggleShare en actions.ts) —
+    // por definición, quien la abre no tiene por qué tener cuenta.
+    pathname.startsWith("/compartido/")
   ) {
     return NextResponse.next();
   }

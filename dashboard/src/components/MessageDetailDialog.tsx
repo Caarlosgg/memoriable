@@ -13,6 +13,7 @@ import { camposExtraToArray, camposExtraToJson, type CampoExtra, type CamposExtr
 import { checklistToArray, checklistToJson, type ChecklistItem } from "@/lib/checklist";
 import { cn } from "@/lib/utils";
 import { AssigneeControl } from "./AssigneeControl";
+import { ShareButton } from "./ShareButton";
 import { ComentariosThread } from "./comentarios/ComentariosThread";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import { useUndoToast } from "./UndoToast";
@@ -425,9 +426,12 @@ export function MessageDetailDialog({
               <Button type="button" variant="outline" onClick={handleDelete} className="text-danger">
                 <Trash2 aria-hidden size={15} /> Borrar
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
-                <Pencil aria-hidden size={15} /> Editar
-              </Button>
+              <div className="flex items-center gap-2">
+                <ShareButton messageId={message.id} shareToken={message.shareToken} />
+                <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
+                  <Pencil aria-hidden size={15} /> Editar
+                </Button>
+              </div>
             </DialogFooter>
           </div>
         ) : (

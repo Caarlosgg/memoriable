@@ -484,6 +484,9 @@ model Message {
   serieIndice     Int?
   serieVeces      Int?
 
+  /// Ver ../../prisma/schema.prisma: enlace público de solo lectura ("Compartir") — null = no compartida.
+  shareToken String? @unique
+
   /// Ver ../../prisma/schema.prisma: etiquetas libres (Fase F/J).
   etiquetas String[] @default([])
 

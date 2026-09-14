@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import type { EstadoTarea, Prioridad, Prisma, Message } from "@prisma/client";
@@ -532,6 +533,41 @@ export async function deleteMessage(id: string): Promise<DeleteMessageResult> {
     console.error("Error al borrar la nota:", err);
     Sentry.captureException(err);
     return { error: "No se ha podido borrar. Puede que tenga un evento del calendario enlazado." };
+  }
+}
+
+export interface ToggleShareResult {
+  error?: string;
+  /** Token nuevo si se acaba de compartir, o `null` si se acaba de revocar. La URL pública la construye el cliente (`/compartido/<token>`). */
+  shareToken?: string | null;
+}
+
+/**
+ * Comparte (o revoca) el enlace público de solo lectura de una nota —
+ * botón "Compartir" en MessageDetailDialog.tsx. Alterna: si ya estaba
+ * compartida, este mismo botón la revoca (vuelve a `null`); si no, genera
+ * un token nuevo. Revocar y volver a compartir después da un enlace
+ * DISTINTO al anterior — quien tuviera el viejo guardado no recupera
+ * acceso con solo compartir otra vez.
+ */
+export async function toggleShare(id: string): Promise<ToggleShareResult> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE };
+
+  try {
+    const actual = await prisma.message.findFirst({ where: { id, workspaceId }, select: { shareToken: true } });
+    if (!actual) return { error: "No se ha encontrado la nota." };
+
+    const nuevoToken = actual.shareToken ? null : randomBytes(32).toString("hex");
+    await prisma.message.update({ where: { id }, data: { shareToken: nuevoToken } });
+    revalidatePath("/notas");
+    revalidatePath("/pendientes");
+    return { shareToken: nuevoToken };
+  } catch (err) {
+    console.error("Error al compartir/revocar la nota:", err);
+    Sentry.captureException(err);
+    return { error: "No se ha podido cambiar. Inténtalo de nuevo." };
   }
 }
 
