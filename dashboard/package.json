@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test e2e/public.spec.ts",
+    "test:e2e:all": "playwright test",
     "postinstall": "cross-env PRISMA_GENERATE_SKIP_AUTOINSTALL=1 prisma generate"
   },
   "dependencies": {
@@ -50,6 +52,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
