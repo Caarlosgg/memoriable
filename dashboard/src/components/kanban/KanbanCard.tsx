@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Message } from "@prisma/client";
-import { Clock, Tag, Plus, ListChecks, Play, Square } from "lucide-react";
+import { Clock, Tag, Plus, ListChecks, Play, Square, MessageSquare } from "lucide-react";
 import { presentCategory, esAccionable } from "@/lib/categories";
 import { PRIORIDAD_PRESENTATION, PRIORIDAD_ICON, ESTADO_PRESENTATION } from "@/lib/kanban";
 import { formatDate, shortEmailName } from "@/lib/format";
@@ -36,6 +36,12 @@ interface KanbanCardContentProps {
   onPostpone?: (messageId: string, fechaLimite: Date | null) => void;
   onStartWorking?: (messageId: string) => void;
   onStopWorking?: (messageId: string) => void;
+  /**
+   * Cuántos comentarios tiene — la conversación del equipo sobre esta
+   * tarjeta (ver el mismo campo en MessageCard.tsx). Ausente o en `0` no
+   * pinta nada.
+   */
+  commentCount?: number;
 }
 
 /**
@@ -122,6 +128,7 @@ export function KanbanCardContent({
   onPostpone,
   onStartWorking,
   onStopWorking,
+  commentCount = 0,
 }: KanbanCardContentProps) {
   const { Icon: CategoryIcon, color } = presentCategory(message.categoria);
   const priority = PRIORIDAD_PRESENTATION[message.prioridad];
@@ -184,6 +191,12 @@ export function KanbanCardContent({
         {!compacta && (
           <p className="flex items-center gap-1 text-xs text-muted">
             <Clock aria-hidden size={11} /> {formatDate(message.fecha)}
+          </p>
+        )}
+        {commentCount > 0 && (
+          <p className="flex items-center gap-1 text-xs font-medium text-accent-strong">
+            <MessageSquare aria-hidden size={11} />
+            {commentCount}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-1.5">
@@ -316,6 +329,7 @@ interface KanbanCardProps extends React.LiHTMLAttributes<HTMLLIElement> {
   onPostpone?: (messageId: string, fechaLimite: Date | null) => void;
   onStartWorking?: (messageId: string) => void;
   onStopWorking?: (messageId: string) => void;
+  commentCount?: number;
 }
 
 /**
@@ -337,6 +351,7 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
     onPostpone,
     onStartWorking,
     onStopWorking,
+    commentCount,
     className,
     ...rest
   },
@@ -418,6 +433,7 @@ const KanbanCardImpl = React.forwardRef<HTMLLIElement, KanbanCardProps>(function
         onPostpone={onPostpone}
         onStartWorking={onStartWorking}
         onStopWorking={onStopWorking}
+        commentCount={commentCount}
       />
     </li>
   );

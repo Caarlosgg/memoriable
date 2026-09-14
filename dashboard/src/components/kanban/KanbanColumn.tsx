@@ -62,6 +62,8 @@ interface KanbanColumnProps {
   onRename?: (estado: EstadoTarea, nombre: string | null) => void;
   /** Tarjeta creada desde esta columna — el tablero la coloca sin recargar. */
   onCreated?: (message: Message) => void;
+  /** Cuántos comentarios tiene cada tarjeta — ver el mismo prop en KanbanCard.tsx. */
+  comentariosPorMensaje?: Record<string, number>;
 }
 
 /**
@@ -101,6 +103,7 @@ function KanbanColumnImpl({
   canReorder = false,
   onRename,
   onCreated,
+  comentariosPorMensaje,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: columna.id });
   /**
@@ -308,6 +311,7 @@ function KanbanColumnImpl({
                   onPostpone={onPostpone}
                   onStartWorking={onStartWorking}
                   onStopWorking={onStopWorking}
+                  commentCount={comentariosPorMensaje?.[message.id]}
                 />
               </MessageDetailDialog>
             ))

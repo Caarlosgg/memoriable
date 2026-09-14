@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getActiveWorkspace, listWorkspaceMembers, getHiddenCategories, getBoardLabels, canWrite } from "@/lib/workspace";
 import { parseVista } from "@/lib/kanban";
 import { resolverColumnas } from "@/lib/boardColumns";
+import { contarComentariosPorMensaje } from "@/lib/comentarios";
 import { KanbanBoard } from "./KanbanBoard";
 
 export async function BoardSection({ vista, asignado }: { vista?: string; asignado?: string }) {
@@ -24,6 +25,13 @@ export async function BoardSection({ vista, asignado }: { vista?: string; asigna
     isPersonal ? Promise.resolve([]) : listWorkspaceMembers(workspaceId, userId).catch(() => []),
   ]);
 
+  // Mismo contador que Notas (ver NotesSection.tsx): sin esto, una tarjeta
+  // con conversación del equipo solo lo enseñaba en la pantalla de Notas y
+  // era invisible en el Tablero, que es justo donde el equipo trabaja.
+  const comentariosPorMensaje = Object.fromEntries(
+    await contarComentariosPorMensaje(columns.flatMap((c) => c.messages.map((m) => m.id))),
+  );
+
   return (
     <KanbanBoard
       initialColumns={columns}
@@ -32,6 +40,7 @@ export async function BoardSection({ vista, asignado }: { vista?: string; asigna
       currentUserId={userId}
       puedeEditar={canWrite(role)}
       vistaInicial={parseVista(vista)}
+      comentariosPorMensaje={comentariosPorMensaje}
       // Solo se acepta si de verdad es alguien del equipo (o el hueco de
       // "sin asignar"): un id inventado en la URL dejaría el tablero vacío
       // sin explicar por qué.

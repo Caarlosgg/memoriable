@@ -96,6 +96,7 @@ export function KanbanBoard({
   puedeEditar = false,
   vistaInicial = "todas",
   asignadoInicial,
+  comentariosPorMensaje,
 }: {
   initialColumns: BoardColumn[];
   /** Columnas efectivas del workspace (propias o las tres de siempre) — ver resolverColumnas. */
@@ -110,6 +111,8 @@ export function KanbanBoard({
   vistaInicial?: VistaTablero;
   /** Persona pedida por URL (`/pendientes?asignado=`), ya validada en BoardSection — la usa el reparto de trabajo de /equipo. */
   asignadoInicial?: string;
+  /** Cuántos comentarios tiene cada tarjeta — ver el mismo prop en NotesSection.tsx/NotesExplorer.tsx (Notas). */
+  comentariosPorMensaje?: Record<string, number>;
 }) {
   const [byEstado, setByEstado] = useState<ByColumna>(() =>
     Object.fromEntries(initialColumns.map((c) => [c.columnaId, c.messages])),
@@ -1015,6 +1018,7 @@ export function KanbanBoard({
                   canRename={puedeEditar}
                   onRename={handleRenameColumn}
                   onCreated={puedeEditar ? handleCreated : undefined}
+                  comentariosPorMensaje={comentariosPorMensaje}
                 />
                 );
               })}
@@ -1029,7 +1033,11 @@ export function KanbanBoard({
                   presentCategory(activeMessage.categoria).borderAccent,
                 )}
               >
-                <KanbanCardContent message={activeMessage} density={density} />
+                <KanbanCardContent
+                  message={activeMessage}
+                  density={density}
+                  commentCount={comentariosPorMensaje?.[activeMessage.id]}
+                />
               </div>
             ) : null}
           </DragOverlay>
