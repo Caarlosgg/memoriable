@@ -54,8 +54,10 @@ export function ApiTokensForm({ tokens }: { tokens: ApiTokenInfo[] }) {
     <div className="flex flex-col gap-3 rounded-2xl border border-paper-line bg-paper-raised p-5">
       <p className="font-display text-lg text-ink">Tokens de API</p>
       <p className="text-sm text-muted">
-        Para que otras herramientas puedan leer y escribir tus notas: un servidor MCP, un script
-        propio, otra IA. Alcance: tu espacio personal.
+        Para que otras herramientas puedan leer y escribir tus notas: conecta Claude Desktop, Claude
+        Code, Cursor o cualquier cliente MCP a <code className="rounded bg-paper px-1 py-0.5 text-xs">{"{dashboard}"}/api/mcp</code> con
+        este token, o úsalo en un script propio contra <code className="rounded bg-paper px-1 py-0.5 text-xs">/api/v1/notas</code>. Alcance:
+        tu espacio personal.
       </p>
 
       {nuevo && (
