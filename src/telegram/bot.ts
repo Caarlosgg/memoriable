@@ -31,6 +31,7 @@ import { resolveTranscriber, resolveImageReader } from '../pipeline/factory.js';
 import type { Transcriber } from '../ai/transcriber.js';
 import type { ImageReader } from '../ai/imageReader.js';
 import { resolveAssistantClient, type AssistantClient } from '../ai/assistantClient.js';
+import { resolveSetEmailClient, type SetEmailClient } from '../ai/setEmailClient.js';
 
 /** Respuestas al usuario, centralizadas para poder testearlas. */
 export const REPLIES = {
@@ -68,6 +69,13 @@ export const REPLIES = {
     'ℹ️ Escribe tu pregunta después del comando. Ejemplo: <code>/pregunta ¿qué tengo pendiente esta semana?</code>',
   preguntaNoDisponible:
     '🤖 El Asistente no está disponible desde Telegram ahora mismo. Puedes preguntarle desde el dashboard.',
+  emailUsage: 'ℹ️ Escribe tu correo después del comando. Ejemplo: <code>/email tu@correo.com</code>',
+  emailInvalido: '⚠️ Ese correo no parece válido. Revísalo y vuelve a intentarlo.',
+  emailNoDisponible: '🌐 Activar el acceso web no está disponible desde Telegram ahora mismo. Inténtalo más tarde.',
+  emailSinEnviar:
+    '⚠️ Se ha guardado el correo, pero no he podido mandarte el enlace para elegir contraseña. Prueba de nuevo en un rato.',
+  emailSuccess: (correo: string) =>
+    `✅ Te he mandado un enlace a <b>${escapeHtml(correo)}</b> para elegir tu contraseña. En cuanto la pongas, ya puedes entrar también desde el navegador — lo que tienes guardado aquí te estará esperando.`,
 } as const;
 
 /**
@@ -88,6 +96,7 @@ export const BOT_COMMANDS = [
   { command: 'vincular', description: 'Vincular este chat a tu cuenta del dashboard' },
   { command: 'espacio', description: 'Elegir dónde guardo lo que me mandas (personal o equipo)' },
   { command: 'pregunta', description: 'Preguntar al Asistente sobre tus notas, tareas y agenda' },
+  { command: 'email', description: 'Dar un correo real para entrar también desde el dashboard web' },
   { command: 'buscar', description: 'Buscar en tus mensajes guardados' },
   { command: 'pendientes', description: 'Ver tus tareas y recordatorios pendientes' },
   { command: 'resumen', description: 'Tu día en claro: misión principal, plan y avisos' },
@@ -265,6 +274,34 @@ export async function handlePreguntaCommand(
     return respuesta ? markdownToTelegramHtml(respuesta) : REPLIES.preguntaNoDisponible;
   } catch (err) {
     logger?.error('telegram.pregunta_failed', errorContext(err));
+    return REPLIES.error;
+  }
+}
+
+/** Mismo patrón laxo que el resto de validaciones del proyecto: solo para dar un aviso rápido, la comprobación real la hace el dashboard. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Maneja `/email <correo>`: para quien empezó a usar MemorIAble solo por
+ * Telegram (cuenta auto-provisionada, ver `resolveOrCreateChatOwner`) y
+ * quiere poder entrar también desde el dashboard web. **Nunca lanza.**
+ */
+export async function handleEmailCommand(
+  correo: string,
+  userId: string,
+  client: SetEmailClient,
+  logger?: Logger,
+): Promise<string> {
+  const email = correo.trim().toLowerCase();
+  if (email === '') return REPLIES.emailUsage;
+  if (!EMAIL_RE.test(email)) return REPLIES.emailInvalido;
+
+  try {
+    const result = await client.setEmail({ userId, email });
+    if (!result.ok) return result.error ?? REPLIES.emailNoDisponible;
+    return result.enviado === false ? REPLIES.emailSinEnviar : REPLIES.emailSuccess(email);
+  } catch (err) {
+    logger?.error('telegram.email_failed', errorContext(err));
     return REPLIES.error;
   }
 }
@@ -547,6 +584,8 @@ export function createBot(
   imageReader: ImageReader = resolveImageReader(logger),
   /** Asistente (vive en el dashboard, se consulta por HTTP) — sin DASHBOARD_URL/BOT_API_SECRET, /pregunta avisa de que no está disponible. */
   assistantClient: AssistantClient = resolveAssistantClient(logger),
+  /** Igual que assistantClient, para /email (activar el acceso web de una cuenta auto-provisionada). */
+  setEmailClient: SetEmailClient = resolveSetEmailClient(logger),
 ): Telegraf | null {
   if (!token) return null;
 
@@ -637,6 +676,13 @@ export function createBot(
       assistantClient,
       logger,
     );
+    await ctx.reply(reply, { parse_mode: 'HTML' });
+  });
+
+  bot.command('email', async (ctx) => {
+    const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
+    if (!userId) return;
+    const reply = await handleEmailCommand(commandArgument(ctx.message.text), userId, setEmailClient, logger);
     await ctx.reply(reply, { parse_mode: 'HTML' });
   });
 

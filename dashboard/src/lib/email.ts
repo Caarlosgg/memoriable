@@ -163,3 +163,48 @@ export async function sendAccountSetupEmail(to: string, setupUrl: string, worksp
     return false;
   }
 }
+
+/**
+ * Correo de "activa tu acceso web" para quien ya usa el bot de Telegram
+ * (cuenta auto-provisionada al primer mensaje, ver `resolveOrCreateChatOwner`
+ * en el bot) y decide dar un correo real con `/email` para poder entrar
+ * también desde el navegador. Mismo enlace y misma página que
+ * `sendAccountSetupEmail` (un token de restablecer contraseña sirve para
+ * las dos cosas), pero con un asunto y un texto que tienen sentido aquí:
+ * a esta persona nadie la ha "añadido a un equipo", ha sido ella quien ha
+ * pedido la cuenta web desde el propio chat.
+ */
+export async function sendTelegramAccountSetupEmail(to: string, setupUrl: string): Promise<boolean> {
+  const transporter = resolveTransporter();
+  if (!transporter) {
+    console.error("GMAIL_USER/GMAIL_APP_PASSWORD no configuradas: no se envió el correo de activar acceso web a", to);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: `MemorIAble <${process.env.GMAIL_USER}>`,
+      to,
+      subject: "Activa tu acceso web a MemorIAble",
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #1c1b18;">
+          <p style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #157a5f;">MemorIAble</p>
+          <h1 style="font-size: 20px; margin: 8px 0 16px;">Ya casi puedes entrar desde el navegador</h1>
+          <p style="font-size: 14px; line-height: 1.5;">
+            Nos has pedido desde Telegram poder ver tus notas también en el dashboard web.
+            Elige una contraseña para terminar de activarlo — lo que ya tienes guardado te estará esperando ahí:
+          </p>
+          <p style="margin: 24px 0;">
+            <a href="${setupUrl}" style="background: #157a5f; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">Elegir mi contraseña</a>
+          </p>
+          <p style="font-size: 12px; color: #6b6a66;">El enlace caduca en 1 hora. Si no has sido tú, puedes ignorar este correo.</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (err) {
+    console.error("Fallo al enviar el correo de activar acceso web:", err);
+    Sentry.captureException(err);
+    return false;
+  }
+}

@@ -1,7 +1,7 @@
 import { groq } from "@ai-sdk/groq";
 import * as Sentry from "@sentry/nextjs";
 import { generateText, stepCountIs } from "ai";
-import { timingSafeEqual } from "node:crypto";
+import { verifyBotSecret } from "@/lib/botAuth";
 import { tryConsumeAssistantBudget } from "@/lib/assistantBudget";
 import { prepararAsistente, esErrorDePeticionDemasiadoGrande } from "@/lib/assistantRun";
 import { prisma } from "@/lib/prisma";
@@ -36,22 +36,6 @@ const MAX_TOOL_STEPS = 8;
  * `prepararAsistente`. Que cada superficie montara el suyo es justo el error
  * que ya se pagó con `/buscar`.
  */
-function autorizado(req: Request): boolean {
-  const secreto = process.env.BOT_API_SECRET;
-  // Sin secreto configurado la ruta queda CERRADA, nunca abierta: un
-  // despliegue al que se le olvide la variable no puede convertirse en un
-  // endpoint público que responde por cualquier userId que le pidan.
-  if (!secreto) return false;
-
-  const header = req.headers.get("authorization") ?? "";
-  const enviado = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const a = Buffer.from(enviado);
-  const b = Buffer.from(secreto);
-  // Comparación en tiempo constante: comparar con === filtra por tiempo
-  // cuántos caracteres del secreto se han acertado.
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 interface BotAsistenteBody {
   userId?: string;
   pregunta?: string;
@@ -60,7 +44,7 @@ interface BotAsistenteBody {
 }
 
 export async function POST(req: Request) {
-  if (!autorizado(req)) {
+  if (!verifyBotSecret(req)) {
     return Response.json({ error: "No autorizado" }, { status: 401 });
   }
   if (!process.env.GROQ_API_KEY) {
