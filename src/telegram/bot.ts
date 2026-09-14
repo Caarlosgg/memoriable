@@ -5,7 +5,7 @@ import { errorContext, logger as rootLogger, type Logger } from '../logging/inde
 import { InvalidMessageError } from '../pipeline/sanitize.js';
 import { processMessage, type Pipeline } from '../pipeline/processMessage.js';
 import { resolvePipeline, resolveBriefingGenerator } from '../pipeline/factory.js';
-import { resolveChatOwner, linkTelegramChat } from '../db/users.js';
+import { resolveOrCreateChatOwner, linkTelegramChat } from '../db/users.js';
 import { listCustomCategories, findCustomCategory } from '../db/customCategories.js';
 import { listBotWorkspaces, resolveBotWorkspace, setBotWorkspace } from '../db/workspaces.js';
 import type { StoredMessage } from '../db/repository.js';
@@ -45,13 +45,22 @@ export const REPLIES = {
     '📎 De momento solo sé leer fotos. Mándame una captura del documento, o pégame el texto y lo guardo igual.',
   searchUsage: 'ℹ️ Escribe qué quieres buscar. Ejemplo: <code>/buscar factura luz</code>',
   noPending: '✅ No tienes nada pendiente. ¡Todo al día!',
-  notLinked:
-    '🔗 Todavía no he vinculado este chat a ninguna cuenta. Entra al dashboard, ve a "Cuenta" y mándame el código con <code>/vincular 123456</code>.',
+  /**
+   * Se manda UNA vez, la primera vez que alguien escribe desde un chat
+   * nuevo (ver `resolveOrCreateChatOwner`): ya tiene cuenta y espacio
+   * propios, sin haber tenido que hacer nada antes. Menciona `/vincular`
+   * y `/email` de pasada, no como requisito — solo por si le interesa
+   * más adelante usar también el dashboard web.
+   */
+  welcomeAutoProvisioned:
+    '✨ Ya tienes tu propio espacio aquí, aislado y solo tuyo — nada que activar, ya puedes escribirme. Si más adelante quieres verlo también en el navegador, usa <code>/email tu@correo.com</code>. Y si ya tenías una cuenta en el dashboard, usa <code>/vincular 123456</code> (código en "Cuenta") para que escriba ahí en vez de aquí.',
   linkUsage: 'ℹ️ Escribe el código que te da el dashboard. Ejemplo: <code>/vincular 123456</code>',
   linkSuccess: '✅ ¡Chat vinculado! A partir de ahora, lo que me mandes se guarda en tu cuenta.',
   linkInvalid: '⚠️ Ese código no es válido o ha caducado. Genera uno nuevo desde "Cuenta" en el dashboard.',
   linkRateLimited:
     '⏳ Demasiados códigos incorrectos seguidos. Espera unos minutos y genera un código nuevo desde "Cuenta" en el dashboard.',
+  linkChatConDatos:
+    '⚠️ Este chat ya tiene notas propias guardadas (se te creó una cuenta sola en cuanto empezaste a escribirme). Para no perderlas no lo he vinculado a otra cuenta — siguen aquí, a salvo, mientras este chat siga siendo suyo.',
   espacioSolo:
     '🔒 Solo tienes tu espacio personal, así que todo lo que me mandes se guarda ahí. Crea un equipo en el dashboard y podrás elegir.',
   espacioNoMiembro: '⚠️ Ya no perteneces a ese equipo. Sigo escribiendo en tu espacio personal.',
@@ -505,6 +514,10 @@ export async function handleLinkCommand(
       return REPLIES.linkSuccess;
     }
     if (result === 'no_database') return REPLIES.error;
+    // No cuenta como intento fallido: el código era válido, solo se ha
+    // parado por seguridad (ver linkTelegramChat) — no es alguien
+    // probando códigos al azar.
+    if (result === 'chat_con_datos_propios') return REPLIES.linkChatConDatos;
     limiter.registerFailure(chatId);
     return REPLIES.linkInvalid;
   } catch (err) {
@@ -561,28 +574,24 @@ export function createBot(
     await ctx.reply(REPLIES.welcome);
   });
 
-  // Resuelve el dueño del chat y responde algo útil en los dos caminos que,
-  // sin esto, dejarían al usuario sin respuesta: chat no vinculado (pide
-  // /vincular) y fallo al consultar la BD (aviso de reintento, en vez del
-  // silencio de que el throw solo lo recoja bot.catch). Devuelve null si no
-  // se debe seguir procesando. `reply` lo pasa el handler ya ligado a su ctx.
+  // Resuelve el dueño del chat (creando su cuenta al vuelo si es la primera
+  // vez, ver resolveOrCreateChatOwner) y responde algo útil si falla la
+  // consulta a la BD — en vez del silencio de que el throw solo lo recoja
+  // bot.catch. Devuelve null si no se debe seguir procesando. `reply` lo
+  // pasa el handler ya ligado a su ctx.
   const ownerFor = async (
     chatId: number,
     reply: (text: string) => Promise<unknown>,
   ): Promise<string | null> => {
-    let userId: string | null;
     try {
-      userId = await resolveChatOwner(chatId);
+      const { userId, recienCreado } = await resolveOrCreateChatOwner(chatId);
+      if (recienCreado) await reply(REPLIES.welcomeAutoProvisioned);
+      return userId;
     } catch (err) {
       logger.error('telegram.resolve_owner_failed', errorContext(err));
       await reply(REPLIES.error);
       return null;
     }
-    if (!userId) {
-      await reply(REPLIES.notLinked);
-      return null;
-    }
-    return userId;
   };
 
   bot.command('vincular', async (ctx) => {
