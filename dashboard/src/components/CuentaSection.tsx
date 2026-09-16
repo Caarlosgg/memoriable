@@ -6,6 +6,7 @@ import { LinkTelegramForm } from "@/app/(dashboard)/cuenta/LinkTelegramForm";
 import { ChangePasswordForm } from "@/app/(dashboard)/cuenta/ChangePasswordForm";
 import { CloseOtherSessionsForm } from "@/app/(dashboard)/cuenta/CloseOtherSessionsForm";
 import { ExportSection } from "@/components/ExportSection";
+import { ImportMarkdownSection } from "@/components/ImportMarkdownSection";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { NotificationPrefsForm } from "@/components/NotificationPrefsForm";
 import { WeeklyDigestToggle } from "@/components/WeeklyDigestToggle";
@@ -91,6 +92,9 @@ export async function CuentaSection() {
 
       <Grupo id="datos" titulo="Tus datos" Icon={Download}>
         <ExportSection />
+        {/* Justo después de exportar: la mitad que faltaba, traer notas de
+            fuera en vez de solo llevárselas. */}
+        <ImportMarkdownSection />
         {/* Entre exportar y borrar: los tres son "qué puedo hacer con lo
             mío desde fuera de la app". */}
         <ApiTokensForm tokens={apiTokens} />

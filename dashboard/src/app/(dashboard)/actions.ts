@@ -20,6 +20,7 @@ import { uploadImageToBlob } from "@/lib/blobUpload";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { logActivity } from "@/lib/activityLog";
 import { findOwnCustomCategory } from "@/lib/customCategories";
+import { parseFrontmatter, parseEtiquetasFrontmatter, parseFechaFrontmatter } from "@/lib/importMarkdown";
 
 /**
  * Al marcar HECHA una tarjeta (o al cambiarla a una categoría que deja de
@@ -603,6 +604,99 @@ export async function capture(_prev: CaptureState, formData: FormData): Promise<
     console.error("Error al capturar mensaje desde el dashboard:", err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
   }
+}
+
+export interface ImportMarkdownResult {
+  error?: string;
+  importadas: number;
+  fallidas: number;
+}
+
+/**
+ * Por tanda, no por fichero: cada uno dispara 2 llamadas a la IA
+ * (categorizar+resumir, embeber) — 12 en serie deja margen bajo el
+ * `maxDuration` de 60s de la página (ver cuenta/page.tsx) incluso en el
+ * peor caso observado (~4s/nota).
+ */
+const MAX_IMPORT_FILES = 12;
+const IMPORT_MD_LIMIT = 5;
+const IMPORT_MD_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Importa notas desde ficheros .md sueltos (Obsidian, o cualquier app que
+ * exporte a texto plano) — la mitad que le faltaba a "exportar tus datos":
+ * también se puede TRAER algo de fuera, no solo llevárselo. Cada fichero
+ * pasa por el MISMO pipeline que cualquier otra captura (`captureMessage`),
+ * así que se categoriza y resume igual que si se hubiera escrito a mano.
+ * El frontmatter YAML opcional (`tags`, `date`) se aplica aparte, sin pasar
+ * por la IA: son datos que el propio fichero ya declara, no algo que
+ * inferir.
+ *
+ * SECUENCIAL a propósito, nunca `Promise.all`: una ráfaga de varias
+ * llamadas simultáneas a Groq reventaría el límite de tokens por minuto
+ * (8000 TPM en el modelo actual) en vez de repartirse en el tiempo.
+ */
+export async function importMarkdownFiles(formData: FormData): Promise<ImportMarkdownResult> {
+  const userId = await verifySession();
+  const { workspaceId, role } = await getActiveWorkspace(userId);
+  if (!canWrite(role)) return { error: READONLY_ROLE_MESSAGE, importadas: 0, fallidas: 0 };
+
+  const limite = await checkRateLimit(`import-md:${userId}`, IMPORT_MD_LIMIT, IMPORT_MD_WINDOW_MS);
+  if (!limite.allowed) {
+    return {
+      error: `Demasiadas importaciones seguidas. Espera ${Math.ceil(limite.retryAfterSeconds / 60)} min e inténtalo de nuevo.`,
+      importadas: 0,
+      fallidas: 0,
+    };
+  }
+
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File);
+  if (files.length === 0) return { error: "No se ha recibido ningún fichero.", importadas: 0, fallidas: 0 };
+  if (files.length > MAX_IMPORT_FILES) {
+    return {
+      error: `No se pueden importar más de ${MAX_IMPORT_FILES} ficheros a la vez. Impórtalos en varias tandas.`,
+      importadas: 0,
+      fallidas: 0,
+    };
+  }
+
+  let importadas = 0;
+  let fallidas = 0;
+  for (const file of files) {
+    try {
+      const texto = await file.text();
+      if (!texto.trim()) {
+        fallidas++;
+        continue;
+      }
+      const { frontmatter, cuerpo } = parseFrontmatter(texto);
+      const contenido = cuerpo.trim() || texto.trim();
+      const saved = await captureMessage(userId, contenido, workspaceId);
+
+      const etiquetas = parseEtiquetasFrontmatter(frontmatter.tags);
+      const fecha = parseFechaFrontmatter(frontmatter.date);
+      if (etiquetas.length > 0 || fecha) {
+        // Best-effort: la nota ya está guardada igualmente aunque esto falle.
+        await prisma.message
+          .update({
+            where: { id: saved.id },
+            data: { ...(etiquetas.length > 0 ? { etiquetas } : {}), ...(fecha ? { fecha } : {}) },
+          })
+          .catch((err) => console.error(`No se pudo aplicar el frontmatter de "${file.name}":`, err));
+      }
+      importadas++;
+    } catch (err) {
+      console.error(`Error al importar "${file.name}":`, err);
+      Sentry.captureException(err);
+      fallidas++;
+    }
+  }
+
+  if (importadas > 0) {
+    revalidatePath("/notas");
+    revalidatePath("/pendientes");
+  }
+  return { importadas, fallidas };
 }
 
 /**

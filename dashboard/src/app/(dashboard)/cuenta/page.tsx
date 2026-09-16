@@ -9,6 +9,12 @@ import { PageHeader } from "@/components/PageHeader";
 
 export const metadata: Metadata = { title: "Cuenta · MemorIAble" };
 
+// Sube el límite por defecto de las Server Actions de esta página — la
+// importación de Markdown (ver ImportMarkdownSection.tsx) procesa varios
+// ficheros en serie, cada uno con su propia llamada a la IA, y puede
+// acercarse a los 10s por defecto en serverless.
+export const maxDuration = 60;
+
 export default function CuentaPage() {
   return (
     <>
