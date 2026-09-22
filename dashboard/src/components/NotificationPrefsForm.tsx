@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Bell, StickyNote, CalendarDays, Users, ShieldCheck, AlarmClock } from "lucide-react";
 import type { NotificationType } from "@prisma/client";
 import { setNotificationPref, type NotificationPrefs } from "@/app/(dashboard)/cuenta/actions";
+import { useUndoToast } from "@/components/UndoToast";
 
 const TYPES: { type: NotificationType; label: string; Icon: typeof Bell }[] = [
   // DUE_SOON va primero: es el único aviso que llega sin que nadie haya
@@ -23,12 +24,20 @@ const TYPES: { type: NotificationType; label: string; Icon: typeof Bell }[] = [
 export function NotificationPrefsForm({ initialPrefs }: { initialPrefs: NotificationPrefs }) {
   const [prefs, setPrefs] = useState(initialPrefs);
   const [pending, startTransition] = useTransition();
+  const { toast } = useUndoToast();
 
   function toggle(type: NotificationType) {
     const enabled = prefs[type] === false;
     setPrefs((prev) => ({ ...prev, [type]: enabled ? undefined : false }));
-    startTransition(() => {
-      void setNotificationPref(type, enabled);
+    startTransition(async () => {
+      const result = await setNotificationPref(type, enabled);
+      if (result.error) {
+        // Revierte el optimista: sin esto, el interruptor se quedaba
+        // mostrando el valor nuevo aunque la base de datos hubiera fallado
+        // al guardarlo, sin ningún aviso.
+        setPrefs((prev) => ({ ...prev, [type]: enabled ? false : undefined }));
+        toast(result.error, "error");
+      }
     });
   }
 

@@ -3,7 +3,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // Sin test dedicado hasta ahora (ver viewerWriteGuards.test.ts, que solo
 // cubre el guardado de rol VIEWER) — se añade aquí al conectar
 // spawnSiguienteOcurrencia, para no dejar la ruta de éxito sin cubrir.
-vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+const captureException = vi.fn();
+vi.mock("@sentry/nextjs", () => ({ captureException: (...a: unknown[]) => captureException(...a) }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
 
 const getActiveWorkspace = vi.fn(async () => ({ workspaceId: "ws1", isPersonal: true, role: "OWNER" }));
@@ -44,6 +45,7 @@ describe("updateTaskStatus", () => {
     logActivity.mockReset();
     revalidatePath.mockReset();
     spawnSiguienteOcurrencia.mockReset();
+    captureException.mockReset();
   });
 
   it("cambia el estado y avisa si hay que generar la siguiente ocurrencia de una serie recurrente", async () => {
@@ -67,5 +69,13 @@ describe("updateTaskStatus", () => {
     const { updateTaskStatus } = await import("../src/app/(dashboard)/actions");
     await updateTaskStatus("m1", "HECHO");
     expect(spawnSiguienteOcurrencia).not.toHaveBeenCalled();
+  });
+
+  it("un fallo de base de datos se reporta a Sentry antes de relanzar (antes era invisible en producción)", async () => {
+    messageUpdateMany.mockRejectedValue(new Error("conexión perdida"));
+    const { updateTaskStatus } = await import("../src/app/(dashboard)/actions");
+
+    await expect(updateTaskStatus("m1", "HECHO")).rejects.toThrow("conexión perdida");
+    expect(captureException).toHaveBeenCalledOnce();
   });
 });

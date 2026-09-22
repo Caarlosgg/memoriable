@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+const captureException = vi.fn();
+vi.mock("@sentry/nextjs", () => ({ captureException: (...a: unknown[]) => captureException(...a) }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
 
 const getActiveWorkspace = vi.fn(async () => ({ workspaceId: "ws1", isPersonal: false, role: "OWNER" }));
@@ -24,6 +25,7 @@ beforeEach(() => {
   messageUpdateMany.mockReset();
   messageUpdateMany.mockResolvedValue({ count: 1 });
   revalidatePath.mockReset();
+  captureException.mockReset();
 });
 
 describe("postponeMessage", () => {
@@ -52,5 +54,12 @@ describe("postponeMessage", () => {
     const { postponeMessage } = await import("../src/app/(dashboard)/actions");
     await expect(postponeMessage("m1", new Date())).rejects.toThrow(/solo lectura/);
     expect(messageUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("un fallo de base de datos se reporta a Sentry antes de relanzar", async () => {
+    messageUpdateMany.mockRejectedValue(new Error("conexión perdida"));
+    const { postponeMessage } = await import("../src/app/(dashboard)/actions");
+    await expect(postponeMessage("m1", new Date())).rejects.toThrow("conexión perdida");
+    expect(captureException).toHaveBeenCalledOnce();
   });
 });

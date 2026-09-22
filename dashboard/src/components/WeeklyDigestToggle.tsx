@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Mail } from "lucide-react";
 import { setWeeklyDigestEmail } from "@/app/(dashboard)/cuenta/actions";
+import { useUndoToast } from "@/components/UndoToast";
 
 /**
  * Resumen semanal por correo (ver weeklyDigest.ts): "cuánto has guardado,
@@ -14,12 +15,20 @@ import { setWeeklyDigestEmail } from "@/app/(dashboard)/cuenta/actions";
 export function WeeklyDigestToggle({ initialEnabled }: { initialEnabled: boolean }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [pending, startTransition] = useTransition();
+  const { toast } = useUndoToast();
 
   function toggle() {
     const next = !enabled;
     setEnabled(next);
-    startTransition(() => {
-      void setWeeklyDigestEmail(next);
+    startTransition(async () => {
+      const result = await setWeeklyDigestEmail(next);
+      if (result.error) {
+        // Revierte el optimista: sin esto, el interruptor seguía mostrando
+        // "activado" aunque la base de datos se hubiera quedado en "no", sin
+        // ningún aviso de que el guardado había fallado.
+        setEnabled(!next);
+        toast(result.error, "error");
+      }
     });
   }
 

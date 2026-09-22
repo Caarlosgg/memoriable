@@ -18,6 +18,9 @@ vi.mock("@/lib/notifications", () => ({ createNotification: vi.fn() }));
 vi.mock("@/lib/activityLog", () => ({ logActivity: vi.fn(async () => {}) }));
 vi.mock("@/lib/blobUpload", () => ({ uploadImageToBlob: vi.fn() }));
 
+const checkRateLimit = vi.fn();
+vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: (...a: unknown[]) => checkRateLimit(...a) }));
+
 const boardStatusFindMany = vi.fn();
 const messageUpdate = vi.fn();
 vi.mock("@/lib/prisma", () => ({
@@ -36,6 +39,8 @@ beforeEach(() => {
   boardStatusFindMany.mockResolvedValue([]);
   messageUpdate.mockReset();
   messageUpdate.mockResolvedValue({ id: "m1", categoria: "tarea", estado: "POR_HACER" });
+  checkRateLimit.mockReset();
+  checkRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
 });
 
 describe("crearTareaEnColumna", () => {
@@ -53,6 +58,16 @@ describe("crearTareaEnColumna", () => {
     const result = await crearTareaEnColumna("   ", "POR_HACER");
 
     expect(result.error).toMatch(/escribe algo/i);
+    expect(captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("demasiadas capturas seguidas: no llama al pipeline, comparte cubo con capture()", async () => {
+    checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 });
+    const { crearTareaEnColumna } = await import("../src/app/(dashboard)/actions");
+    const result = await crearTareaEnColumna("Llamar al proveedor", "POR_HACER");
+
+    expect(checkRateLimit).toHaveBeenCalledWith("capture:u1", 60, 60 * 60 * 1000);
+    expect(result.error).toMatch(/42s/);
     expect(captureMessage).not.toHaveBeenCalled();
   });
 

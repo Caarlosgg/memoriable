@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "./prisma";
 
 /**
@@ -129,11 +129,4 @@ export async function autenticarPeticion(req: Request): Promise<string | null> {
 
   const resuelto = await resolveApiToken(token);
   return resuelto?.userId ?? null;
-}
-
-/** Solo para tests: comprueba que dos tokens son iguales sin filtrar por tiempo. */
-export function tokensIguales(a: string, b: string): boolean {
-  const ba = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ba.length === bb.length && timingSafeEqual(ba, bb);
 }

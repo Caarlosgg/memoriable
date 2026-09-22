@@ -77,6 +77,20 @@ export interface CrearEnColumnaResult {
 }
 
 /**
+ * Límite compartido por las dos vías de captura humana del dashboard
+ * (esta función y `capture()`, más abajo) — son la misma acción real
+ * (categorizar+resumir con IA) por dos caminos, así que comparten cubo en
+ * vez de que alternar entre ambas lo esquive. Mismo valor que la escritura
+ * de la API pública (`/api/v1/notas`): un humano tecleando notas una a una
+ * no se acerca ni de lejos, así que solo frena un bucle o un script —
+ * antes esta era la única vía de captura autenticada sin ningún límite de
+ * las tres que hay (dashboard, bot vía Telegram con su propio fusible, API
+ * pública).
+ */
+const CAPTURE_LIMIT = 60;
+const CAPTURE_WINDOW_MS = 60 * 60 * 1000;
+
+/**
  * Crea una tarea DIRECTAMENTE en una columna del tablero.
  *
  * Hasta ahora el tablero solo se podía llenar desde otra pantalla
@@ -96,6 +110,11 @@ export async function crearTareaEnColumna(contenido: string, columnaId: string):
 
   const trimmed = contenido.trim();
   if (!trimmed) return { error: "Escribe algo antes de guardar." };
+
+  const limite = await checkRateLimit(`capture:${userId}`, CAPTURE_LIMIT, CAPTURE_WINDOW_MS);
+  if (!limite.allowed) {
+    return { error: `Demasiadas capturas seguidas. Espera ${limite.retryAfterSeconds}s e inténtalo de nuevo.` };
+  }
 
   try {
     const saved = await captureMessage(userId, trimmed, workspaceId);
@@ -170,22 +189,28 @@ export async function updateTaskStatus(id: string, estado: EstadoTarea, columnaI
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
-  const updated = await prisma.message.updateMany({
-    where: { id, workspaceId },
-    data: {
-      estado,
-      hecho: estado === "HECHO",
-      ...clearEnProgresoIfDone(estado),
-      ...(await columnaData(workspaceId, columnaId)),
-    },
-  });
-  revalidatePath("/pendientes");
+  try {
+    const updated = await prisma.message.updateMany({
+      where: { id, workspaceId },
+      data: {
+        estado,
+        hecho: estado === "HECHO",
+        ...clearEnProgresoIfDone(estado),
+        ...(await columnaData(workspaceId, columnaId)),
+      },
+    });
+    revalidatePath("/pendientes");
 
-  if (updated.count > 0 && estado === "HECHO") {
-    prisma.message.findUnique({ where: { id }, select: { resumen: true } }).then((m) => {
-      logActivity({ workspaceId, userId, tipo: "tarea_completada", entidad: "mensaje", entidadId: id, detalle: { resumen: m?.resumen } }).catch(() => {});
-    }).catch(() => {});
-    void spawnSiguienteOcurrencia(id);
+    if (updated.count > 0 && estado === "HECHO") {
+      prisma.message.findUnique({ where: { id }, select: { resumen: true } }).then((m) => {
+        logActivity({ workspaceId, userId, tipo: "tarea_completada", entidad: "mensaje", entidadId: id, detalle: { resumen: m?.resumen } }).catch(() => {});
+      }).catch(() => {});
+      void spawnSiguienteOcurrencia(id);
+    }
+  } catch (err) {
+    console.error("Error al cambiar el estado de la tarjeta:", err);
+    Sentry.captureException(err);
+    throw err;
   }
 }
 
@@ -201,18 +226,24 @@ export async function moveTask(id: string, estado: EstadoTarea, orden: number, c
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
-  const updated = await prisma.message.updateMany({
-    where: { id, workspaceId },
-    data: {
-      estado,
-      hecho: estado === "HECHO",
-      orden,
-      ...clearEnProgresoIfDone(estado),
-      ...(await columnaData(workspaceId, columnaId)),
-    },
-  });
-  revalidatePath("/pendientes");
-  if (updated.count > 0 && estado === "HECHO") void spawnSiguienteOcurrencia(id);
+  try {
+    const updated = await prisma.message.updateMany({
+      where: { id, workspaceId },
+      data: {
+        estado,
+        hecho: estado === "HECHO",
+        orden,
+        ...clearEnProgresoIfDone(estado),
+        ...(await columnaData(workspaceId, columnaId)),
+      },
+    });
+    revalidatePath("/pendientes");
+    if (updated.count > 0 && estado === "HECHO") void spawnSiguienteOcurrencia(id);
+  } catch (err) {
+    console.error("Error al mover la tarjeta:", err);
+    Sentry.captureException(err);
+    throw err;
+  }
 }
 
 /** Cambia la prioridad de una tarjeta del tablero. Mismo criterio de acceso que arriba. */
@@ -220,8 +251,14 @@ export async function updateTaskPriority(id: string, prioridad: Prioridad): Prom
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
-  await prisma.message.updateMany({ where: { id, workspaceId }, data: { prioridad } });
-  revalidatePath("/pendientes");
+  try {
+    await prisma.message.updateMany({ where: { id, workspaceId }, data: { prioridad } });
+    revalidatePath("/pendientes");
+  } catch (err) {
+    console.error("Error al cambiar la prioridad de la tarjeta:", err);
+    Sentry.captureException(err);
+    throw err;
+  }
 }
 
 /**
@@ -234,8 +271,14 @@ export async function postponeMessage(id: string, fechaLimite: Date | null): Pro
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
-  await prisma.message.updateMany({ where: { id, workspaceId }, data: { fechaLimite } });
-  revalidatePath("/pendientes");
+  try {
+    await prisma.message.updateMany({ where: { id, workspaceId }, data: { fechaLimite } });
+    revalidatePath("/pendientes");
+  } catch (err) {
+    console.error("Error al aplazar la tarjeta:", err);
+    Sentry.captureException(err);
+    throw err;
+  }
 }
 
 /**
@@ -251,11 +294,17 @@ export async function startWorkingOn(id: string): Promise<void> {
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
-  await prisma.message.updateMany({
-    where: { id, workspaceId },
-    data: { enProgresoPorId: userId, enProgresoDesde: new Date(), estado: "EN_PROGRESO" },
-  });
-  revalidatePath("/pendientes");
+  try {
+    await prisma.message.updateMany({
+      where: { id, workspaceId },
+      data: { enProgresoPorId: userId, enProgresoDesde: new Date(), estado: "EN_PROGRESO" },
+    });
+    revalidatePath("/pendientes");
+  } catch (err) {
+    console.error("Error al empezar a trabajar en la tarjeta:", err);
+    Sentry.captureException(err);
+    throw err;
+  }
 }
 
 /**
@@ -269,11 +318,17 @@ export async function stopWorkingOn(id: string): Promise<void> {
   const userId = await verifySession();
   const { workspaceId, role } = await getActiveWorkspace(userId);
   if (!canWrite(role)) throw new Error(READONLY_ROLE_MESSAGE);
-  await prisma.message.updateMany({
-    where: { id, workspaceId },
-    data: { enProgresoPorId: null, enProgresoDesde: null },
-  });
-  revalidatePath("/pendientes");
+  try {
+    await prisma.message.updateMany({
+      where: { id, workspaceId },
+      data: { enProgresoPorId: null, enProgresoDesde: null },
+    });
+    revalidatePath("/pendientes");
+  } catch (err) {
+    console.error("Error al soltar la tarjeta en curso:", err);
+    Sentry.captureException(err);
+    throw err;
+  }
 }
 
 export interface EnProgresoItem {
@@ -461,6 +516,7 @@ export async function updateMessage(id: string, input: UpdateMessageInput): Prom
     return {};
   } catch (err) {
     console.error("Error al editar la nota:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
   }
 }
@@ -596,12 +652,18 @@ export async function capture(_prev: CaptureState, formData: FormData): Promise<
   const contenido = String(formData.get("contenido") ?? "").trim();
   if (contenido === "") return { error: "Escribe algo antes de guardar." };
 
+  const limite = await checkRateLimit(`capture:${userId}`, CAPTURE_LIMIT, CAPTURE_WINDOW_MS);
+  if (!limite.allowed) {
+    return { error: `Demasiadas capturas seguidas. Espera ${limite.retryAfterSeconds}s e inténtalo de nuevo.` };
+  }
+
   try {
     const saved = await captureMessage(userId, contenido, workspaceId);
     revalidatePath("/");
     return { saved };
   } catch (err) {
     console.error("Error al capturar mensaje desde el dashboard:", err);
+    Sentry.captureException(err);
     return { error: "No se ha podido guardar. Inténtalo de nuevo." };
   }
 }

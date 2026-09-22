@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
 const verifySession = vi.fn(async () => "u1");
 vi.mock("@/lib/dal", () => ({ verifySession: () => verifySession() }));
@@ -12,6 +14,9 @@ vi.mock("@/lib/workspace", () => ({
 const captureMessage = vi.fn();
 vi.mock("@/lib/pipeline", () => ({ captureMessage: (...args: unknown[]) => captureMessage(...args) }));
 
+const checkRateLimit = vi.fn();
+vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: (...args: unknown[]) => checkRateLimit(...args) }));
+
 function shareRequest(fields: Record<string, string>): Request {
   const fd = new FormData();
   for (const [k, v] of Object.entries(fields)) fd.set(k, v);
@@ -19,11 +24,16 @@ function shareRequest(fields: Record<string, string>): Request {
 }
 
 describe("POST /api/share-target", () => {
+  beforeEach(() => {
+    checkRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
+  });
+
   afterEach(() => {
     verifySession.mockClear();
     getActiveWorkspace.mockReset();
     getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
     captureMessage.mockReset();
+    checkRateLimit.mockReset();
   });
 
   it("guarda el texto compartido y redirige a la nota creada", async () => {
@@ -71,6 +81,17 @@ describe("POST /api/share-target", () => {
 
     const res = await POST(shareRequest({ title: "", text: "algo", url: "" }));
 
+    expect(res.headers.get("location")).toBe("https://memoriable.example/notas");
+  });
+
+  it("demasiadas capturas seguidas: no llama a captureMessage, redirige a Notas en silencio", async () => {
+    checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 });
+    const { POST } = await import("../src/app/api/share-target/route");
+
+    const res = await POST(shareRequest({ title: "", text: "algo", url: "" }));
+
+    expect(checkRateLimit).toHaveBeenCalledWith("capture:u1", 60, 60 * 60 * 1000);
+    expect(captureMessage).not.toHaveBeenCalled();
     expect(res.headers.get("location")).toBe("https://memoriable.example/notas");
   });
 });

@@ -40,7 +40,7 @@ export function ShareButton({ messageId, shareToken: initial }: { messageId: str
         <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={alternar}>
           <Share2 aria-hidden size={14} /> Compartir
         </Button>
-        {error && <p className="text-xs text-danger">{error}</p>}
+        {error && <p role="alert" className="text-xs text-danger">{error}</p>}
       </div>
     );
   }
@@ -64,11 +64,19 @@ export function ShareButton({ messageId, shareToken: initial }: { messageId: str
           {copiado ? <Check aria-hidden size={14} /> : <Copy aria-hidden size={14} />}
           {copiado ? "Copiado" : "Copiar"}
         </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={alternar} title="Dejar de compartir">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={pending}
+          onClick={alternar}
+          aria-label="Dejar de compartir"
+          title="Dejar de compartir"
+        >
           <X aria-hidden size={14} />
         </Button>
       </div>
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
     </div>
   );
 }

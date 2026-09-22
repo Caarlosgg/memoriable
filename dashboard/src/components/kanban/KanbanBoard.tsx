@@ -62,6 +62,7 @@ import { reorderBoardColumns } from "@/app/(dashboard)/columnas/actions";
 import type { WorkspaceMemberInfo } from "@/lib/workspace";
 import type { EditableFields } from "@/components/MessageDetailDialog";
 import { cn } from "@/lib/utils";
+import { useUndoToast } from "@/components/UndoToast";
 import { KanbanColumn } from "./KanbanColumn";
 import { KanbanCardContent } from "./KanbanCard";
 import { useKanbanDensity } from "./useKanbanDensity";
@@ -114,6 +115,7 @@ export function KanbanBoard({
   /** Cuántos comentarios tiene cada tarjeta — ver el mismo prop en NotesSection.tsx/NotesExplorer.tsx (Notas). */
   comentariosPorMensaje?: Record<string, number>;
 }) {
+  const { toast } = useUndoToast();
   const [byEstado, setByEstado] = useState<ByColumna>(() =>
     Object.fromEntries(initialColumns.map((c) => [c.columnaId, c.messages])),
   );
@@ -630,6 +632,7 @@ export function KanbanBoard({
       .catch((err) => {
         console.error("No se pudo mover la tarjeta:", err);
         setByEstado(snapshot);
+        toast("No se ha podido mover la tarjeta. Inténtalo de nuevo.", "error");
       });
   }
 
@@ -681,9 +684,10 @@ export function KanbanBoard({
             hecho: current.hecho,
             boardStatusId: current.boardStatusId,
           });
+          toast("No se ha podido cambiar el estado. Inténtalo de nuevo.", "error");
         });
     },
-    [findMessage, columnas, applyLocalUpdate],
+    [findMessage, columnas, applyLocalUpdate, toast],
   );
 
   const handleCyclePrioridad = useCallback(
@@ -699,9 +703,10 @@ export function KanbanBoard({
       updateTaskPriority(messageId, target).catch((err) => {
         console.error("No se pudo cambiar la prioridad:", err);
         applyLocalUpdate(messageId, { prioridad: current.prioridad });
+        toast("No se ha podido cambiar la prioridad. Inténtalo de nuevo.", "error");
       });
     },
-    [findMessage, applyLocalUpdate],
+    [findMessage, applyLocalUpdate, toast],
   );
 
   // Guardar desde el modal de edición es la TERCERA vía por la que una
@@ -789,9 +794,10 @@ export function KanbanBoard({
       postponeMessage(messageId, fechaLimite).catch((err) => {
         console.error("No se pudo aplazar la tarea:", err);
         applyLocalUpdate(messageId, { fechaLimite: previousFechaLimite });
+        toast("No se ha podido aplazar la tarea. Inténtalo de nuevo.", "error");
       });
     },
-    [findMessage, applyLocalUpdate],
+    [findMessage, applyLocalUpdate, toast],
   );
 
   /**
@@ -823,9 +829,10 @@ export function KanbanBoard({
           console.error("No se pudo empezar la tarea:", err);
           applyLocalUpdate(messageId, previous);
           notifyEnProgresoChanged();
+          toast("No se ha podido empezar la tarea. Inténtalo de nuevo.", "error");
         });
     },
-    [findMessage, currentUserId, applyLocalUpdate],
+    [findMessage, currentUserId, applyLocalUpdate, toast],
   );
 
   const handleStopWorking = useCallback(
@@ -846,9 +853,10 @@ export function KanbanBoard({
           console.error("No se pudo soltar la tarea:", err);
           applyLocalUpdate(messageId, previous);
           notifyEnProgresoChanged();
+          toast("No se ha podido soltar la tarea. Inténtalo de nuevo.", "error");
         });
     },
-    [findMessage, applyLocalUpdate],
+    [findMessage, applyLocalUpdate, toast],
   );
 
   const activeMessage = activeId ? findInState(byEstado, activeId) : undefined;

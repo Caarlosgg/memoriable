@@ -1,6 +1,17 @@
+import * as Sentry from "@sentry/nextjs";
 import { verifySession } from "@/lib/dal";
 import { getActiveWorkspace, canWrite } from "@/lib/workspace";
 import { captureMessage } from "@/lib/pipeline";
+import { checkRateLimit } from "@/lib/rateLimit";
+
+/**
+ * Mismo cubo (`capture:<userId>`) y límite que `capture()`/
+ * `crearTareaEnColumna()` en actions.ts: es la misma acción real
+ * (categorizar+resumir con IA) por una tercera vía, así que comparte
+ * contador en vez de que alternar entre las tres lo esquive.
+ */
+const CAPTURE_LIMIT = 60;
+const CAPTURE_WINDOW_MS = 60 * 60 * 1000;
 
 /**
  * Recibe lo compartido desde OTRA app del sistema (Android: botón
@@ -46,11 +57,18 @@ export async function POST(req: Request): Promise<Response> {
   const contenido = [...new Set([title, text, url].filter(Boolean))].join("\n\n");
   if (!contenido) return Response.redirect(`${base}/notas`, 303);
 
+  // Sin manera limpia de explicar el motivo en mitad de una navegación de
+  // compartir del sistema (mismo criterio que el rol de solo lectura arriba)
+  // — se descarta en silencio en vez de guardar sin límite.
+  const limite = await checkRateLimit(`capture:${userId}`, CAPTURE_LIMIT, CAPTURE_WINDOW_MS);
+  if (!limite.allowed) return Response.redirect(`${base}/notas`, 303);
+
   try {
     const saved = await captureMessage(userId, contenido, workspaceId);
     return Response.redirect(`${base}/notas?mensaje=${saved.id}`, 303);
   } catch (err) {
     console.error("Error al capturar mensaje compartido desde otra app:", err);
+    Sentry.captureException(err);
     return Response.redirect(`${base}/notas`, 303);
   }
 }

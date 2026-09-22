@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+const captureException = vi.fn();
+vi.mock("@sentry/nextjs", () => ({ captureException: (...a: unknown[]) => captureException(...a) }));
 vi.mock("@/lib/dal", () => ({ verifySession: async () => "u1" }));
 const getActiveWorkspace = vi.fn(async () => ({ workspaceId: "ws1", isPersonal: true, role: "OWNER" }));
 vi.mock("@/lib/workspace", () => ({
@@ -30,6 +31,7 @@ describe("moveTask", () => {
     getActiveWorkspace.mockReset();
     getActiveWorkspace.mockResolvedValue({ workspaceId: "ws1", isPersonal: true, role: "OWNER" });
     spawnSiguienteOcurrencia.mockReset();
+    captureException.mockReset();
   });
 
   it("rechaza mover una tarjeta con rol VIEWER, sin tocar la base de datos", async () => {
@@ -76,5 +78,13 @@ describe("moveTask", () => {
     const { moveTask } = await import("../src/app/(dashboard)/actions");
     await moveTask("m1", "HECHO", 500);
     expect(spawnSiguienteOcurrencia).not.toHaveBeenCalled();
+  });
+
+  it("un fallo de base de datos se reporta a Sentry antes de relanzar", async () => {
+    messageUpdateMany.mockRejectedValue(new Error("conexión perdida"));
+    const { moveTask } = await import("../src/app/(dashboard)/actions");
+
+    await expect(moveTask("m1", "EN_PROGRESO", 1234.5)).rejects.toThrow("conexión perdida");
+    expect(captureException).toHaveBeenCalledOnce();
   });
 });
