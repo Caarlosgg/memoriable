@@ -14,6 +14,7 @@ import { describeTelegramError, isValidTokenFormat } from './errors.js';
 import { formatResponseCard, escapeHtml } from './formatResponseCard.js';
 import { formatMessageList } from './formatList.js';
 import { markdownToTelegramHtml } from './markdownToHtml.js';
+import { sendSafeReply } from './safeReply.js';
 import {
   noteActionsKeyboard,
   categoryPickerKeyboard,
@@ -676,7 +677,7 @@ export function createBot(
       assistantClient,
       logger,
     );
-    await ctx.reply(reply, { parse_mode: 'HTML' });
+    await sendSafeReply(ctx, reply, logger);
   });
 
   bot.command('email', async (ctx) => {
@@ -690,14 +691,14 @@ export function createBot(
     const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
     if (!userId) return;
     const reply = await handleSearchCommand(commandArgument(ctx.message.text), userId, pipeline, logger);
-    await ctx.reply(reply, { parse_mode: 'HTML' });
+    await sendSafeReply(ctx, reply, logger);
   });
 
   bot.command('pendientes', async (ctx) => {
     const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
     if (!userId) return;
     const reply = await handlePendingCommand(userId, pipeline, logger);
-    await ctx.reply(reply, { parse_mode: 'HTML' });
+    await sendSafeReply(ctx, reply, logger);
   });
 
   // /resumen y /hoy: el mismo Daily Briefing bajo demanda (Tier P1).
@@ -705,7 +706,7 @@ export function createBot(
     const userId = await ownerFor(ctx.chat.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
     if (!userId) return;
     const reply = await handleBriefingCommand(userId, pipeline, eventRepository, briefingGenerator, logger);
-    await ctx.reply(reply, { parse_mode: 'HTML', ...briefingKeyboard() });
+    await sendSafeReply(ctx, reply, logger, briefingKeyboard());
   });
 
   bot.action('briefing:refresh', async (ctx) => {
@@ -728,7 +729,7 @@ export function createBot(
     const userId = await ownerFor(ctx.chat!.id, (t) => ctx.reply(t, { parse_mode: 'HTML' }));
     if (!userId) return;
     const reply = await handlePendingCommand(userId, pipeline, logger);
-    await ctx.reply(reply, { parse_mode: 'HTML' });
+    await sendSafeReply(ctx, reply, logger);
   });
 
   bot.on(message('text'), async (ctx) => {
