@@ -1,8 +1,10 @@
 # Despliegue del BOT de Telegram (no del dashboard: ese va en Vercel).
 #
-# El bot usa polling, así que necesita un proceso vivo permanentemente —
-# eso no cabe en una función serverless. Aquí queda descrito para Fly.io,
-# que ejecuta directamente el Dockerfile del repo.
+# Alternativa de PAGO (pide tarjeta, aunque el uso real quepa en el nivel
+# gratuito) a `render.yaml`, que no la pide y no duerme el proceso. Esta
+# opción sigue en modo polling (sin WEBHOOK_URL, el bot arranca así solo,
+# ver telegram/bot.ts) porque aquí SÍ hay un proceso siempre encendido de
+# verdad, sin el sueño por inactividad del plan gratuito de Render.
 #
 # Puesta en marcha (una sola vez):
 #

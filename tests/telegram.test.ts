@@ -7,9 +7,11 @@ import type { Categorizer } from '../src/ai/types.js';
 import {
   BOT_COMMANDS,
   REPLIES,
+  WEBHOOK_PATH,
   briefingKeyboard,
   commandArgument,
   createBot,
+  createWebhookServer,
   handleBriefingCommand,
   handleLinkCommand,
   handlePendingCommand,
@@ -18,6 +20,7 @@ import {
   handleVoiceMessage,
   launchWithRetry,
   registerCommands,
+  startWebhookServer,
   tryAnswerFocus,
 } from '../src/telegram/bot.js';
 import type { Transcriber } from '../src/ai/transcriber.js';
@@ -622,5 +625,111 @@ describe('launchWithRetry', () => {
     });
 
     expect(sleeps).toEqual([1000, 2000, 3000, 3000]);
+  });
+});
+
+/** Arranca un servidor en el puerto que asigne el SO y da su URL base, para no depender de un puerto fijo. */
+async function listenOnRandomPort(server: import('http').Server): Promise<string> {
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('No se pudo obtener el puerto asignado.');
+  return `http://127.0.0.1:${address.port}`;
+}
+
+describe('createWebhookServer', () => {
+  it('responde 200 a cualquier ruta que no sea la del webhook (sirve de health-check)', async () => {
+    const handleUpdate = vi.fn();
+    const server = createWebhookServer(handleUpdate, WEBHOOK_PATH);
+    const baseUrl = await listenOnRandomPort(server);
+
+    try {
+      const res = await fetch(`${baseUrl}/`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('ok');
+      expect(handleUpdate).not.toHaveBeenCalled();
+    } finally {
+      server.close();
+    }
+  });
+
+  it('delega en handleUpdate únicamente la ruta del webhook', async () => {
+    const handleUpdate = vi.fn((_req: unknown, res: import('http').ServerResponse) => {
+      res.writeHead(200).end('procesado');
+    });
+    const server = createWebhookServer(handleUpdate, WEBHOOK_PATH);
+    const baseUrl = await listenOnRandomPort(server);
+
+    try {
+      const res = await fetch(`${baseUrl}${WEBHOOK_PATH}`, { method: 'POST', body: '{}' });
+      expect(await res.text()).toBe('procesado');
+      expect(handleUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('respeta una ruta de webhook personalizada', async () => {
+    const handleUpdate = vi.fn((_req: unknown, res: import('http').ServerResponse) => {
+      res.writeHead(200).end();
+    });
+    const server = createWebhookServer(handleUpdate, '/otra-ruta');
+    const baseUrl = await listenOnRandomPort(server);
+
+    try {
+      await fetch(`${baseUrl}${WEBHOOK_PATH}`); // la ruta por defecto ya NO es la webhook aquí
+      expect(handleUpdate).not.toHaveBeenCalled();
+      await fetch(`${baseUrl}/otra-ruta`);
+      expect(handleUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe('startWebhookServer', () => {
+  it('registra la URL completa en Telegram con el token secreto y escucha en el puerto dado', async () => {
+    const setWebhook = vi.fn().mockResolvedValue(true);
+    const webhookCallback = vi.fn(() => (_req: unknown, res: import('http').ServerResponse) => res.writeHead(200).end());
+    const fakeBot = {
+      webhookCallback,
+      telegram: { setWebhook },
+    } as unknown as Telegraf;
+    const { logger, records } = createMemoryLogger();
+
+    const server = startWebhookServer(fakeBot, 'https://memoriable-bot.onrender.com/', logger, 0);
+    try {
+      await vi.waitFor(() => expect(setWebhook).toHaveBeenCalledTimes(1));
+      const [url, extra] = setWebhook.mock.calls[0]!;
+      // La barra final de la URL pública no se duplica con la de WEBHOOK_PATH.
+      expect(url).toBe('https://memoriable-bot.onrender.com/telegram/webhook');
+      expect(typeof (extra as { secret_token: string }).secret_token).toBe('string');
+      expect((extra as { secret_token: string }).secret_token.length).toBeGreaterThan(0);
+      await vi.waitFor(() => {
+        expect(records.find((r) => r.event === 'telegram.webhook_registered')).toBeDefined();
+      });
+    } finally {
+      server.close();
+    }
+  });
+
+  it('si el registro en Telegram falla, lo registra como error y marca el proceso para salir con fallo', async () => {
+    const setWebhook = vi.fn().mockRejectedValue(new Error('token inválido'));
+    const fakeBot = {
+      webhookCallback: vi.fn(() => (_req: unknown, res: import('http').ServerResponse) => res.writeHead(200).end()),
+      telegram: { setWebhook },
+    } as unknown as Telegraf;
+    const { logger, records } = createMemoryLogger();
+    const exitCodeAntes = process.exitCode;
+
+    const server = startWebhookServer(fakeBot, 'https://ejemplo.example', logger, 0);
+    try {
+      await vi.waitFor(() => {
+        expect(records.find((r) => r.event === 'telegram.webhook_registration_failed')).toBeDefined();
+      });
+      expect(process.exitCode).toBe(1);
+    } finally {
+      server.close();
+      process.exitCode = exitCodeAntes;
+    }
   });
 });

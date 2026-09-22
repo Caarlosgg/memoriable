@@ -87,4 +87,27 @@ describe('config/env', () => {
       expect(configWarnings.join(' ')).toContain('MAX_MESSAGES_PER_DAY');
     });
   });
+
+  describe('WEBHOOK_URL', () => {
+    it('sin WEBHOOK_URL ni RENDER_EXTERNAL_URL, queda undefined (modo polling)', async () => {
+      vi.stubEnv('WEBHOOK_URL', '');
+      vi.stubEnv('RENDER_EXTERNAL_URL', '');
+      const { env } = await import('../src/config/env.js');
+      expect(env.WEBHOOK_URL).toBeUndefined();
+    });
+
+    it('sin WEBHOOK_URL explícita, cae a RENDER_EXTERNAL_URL (cero configuración en Render)', async () => {
+      vi.stubEnv('WEBHOOK_URL', '');
+      vi.stubEnv('RENDER_EXTERNAL_URL', 'https://memoriable-bot.onrender.com');
+      const { env } = await import('../src/config/env.js');
+      expect(env.WEBHOOK_URL).toBe('https://memoriable-bot.onrender.com');
+    });
+
+    it('WEBHOOK_URL explícita gana sobre RENDER_EXTERNAL_URL', async () => {
+      vi.stubEnv('WEBHOOK_URL', 'https://mi-dominio.example');
+      vi.stubEnv('RENDER_EXTERNAL_URL', 'https://memoriable-bot.onrender.com');
+      const { env } = await import('../src/config/env.js');
+      expect(env.WEBHOOK_URL).toBe('https://mi-dominio.example');
+    });
+  });
 });

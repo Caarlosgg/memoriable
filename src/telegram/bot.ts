@@ -1,3 +1,5 @@
+import * as http from 'node:http';
+import { randomBytes } from 'node:crypto';
 import { Telegraf, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { env } from '../config/env.js';
@@ -1134,8 +1136,80 @@ export async function launchWithRetry(
 }
 
 /**
- * Arranca el bot en modo polling con reconexión automática. Si falta el token,
- * avisa y devuelve `null` sin lanzar, para no tumbar el proceso.
+ * Ruta del webhook. No hace falta que sea secreta (la protección real es
+ * `secretToken`, verificado por Telegraf en la cabecera
+ * `X-Telegram-Bot-Api-Secret-Token` de cada petición): fija y legible basta.
+ */
+export const WEBHOOK_PATH = '/telegram/webhook';
+
+/**
+ * Servidor HTTP mínimo del modo webhook — `node:http` a secas, sin Express,
+ * que no hacía falta para una sola ruta. Cualquier petición que NO sea al
+ * webhook responde 200 texto plano: sirve de comprobación de salud para la
+ * plataforma de hosting (Render, u otra) sin tener que configurar una ruta
+ * de health-check aparte.
+ *
+ * `handleUpdate` se inyecta (en vez de construir aquí mismo el callback de
+ * Telegraf) para poder probar el enrutado — health-check vs. webhook — sin
+ * un bot ni un token de verdad.
+ */
+export function createWebhookServer(
+  handleUpdate: (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>,
+  webhookPath: string = WEBHOOK_PATH,
+): http.Server {
+  return http.createServer((req, res) => {
+    if (req.url !== webhookPath) {
+      res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+      return;
+    }
+    void handleUpdate(req, res);
+  });
+}
+
+/**
+ * Arranca el bot en modo webhook: registra la URL pública en Telegram
+ * (`setWebhook`) y levanta `createWebhookServer` en `env.PORT`.
+ *
+ * Pensado para hosts que solo dan cómputo bajo demanda vía HTTP (p. ej. el
+ * plan gratuito de Render) y no soportan un proceso siempre haciendo
+ * polling — ver el comentario de `env.WEBHOOK_URL`.
+ *
+ * `WEBHOOK_SECRET` es opcional: sin ella se genera un token aleatorio en
+ * memoria en cada arranque (se vuelve a registrar en Telegram con
+ * `setWebhook` cada vez, así que no hace falta que sobreviva a un reinicio)
+ * — la protección contra peticiones falsas queda activa sin que haya que
+ * configurar nada a mano.
+ */
+export function startWebhookServer(
+  bot: Telegraf,
+  webhookUrl: string,
+  logger: Logger,
+  port: number = env.PORT,
+): http.Server {
+  const secretToken = env.WEBHOOK_SECRET ?? randomBytes(24).toString('hex');
+  const handleUpdate = bot.webhookCallback(WEBHOOK_PATH, { secretToken });
+  const server = createWebhookServer(handleUpdate, WEBHOOK_PATH);
+
+  server.listen(port, () => {
+    logger.info('telegram.webhook_listening', { port });
+  });
+
+  const fullUrl = `${webhookUrl.replace(/\/+$/, '')}${WEBHOOK_PATH}`;
+  void bot.telegram
+    .setWebhook(fullUrl, { secret_token: secretToken })
+    .then(() => logger.info('telegram.webhook_registered', { url: fullUrl }))
+    .catch((err) => {
+      logger.error('telegram.webhook_registration_failed', errorContext(err));
+      process.exitCode = 1;
+    });
+
+  return server;
+}
+
+/**
+ * Arranca el bot en modo polling (por defecto) o webhook (con
+ * `WEBHOOK_URL`/`RENDER_EXTERNAL_URL` definida). Si falta el token, avisa y
+ * devuelve `null` sin lanzar, para no tumbar el proceso.
  */
 export function startBot(
   pipeline: Pipeline = resolvePipeline(),
@@ -1163,12 +1237,17 @@ export function startBot(
     return null;
   }
 
-  logger.info('telegram.starting', { mode: 'polling' });
-
-  // No se espera la promesa a propósito: el polling es un proceso de fondo.
-  void launchWithRetry(() => bot.launch(), { logger }).then((outcome) => {
-    if (outcome !== 'stopped') process.exitCode = 1;
-  });
+  let webhookServer: http.Server | null = null;
+  if (env.WEBHOOK_URL) {
+    logger.info('telegram.starting', { mode: 'webhook' });
+    webhookServer = startWebhookServer(bot, env.WEBHOOK_URL, logger);
+  } else {
+    logger.info('telegram.starting', { mode: 'polling' });
+    // No se espera la promesa a propósito: el polling es un proceso de fondo.
+    void launchWithRetry(() => bot.launch(), { logger }).then((outcome) => {
+      if (outcome !== 'stopped') process.exitCode = 1;
+    });
+  }
 
   // Publica el menú de comandos (/buscar, /pendientes, ...) en Telegram.
   void registerCommands(bot, logger);
@@ -1181,7 +1260,10 @@ export function startBot(
   const stop = (signal: string) => {
     logger.info('telegram.stopping', { signal });
     dailySummary.stop();
-    bot.stop(signal);
+    // En modo webhook no hay polling que `bot.stop()` pueda parar: lo que
+    // hay que cerrar es el servidor HTTP.
+    if (webhookServer) webhookServer.close();
+    else bot.stop(signal);
   };
   process.once('SIGINT', () => stop('SIGINT'));
   process.once('SIGTERM', () => stop('SIGTERM'));

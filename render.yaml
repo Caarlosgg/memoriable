@@ -1,0 +1,49 @@
+# Despliegue del BOT de Telegram en Render (plan gratuito, sin tarjeta) — ver
+# telegram/bot.ts: en cuanto WEBHOOK_URL (o RENDER_EXTERNAL_URL, que Render
+# fija solo) esté presente, el bot arranca en modo webhook en vez de
+# polling, así que encaja en un "Web Service" en vez de necesitar un
+# proceso siempre encendido (lo que Render solo da en planes de pago).
+#
+# Puesta en marcha (una sola vez):
+#   1. render.com → New → Blueprint → conecta este repo. Render lee este
+#      fichero solo, sin que haga falta rellenar nada a mano salvo los
+#      secretos de abajo (marcados `sync: false`).
+#   2. Rellena los secretos en el panel del servicio (Environment): los
+#      mismos valores que tengas en tu `.env`.
+#
+# Aviso de verdad, no letra pequeña: el plan gratuito se DUERME a los 15 min
+# sin tráfico y su disco es EFÍMERO (se borra en cada reinicio/despliegue).
+# Eso significa:
+#   - El bot tarda 30-60s en responder al primer mensaje tras un rato
+#     callado (se está despertando) — no es un fallo, es el plan gratuito.
+#   - El resumen diario programado (DAILY_SUMMARY_HOUR) solo se envía si el
+#     proceso está despierto justo a esa hora — si lleva un rato dormido,
+#     ese día no se dispara solo (nadie ha mandado nada que lo despierte).
+#   - El fusible de coste y la marca de "resumen ya enviado hoy" (hoy en
+#     ficheros locales) se reinician en cada reinicio del contenedor, no
+#     solo en cada despliegue.
+# Ninguno de estos tres rompe nada (el bot sigue funcionando, categoriza y
+# guarda igual) — solo son menos fiables que en un host siempre encendido.
+
+services:
+  - type: web
+    name: memoriable-bot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: BOT_API_SECRET
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: BOT_TIMEZONE
+        value: Europe/Madrid

@@ -227,6 +227,32 @@ export const env = {
   /** Fichero donde persiste la marca del último resumen diario enviado. */
   DAILY_SUMMARY_STATE_FILE: readString('DAILY_SUMMARY_STATE_FILE'),
   LOG_LEVEL: readString('LOG_LEVEL'),
+  /**
+   * URL pública HTTPS a la que Telegram debe mandar las actualizaciones
+   * (modo webhook, para hosts que no soportan un proceso siempre haciendo
+   * polling — ver telegram/bot.ts). `RENDER_EXTERNAL_URL` la fija Render
+   * solo con conectar el repo, sin que haga falta configurar nada a mano;
+   * `WEBHOOK_URL` existe para forzar otro valor (otro host, un túnel local).
+   * Sin ninguna de las dos, el bot arranca en modo polling — el de siempre,
+   * el que usa el desarrollo local.
+   */
+  WEBHOOK_URL: readString('WEBHOOK_URL') ?? readString('RENDER_EXTERNAL_URL'),
+  /**
+   * Puerto en el que escucha el servidor HTTP del modo webhook. Render lo
+   * fija él mismo en `PORT`; el valor por defecto solo importa para probar
+   * el modo webhook en local.
+   */
+  PORT: readPositiveInt('PORT', 3000),
+  /**
+   * Token que Telegram debe repetir en la cabecera
+   * `X-Telegram-Bot-Api-Secret-Token` de cada petición al webhook, para
+   * distinguir una actualización real de cualquiera que le mande un POST al
+   * mismo endpoint. Opcional: si falta, se genera uno aleatorio en memoria
+   * al arrancar (ver telegram/bot.ts) — no hace falta configurar nada para
+   * tener esta protección, solo se expone la variable por si se quiere un
+   * valor estable entre reinicios.
+   */
+  WEBHOOK_SECRET: readString('WEBHOOK_SECRET'),
 } as const;
 
 /**
