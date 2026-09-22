@@ -9,8 +9,8 @@ const RESULTADO_OFFLINE: BriefingResult = { misionPrincipal: 'offline', bloqueMa
 
 function fakeBudget(allow: boolean): BudgetGuard {
   return {
-    tryConsume: () => allow,
-    snapshot: () => ({ day: '2026-08-06', used: 0, max: 10, remaining: allow ? 10 : 0, exhausted: !allow }),
+    tryConsume: async () => allow,
+    snapshot: async () => ({ day: '2026-08-06', used: 0, max: 10, remaining: allow ? 10 : 0, exhausted: !allow }),
   };
 }
 

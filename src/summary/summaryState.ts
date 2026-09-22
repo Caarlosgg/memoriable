@@ -18,9 +18,9 @@ export const DEFAULT_SUMMARY_STATE_FILE = '.daily-summary.json';
  */
 export interface SummaryStateStore {
   /** Clave de día (YYYY-MM-DD) del último envío a `subject`, o `undefined` si nunca. */
-  lastSentDay(subject?: string): string | undefined;
+  lastSentDay(subject?: string): Promise<string | undefined>;
   /** Marca `day` como el último día enviado a `subject`. */
-  markSent(day: string, subject?: string): void;
+  markSent(day: string, subject?: string): Promise<void>;
 }
 
 /** Store en memoria (tests / cuando no interesa persistir). */
@@ -31,11 +31,11 @@ export class InMemorySummaryStateStore implements SummaryStateStore {
     if (day) this.days.set('', day);
   }
 
-  lastSentDay(subject?: string): string | undefined {
+  async lastSentDay(subject?: string): Promise<string | undefined> {
     return this.days.get(subject ?? '');
   }
 
-  markSent(day: string, subject?: string): void {
+  async markSent(day: string, subject?: string): Promise<void> {
     this.days.set(subject ?? '', day);
   }
 }
@@ -78,11 +78,11 @@ export class FileSummaryStateStore implements SummaryStateStore {
     }
   }
 
-  lastSentDay(subject?: string): string | undefined {
+  async lastSentDay(subject?: string): Promise<string | undefined> {
     return this.readAll()[subject ?? ''];
   }
 
-  markSent(day: string, subject?: string): void {
+  async markSent(day: string, subject?: string): Promise<void> {
     try {
       const all = this.readAll();
       all[subject ?? ''] = day;

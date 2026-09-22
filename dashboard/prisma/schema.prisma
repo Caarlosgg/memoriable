@@ -691,6 +691,23 @@ model RateLimitBucket {
   @@map("rate_limit_buckets")
 }
 
+/// Ver ../../prisma/schema.prisma: fusible de coste del bot de Telegram.
+model BotBudgetCounter {
+  subject String @id
+  day     String
+  used    Int    @default(0)
+
+  @@map("bot_budget_counter")
+}
+
+/// Ver ../../prisma/schema.prisma: "resumen diario del bot ya enviado hoy".
+model BotDailySummaryState {
+  subject     String @id
+  lastSentDay String
+
+  @@map("bot_daily_summary_state")
+}
+
 /// Ver ../../prisma/schema.prisma: conversación del Asistente (Fase 5).
 model Conversation {
   id        String   @id @default(cuid())

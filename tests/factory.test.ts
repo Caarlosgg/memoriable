@@ -66,22 +66,26 @@ describe('pipeline/factory', () => {
   });
 
   it('el fusible respeta MAX_MESSAGES_PER_DAY del entorno', async () => {
+    // Sin DATABASE_URL: fuerza el almacén de fichero, no el de Prisma (que
+    // intentaría conectar de verdad — ver el siguiente test para ese caso).
+    vi.stubEnv('DATABASE_URL', '');
     vi.stubEnv('MAX_MESSAGES_PER_DAY', '2');
     const { resolveBudget } = await import('../src/pipeline/factory.js');
     const { logger } = createMemoryLogger();
 
-    expect(resolveBudget(logger).snapshot().max).toBe(2);
+    expect((await resolveBudget(logger).snapshot()).max).toBe(2);
   });
 
   it('el fusible persiste en BUDGET_FILE cuando se define (necesario en Docker)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'budget-test-'));
     const budgetFile = join(dir, 'budget.json');
     try {
+      vi.stubEnv('DATABASE_URL', '');
       vi.stubEnv('BUDGET_FILE', budgetFile);
       const { resolveBudget } = await import('../src/pipeline/factory.js');
       const { logger } = createMemoryLogger();
 
-      resolveBudget(logger).tryConsume('u1');
+      await resolveBudget(logger).tryConsume('u1');
 
       expect(existsSync(budgetFile)).toBe(true);
       // Un contador POR USUARIO: la clave es el userId (ver FileBudgetStore).
@@ -89,5 +93,26 @@ describe('pipeline/factory', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('con DATABASE_URL, el fusible se respalda en Prisma en vez de en fichero', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
+    const findUnique = vi.fn().mockResolvedValue(null);
+    const upsert = vi.fn().mockResolvedValue({});
+    vi.doMock('@prisma/client', () => ({
+      PrismaClient: class {
+        botBudgetCounter = { findUnique, upsert };
+      },
+    }));
+
+    const { resolveBudget } = await import('../src/pipeline/factory.js');
+    const { logger } = createMemoryLogger();
+
+    // Si esto usara FileBudgetStore, findUnique nunca se llamaría — prueba
+    // que resolveBudget eligió de verdad el almacén de Prisma.
+    await resolveBudget(logger).snapshot('u1');
+    expect(findUnique).toHaveBeenCalledWith({ where: { subject: 'u1' } });
+
+    vi.doUnmock('@prisma/client');
   });
 });

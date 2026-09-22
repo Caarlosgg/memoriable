@@ -1,6 +1,6 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import type { Telegraf } from 'telegraf';
-import { env } from '../config/env.js';
+import { env, hasDatabase } from '../config/env.js';
 import { errorContext, logger as rootLogger, type Logger } from '../logging/index.js';
 import type { MessageRepository } from '../db/repository.js';
 import type { EventRepository } from '../db/eventRepository.js';
@@ -9,7 +9,8 @@ import {
   runDailySummaryTick,
   type DailySummaryTickDeps,
 } from './dailySummary.js';
-import { DEFAULT_SUMMARY_STATE_FILE, FileSummaryStateStore } from './summaryState.js';
+import { DEFAULT_SUMMARY_STATE_FILE, FileSummaryStateStore, type SummaryStateStore } from './summaryState.js';
+import { PrismaSummaryStateStore } from './prismaSummaryStateStore.js';
 import type { FocusStateStore } from './focusState.js';
 import type { BriefingGenerator } from '../ai/briefing.js';
 
@@ -68,10 +69,13 @@ export function startDailySummary(
   briefingGenerator?: BriefingGenerator,
 ): DailySummaryHandle {
   const hour = env.DAILY_SUMMARY_HOUR;
-  const store = new FileSummaryStateStore(
-    env.DAILY_SUMMARY_STATE_FILE ?? DEFAULT_SUMMARY_STATE_FILE,
-    (err) => logger.warn('summary.state_store_error', errorContext(err)),
-  );
+  // Con base de datos, respaldado en PostgreSQL (sobrevive a que un host de
+  // free tier reinicie el proceso o borre su disco efímero); sin ella
+  // (desarrollo local), en el fichero local de siempre.
+  const onStoreError = (err: unknown) => logger.warn('summary.state_store_error', errorContext(err));
+  const store: SummaryStateStore = hasDatabase()
+    ? new PrismaSummaryStateStore(onStoreError)
+    : new FileSummaryStateStore(env.DAILY_SUMMARY_STATE_FILE ?? DEFAULT_SUMMARY_STATE_FILE, onStoreError);
 
   const baseDeps: Omit<DailySummaryTickDeps, 'userId' | 'chatId' | 'send'> = {
     repository,

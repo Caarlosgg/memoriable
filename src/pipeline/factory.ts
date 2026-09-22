@@ -11,18 +11,25 @@ import { GroqBriefingGenerator, OfflineBriefingGenerator, type BriefingGenerator
 import { ResilientBriefingGenerator } from '../ai/resilientBriefing.js';
 import { BudgetedBriefingGenerator } from '../ai/budgetedBriefing.js';
 import { env, hasGroq, hasDatabase } from '../config/env.js';
-import { DailyBudget, type BudgetGuard } from '../cost/budget.js';
+import { DailyBudget, type BudgetGuard, type BudgetStore } from '../cost/budget.js';
 import { DEFAULT_BUDGET_FILE, FileBudgetStore } from '../cost/fileBudgetStore.js';
+import { PrismaBudgetStore } from '../cost/prismaBudgetStore.js';
 import { InMemoryMessageRepository, type MessageRepository } from '../db/repository.js';
 import { PrismaMessageRepository } from '../db/prismaRepository.js';
 import { errorContext, logger as rootLogger, type Logger } from '../logging/index.js';
 import type { Pipeline } from './processMessage.js';
 
-/** Construye el fusible de coste diario respaldado en disco. */
+/**
+ * Construye el fusible de coste diario. Con base de datos, respaldado en
+ * PostgreSQL (sobrevive a que un host de free tier reinicie el proceso o
+ * borre su disco efímero); sin ella (desarrollo local sin `DATABASE_URL`),
+ * en el fichero local de siempre.
+ */
 export function resolveBudget(logger: Logger = rootLogger): BudgetGuard {
-  const store = new FileBudgetStore(env.BUDGET_FILE ?? DEFAULT_BUDGET_FILE, (err) =>
-    logger.warn('cost.budget_store_error', errorContext(err)),
-  );
+  const onError = (err: unknown) => logger.warn('cost.budget_store_error', errorContext(err));
+  const store: BudgetStore = hasDatabase()
+    ? new PrismaBudgetStore(onError)
+    : new FileBudgetStore(env.BUDGET_FILE ?? DEFAULT_BUDGET_FILE, onError);
   return new DailyBudget(env.MAX_MESSAGES_PER_DAY, store);
 }
 

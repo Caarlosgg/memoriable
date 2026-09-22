@@ -1045,6 +1045,42 @@ model RateLimitBucket {
   @@map("rate_limit_buckets")
 }
 
+/// Fusible de coste del BOT de Telegram (no confundir con AssistantBudget,
+/// que es el del Asistente del dashboard — sistemas distintos, mismo
+/// patrón): cuántas llamadas de pago a Groq ha consumido cada chat hoy.
+/// Reemplaza el fichero local (`.budget.json`) para que el contador
+/// sobreviva a que un host de free tier (Render) reinicie el proceso o
+/// borre su disco efímero — ver bot `cost/prismaBudgetStore.ts`.
+///
+/// UNA fila por sujeto (no una por día): igual que el fichero que
+/// reemplaza, la fila se SOBRESCRIBE cada día — `day` dice de qué día es el
+/// `used` actual, no forma parte de la clave. No hace falta guardar
+/// histórico de días pasados, solo "¿cuánto lleva gastado HOY?".
+model BotBudgetCounter {
+  /// userId del bot, o "" para el contador global (consumos que no son de
+  /// nadie en concreto, p.ej. el resumen diario programado).
+  subject String @id
+  /// Día del que es `used`, formato YYYY-MM-DD (UTC).
+  day     String
+  /// Llamadas consumidas ese día por este sujeto.
+  used    Int    @default(0)
+
+  @@map("bot_budget_counter")
+}
+
+/// Marca de "resumen diario del bot ya enviado hoy" por usuario — mismo
+/// motivo que BotBudgetCounter: reemplaza el fichero local
+/// (`.daily-summary.json`) para que sobreviva a un reinicio en un host de
+/// free tier. Ver bot `summary/prismaSummaryStateStore.ts`.
+model BotDailySummaryState {
+  /// userId del bot al que se le envía el resumen (o "" para la marca global).
+  subject     String @id
+  /// Último día (YYYY-MM-DD) en que se le envió.
+  lastSentDay String
+
+  @@map("bot_daily_summary_state")
+}
+
 /// Conversación del Asistente (Fase 5): agrupa varios intercambios en un
 /// mismo hilo navegable, como el historial de Claude — no pregunta-
 /// respuesta suelta. `titulo` se autogenera a partir de la primera

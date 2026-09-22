@@ -32,26 +32,26 @@ export interface BudgetSnapshot extends BudgetState {
  * consumos que no son de nadie en concreto (el resumen diario programado).
  */
 export interface BudgetStore {
-  load(subject?: string): BudgetState | null;
-  save(state: BudgetState, subject?: string): void;
+  load(subject?: string): Promise<BudgetState | null>;
+  save(state: BudgetState, subject?: string): Promise<void>;
 }
 
 export interface BudgetGuard {
   /** Reserva una llamada para `subject`. `false` si su fusible está fundido hoy. */
-  tryConsume(subject?: string): boolean;
-  snapshot(subject?: string): BudgetSnapshot;
+  tryConsume(subject?: string): Promise<boolean>;
+  snapshot(subject?: string): Promise<BudgetSnapshot>;
 }
 
 /** Almacén en memoria (se reinicia con el proceso). */
 export class InMemoryBudgetStore implements BudgetStore {
   private readonly states = new Map<string, BudgetState>();
 
-  load(subject?: string): BudgetState | null {
+  async load(subject?: string): Promise<BudgetState | null> {
     const state = this.states.get(subject ?? '');
     return state ? { ...state } : null;
   }
 
-  save(state: BudgetState, subject?: string): void {
+  async save(state: BudgetState, subject?: string): Promise<void> {
     this.states.set(subject ?? '', { ...state });
   }
 }
@@ -75,26 +75,26 @@ export class DailyBudget implements BudgetGuard {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  private current(subject?: string): BudgetState {
+  private async current(subject?: string): Promise<BudgetState> {
     const today = utcDay(this.now());
-    const stored = this.store.load(subject);
+    const stored = await this.store.load(subject);
     if (!stored || stored.day !== today) return { day: today, used: 0 };
     return stored;
   }
 
-  tryConsume(subject?: string): boolean {
-    const state = this.current(subject);
+  async tryConsume(subject?: string): Promise<boolean> {
+    const state = await this.current(subject);
     if (state.used >= this.max) {
-      this.store.save(state, subject);
+      await this.store.save(state, subject);
       return false;
     }
     const next: BudgetState = { day: state.day, used: state.used + 1 };
-    this.store.save(next, subject);
+    await this.store.save(next, subject);
     return true;
   }
 
-  snapshot(subject?: string): BudgetSnapshot {
-    const state = this.current(subject);
+  async snapshot(subject?: string): Promise<BudgetSnapshot> {
+    const state = await this.current(subject);
     const remaining = Math.max(0, this.max - state.used);
     return { ...state, max: this.max, remaining, exhausted: remaining === 0 };
   }

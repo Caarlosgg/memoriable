@@ -26,8 +26,8 @@ export class BudgetedBriefingGenerator implements BriefingGenerator {
   }
 
   async generate(input: BriefingInput): Promise<BriefingResult> {
-    if (!this.budget.tryConsume()) {
-      const { used, max, day } = this.budget.snapshot();
+    if (!(await this.budget.tryConsume())) {
+      const { used, max, day } = await this.budget.snapshot();
       this.logger?.warn('cost.budget_exhausted', {
         used,
         max,

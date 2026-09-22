@@ -61,11 +61,11 @@ export class FileBudgetStore implements BudgetStore {
     }
   }
 
-  load(subject?: string): BudgetState | null {
+  async load(subject?: string): Promise<BudgetState | null> {
     return this.readAll()[subject ?? GLOBAL_KEY] ?? null;
   }
 
-  save(state: BudgetState, subject?: string): void {
+  async save(state: BudgetState, subject?: string): Promise<void> {
     try {
       const all = this.readAll();
       all[subject ?? GLOBAL_KEY] = state;

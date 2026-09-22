@@ -274,7 +274,7 @@ describe('runDailySummaryTick', () => {
     });
     expect(result).toBe('before_hour');
     expect(send).not.toHaveBeenCalled();
-    expect(store.lastSentDay()).toBeUndefined();
+    expect(await store.lastSentDay()).toBeUndefined();
   });
 
   it('envía y marca el día cuando procede', async () => {
@@ -293,7 +293,7 @@ describe('runDailySummaryTick', () => {
     expect(send).toHaveBeenCalledOnce();
     // La marca es POR USUARIO: es lo que permite que varios reciban su
     // resumen el mismo día (antes el primero bloqueaba a todos los demás).
-    expect(store.lastSentDay('u1')).toBe('2026-07-29');
+    expect(await store.lastSentDay('u1')).toBe('2026-07-29');
   });
 
   it('el resumen de un usuario NO bloquea el de otro el mismo día', async () => {
@@ -311,7 +311,7 @@ describe('runDailySummaryTick', () => {
   it('no reenvía si ya se envió hoy (idempotente entre reinicios)', async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     const store = new InMemorySummaryStateStore(); // como tras un reinicio
-    store.markSent('2026-07-29', 'u1');
+    await store.markSent('2026-07-29', 'u1');
     const result = await runDailySummaryTick({
       repository: fakeRepo([], []),
       userId: 'u1',
@@ -342,7 +342,7 @@ describe('runDailySummaryTick', () => {
       runDailySummaryTick({ repository: fakeRepo([], []),
       userId: 'u1', chatId: 123, store, send, hour: 9, now }),
     ).rejects.toThrow('red caída');
-    expect(store.lastSentDay()).toBeUndefined();
+    expect(await store.lastSentDay()).toBeUndefined();
   });
 
   it('con candidatas de foco, marca el chat como "esperando respuesta" en focusStore', async () => {

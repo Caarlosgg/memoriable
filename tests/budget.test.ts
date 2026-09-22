@@ -6,47 +6,47 @@ import { createMemoryLogger } from '../src/logging/logger.js';
 import type { Categorizer } from '../src/ai/types.js';
 
 describe('DailyBudget', () => {
-  it('permite consumir hasta el máximo y luego funde el fusible', () => {
+  it('permite consumir hasta el máximo y luego funde el fusible', async () => {
     const budget = new DailyBudget(3);
-    expect([budget.tryConsume(), budget.tryConsume(), budget.tryConsume()]).toEqual([
+    expect([await budget.tryConsume(), await budget.tryConsume(), await budget.tryConsume()]).toEqual([
       true,
       true,
       true,
     ]);
-    expect(budget.tryConsume()).toBe(false);
-    expect(budget.snapshot()).toMatchObject({ used: 3, max: 3, remaining: 0, exhausted: true });
+    expect(await budget.tryConsume()).toBe(false);
+    expect(await budget.snapshot()).toMatchObject({ used: 3, max: 3, remaining: 0, exhausted: true });
   });
 
-  it('con max=0 bloquea toda llamada de pago (modo offline total)', () => {
+  it('con max=0 bloquea toda llamada de pago (modo offline total)', async () => {
     const budget = new DailyBudget(0);
-    expect(budget.tryConsume()).toBe(false);
-    expect(budget.snapshot().exhausted).toBe(true);
+    expect(await budget.tryConsume()).toBe(false);
+    expect((await budget.snapshot()).exhausted).toBe(true);
   });
 
-  it('se reinicia solo al cambiar el día UTC', () => {
+  it('se reinicia solo al cambiar el día UTC', async () => {
     let ahora = new Date('2026-03-10T23:59:00.000Z');
     const budget = new DailyBudget(2, new InMemoryBudgetStore(), () => ahora);
 
-    expect(budget.tryConsume()).toBe(true);
-    expect(budget.tryConsume()).toBe(true);
-    expect(budget.tryConsume()).toBe(false);
+    expect(await budget.tryConsume()).toBe(true);
+    expect(await budget.tryConsume()).toBe(true);
+    expect(await budget.tryConsume()).toBe(false);
 
     ahora = new Date('2026-03-11T00:01:00.000Z');
-    expect(budget.tryConsume()).toBe(true);
-    expect(budget.snapshot()).toMatchObject({ day: '2026-03-11', used: 1, remaining: 1 });
+    expect(await budget.tryConsume()).toBe(true);
+    expect(await budget.snapshot()).toMatchObject({ day: '2026-03-11', used: 1, remaining: 1 });
   });
 
-  it('el contador sobrevive si el almacén persiste (protege ante crash-loop)', () => {
+  it('el contador sobrevive si el almacén persiste (protege ante crash-loop)', async () => {
     const store = new InMemoryBudgetStore();
     const ahora = () => new Date('2026-03-10T10:00:00.000Z');
 
-    new DailyBudget(2, store, ahora).tryConsume();
+    await new DailyBudget(2, store, ahora).tryConsume();
     // Simula un reinicio del proceso: nueva instancia, mismo almacén.
     const trasReinicio = new DailyBudget(2, store, ahora);
 
-    expect(trasReinicio.snapshot().used).toBe(1);
-    expect(trasReinicio.tryConsume()).toBe(true);
-    expect(trasReinicio.tryConsume()).toBe(false);
+    expect((await trasReinicio.snapshot()).used).toBe(1);
+    expect(await trasReinicio.tryConsume()).toBe(true);
+    expect(await trasReinicio.tryConsume()).toBe(false);
   });
 
   it('utcDay formatea en YYYY-MM-DD', () => {
