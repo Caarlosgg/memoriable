@@ -1,5 +1,5 @@
-import { env } from '../config/env.js';
 import type { BudgetState, BudgetStore } from './budget.js';
+import { getSharedPrismaClient } from '../db/prismaClient.js';
 
 /** Clave del contador global (consumos que no son de ningún usuario concreto). */
 const GLOBAL_KEY = '';
@@ -10,36 +10,25 @@ const GLOBAL_KEY = '';
  * free tier (Render) reinicie el proceso o borre su disco efímero — el
  * fichero local (`FileBudgetStore`) no sobrevive a eso.
  *
- * Mismo criterio de resto de clases respaldadas por Prisma de este repo
- * (`PrismaMessageRepository`): cliente instanciado de forma PEREZOSA (import
- * dinámico), así que si falta `DATABASE_URL` el resto del sistema sigue
- * importándose sin fallar en carga. Falla en silencio en `load`/`save`
- * (registrando vía callback opcional): un problema de base de datos nunca
- * debe tumbar el procesamiento de un mensaje.
+ * Cliente COMPARTIDO por todo el proceso (ver db/prismaClient.ts), así que
+ * sin `DATABASE_URL` el resto del sistema sigue importándose sin fallar en
+ * carga. Falla en silencio en `load`/`save` (registrando vía callback
+ * opcional): un problema de base de datos nunca debe tumbar el
+ * procesamiento de un mensaje.
  */
 export class PrismaBudgetStore implements BudgetStore {
+  constructor(private readonly onError: (err: unknown) => void = () => {}) {}
+
   // Tipado laxo a propósito, igual que PrismaMessageRepository: el cliente
   // generado por Prisma no existe en tiempo de compilación hasta ejecutar
   // `prisma generate`.
-  private clientPromise: Promise<{
-    botBudgetCounter: {
-      findUnique(args: unknown): Promise<BudgetState | null>;
-      upsert(args: unknown): Promise<unknown>;
-    };
-  }> | null = null;
-
-  constructor(private readonly onError: (err: unknown) => void = () => {}) {}
-
   private async getClient() {
-    if (!env.DATABASE_URL) {
-      throw new Error('DATABASE_URL no está definida: PrismaBudgetStore no puede arrancar.');
-    }
-    if (!this.clientPromise) {
-      this.clientPromise = import('@prisma/client').then(
-        (mod) => new (mod as unknown as { PrismaClient: new () => never }).PrismaClient(),
-      );
-    }
-    return this.clientPromise;
+    return getSharedPrismaClient<{
+      botBudgetCounter: {
+        findUnique(args: unknown): Promise<BudgetState | null>;
+        upsert(args: unknown): Promise<unknown>;
+      };
+    }>();
   }
 
   async load(subject?: string): Promise<BudgetState | null> {

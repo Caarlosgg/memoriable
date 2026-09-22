@@ -689,10 +689,11 @@ describe('createWebhookServer', () => {
 describe('startWebhookServer', () => {
   it('registra la URL completa en Telegram con el token secreto y escucha en el puerto dado', async () => {
     const setWebhook = vi.fn().mockResolvedValue(true);
+    const getMe = vi.fn().mockResolvedValue({ id: 1, username: 'memoriable_bot' });
     const webhookCallback = vi.fn(() => (_req: unknown, res: import('http').ServerResponse) => res.writeHead(200).end());
     const fakeBot = {
       webhookCallback,
-      telegram: { setWebhook },
+      telegram: { setWebhook, getMe },
     } as unknown as Telegraf;
     const { logger, records } = createMemoryLogger();
 
@@ -712,11 +713,35 @@ describe('startWebhookServer', () => {
     }
   });
 
-  it('si el registro en Telegram falla, lo registra como error y marca el proceso para salir con fallo', async () => {
-    const setWebhook = vi.fn().mockRejectedValue(new Error('token inválido'));
+  it('precarga botInfo con getMe() ANTES de registrar el webhook — evita que Telegraf lo resuelva él solo al primer update (fuera de su propio try/catch) y tumbe el proceso si esa llamada falla', async () => {
+    const setWebhook = vi.fn().mockResolvedValue(true);
+    const getMe = vi.fn().mockResolvedValue({ id: 1, username: 'memoriable_bot' });
     const fakeBot = {
       webhookCallback: vi.fn(() => (_req: unknown, res: import('http').ServerResponse) => res.writeHead(200).end()),
-      telegram: { setWebhook },
+      telegram: { setWebhook, getMe },
+    } as unknown as Telegraf;
+    const { logger } = createMemoryLogger();
+
+    const server = startWebhookServer(fakeBot, 'https://ejemplo.example', logger, 0);
+    try {
+      await vi.waitFor(() => expect(setWebhook).toHaveBeenCalledTimes(1));
+      expect(getMe).toHaveBeenCalledTimes(1);
+      expect(fakeBot.botInfo).toEqual({ id: 1, username: 'memoriable_bot' });
+      // getMe() se llama y resuelve ANTES que setWebhook — no en paralelo.
+      const ordenGetMe = getMe.mock.invocationCallOrder[0]!;
+      const ordenSetWebhook = setWebhook.mock.invocationCallOrder[0]!;
+      expect(ordenGetMe).toBeLessThan(ordenSetWebhook);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('si el registro en Telegram falla, lo registra como error y marca el proceso para salir con fallo', async () => {
+    const setWebhook = vi.fn().mockRejectedValue(new Error('token inválido'));
+    const getMe = vi.fn().mockResolvedValue({ id: 1, username: 'memoriable_bot' });
+    const fakeBot = {
+      webhookCallback: vi.fn(() => (_req: unknown, res: import('http').ServerResponse) => res.writeHead(200).end()),
+      telegram: { setWebhook, getMe },
     } as unknown as Telegraf;
     const { logger, records } = createMemoryLogger();
     const exitCodeAntes = process.exitCode;
@@ -730,6 +755,52 @@ describe('startWebhookServer', () => {
     } finally {
       server.close();
       process.exitCode = exitCodeAntes;
+    }
+  });
+
+  it('si getMe() falla, tampoco registra el webhook, pero no tumba el proceso — se reporta como fallo', async () => {
+    const setWebhook = vi.fn().mockResolvedValue(true);
+    const getMe = vi.fn().mockRejectedValue(new Error('red caída'));
+    const fakeBot = {
+      webhookCallback: vi.fn(() => (_req: unknown, res: import('http').ServerResponse) => res.writeHead(200).end()),
+      telegram: { setWebhook, getMe },
+    } as unknown as Telegraf;
+    const { logger, records } = createMemoryLogger();
+    const exitCodeAntes = process.exitCode;
+
+    const server = startWebhookServer(fakeBot, 'https://ejemplo.example', logger, 0);
+    try {
+      await vi.waitFor(() => {
+        expect(records.find((r) => r.event === 'telegram.webhook_registration_failed')).toBeDefined();
+      });
+      expect(setWebhook).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    } finally {
+      server.close();
+      process.exitCode = exitCodeAntes;
+    }
+  });
+});
+
+describe('createWebhookServer — resiliencia ante un handleUpdate que falla', () => {
+  it('un handleUpdate que lanza no tumba el servidor: responde 500 y sigue atendiendo peticiones', async () => {
+    const handleUpdate = vi.fn().mockRejectedValue(new Error('boom'));
+    const { logger, records } = createMemoryLogger();
+    const server = createWebhookServer(handleUpdate, WEBHOOK_PATH, logger);
+    const baseUrl = await listenOnRandomPort(server);
+
+    try {
+      const res = await fetch(`${baseUrl}${WEBHOOK_PATH}`, { method: 'POST', body: '{}' });
+      expect(res.status).toBe(500);
+      await vi.waitFor(() => {
+        expect(records.find((r) => r.event === 'telegram.webhook_update_failed')).toBeDefined();
+      });
+
+      // El servidor sigue vivo: una petición siguiente se sigue atendiendo.
+      const res2 = await fetch(`${baseUrl}/`);
+      expect(res2.status).toBe(200);
+    } finally {
+      server.close();
     }
   });
 });

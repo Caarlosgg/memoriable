@@ -1,5 +1,5 @@
-import { env } from '../config/env.js';
 import type { SummaryStateStore } from './summaryState.js';
+import { getSharedPrismaClient } from '../db/prismaClient.js';
 
 const GLOBAL_KEY = '';
 
@@ -9,31 +9,21 @@ const GLOBAL_KEY = '';
  * que un host de free tier (Render) reinicie el proceso o borre su disco
  * efímero — el fichero local (`FileSummaryStateStore`) no sobrevive a eso.
  *
- * Mismo criterio que `PrismaBudgetStore`: cliente perezoso, falla en
+ * Cliente COMPARTIDO por todo el proceso (ver db/prismaClient.ts). Falla en
  * silencio (reportando por callback). En el peor caso se reenvía el resumen
  * una vez de más, que es preferible a tumbar el bot por un problema de base
  * de datos.
  */
 export class PrismaSummaryStateStore implements SummaryStateStore {
-  private clientPromise: Promise<{
-    botDailySummaryState: {
-      findUnique(args: unknown): Promise<{ lastSentDay: string } | null>;
-      upsert(args: unknown): Promise<unknown>;
-    };
-  }> | null = null;
-
   constructor(private readonly onError: (err: unknown) => void = () => {}) {}
 
   private async getClient() {
-    if (!env.DATABASE_URL) {
-      throw new Error('DATABASE_URL no está definida: PrismaSummaryStateStore no puede arrancar.');
-    }
-    if (!this.clientPromise) {
-      this.clientPromise = import('@prisma/client').then(
-        (mod) => new (mod as unknown as { PrismaClient: new () => never }).PrismaClient(),
-      );
-    }
-    return this.clientPromise;
+    return getSharedPrismaClient<{
+      botDailySummaryState: {
+        findUnique(args: unknown): Promise<{ lastSentDay: string } | null>;
+        upsert(args: unknown): Promise<unknown>;
+      };
+    }>();
   }
 
   async lastSentDay(subject?: string): Promise<string | undefined> {

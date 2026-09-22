@@ -1,17 +1,17 @@
-import { env } from '../config/env.js';
 import type { Category } from '../ai/types.js';
 import type { MessageRepository, NewMessage, StoredMessage } from './repository.js';
 import { DEFAULT_SEARCH_LIMIT } from './search.js';
 import { ACTIONABLE_CATEGORIES, DEFAULT_PENDING_LIMIT } from './pending.js';
 import { resolveBotWorkspace } from './workspaces.js';
+import { getSharedPrismaClient } from './prismaClient.js';
 
 /**
  * Repositorio respaldado por Prisma/PostgreSQL.
  *
- * El cliente de Prisma se importa e instancia de forma PEREZOSA (import
- * dinámico dentro de `getClient`). Así, si falta `DATABASE_URL` o el cliente de
- * Prisma aún no se ha generado, el resto del sistema (tests, simulación) puede
- * seguir importándose y ejecutándose sin fallar en carga.
+ * El cliente de Prisma es el COMPARTIDO por todo el proceso (ver
+ * prismaClient.ts) — perezoso, así que sin `DATABASE_URL` el resto del
+ * sistema (tests, simulación) sigue importándose y ejecutándose sin fallar
+ * en carga.
  */
 export class PrismaMessageRepository implements MessageRepository {
   // Tipado laxo a propósito: el cliente generado por Prisma no existe en tiempo
@@ -20,45 +20,33 @@ export class PrismaMessageRepository implements MessageRepository {
   // excluye los tipos Unsupported del cliente tipado por completo (ni
   // create ni findMany los tocan), así que es la única vía para leerla o
   // escribirla.
-  private clientPromise: Promise<{
-    message: {
-      create(args: unknown): Promise<StoredMessage>;
-      // `user` opcional y aparte de `StoredMessage`: solo `pending()` la
-      // pide (con `include`), para saber el email de quien creó una tarea
-      // asignada a otra persona — ver `asignadaPor` en repository.ts.
-      findMany(args: unknown): Promise<(StoredMessage & { user?: { email: string } | null })[]>;
-      findFirst(args: unknown): Promise<StoredMessage | null>;
-      // `updateMany` (no `update`) para markDone/recategorize: el `where`
-      // combina id + userId, que Prisma no acepta en `update` sin una
-      // restricción única compuesta — así de paso el `count` devuelto sirve
-      // para saber si el id era ajeno/inventado, sin una consulta aparte.
-      updateMany(args: unknown): Promise<{ count: number }>;
-      // `deleteMany` por el mismo motivo que `updateMany`: el `where` lleva
-      // id + userId, y el `count` dice si el id era ajeno sin otra consulta.
-      deleteMany(args: unknown): Promise<{ count: number }>;
-    };
-    // Solo para verificar propiedad en setCustomCategory — ver su comentario.
-    customCategory: {
-      findFirst(args: unknown): Promise<{ id: string } | null>;
-    };
-    $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
-    // Misma razón que $executeRaw: la similitud coseno sobre `embedding`
-    // (columna Unsupported) solo se puede consultar por SQL crudo.
-    $queryRaw<T>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T>;
-  }> | null = null;
-
   private async getClient() {
-    if (!env.DATABASE_URL) {
-      throw new Error(
-        'DATABASE_URL no está definida: el repositorio de Prisma no puede arrancar.',
-      );
-    }
-    if (!this.clientPromise) {
-      this.clientPromise = import('@prisma/client').then(
-        (mod) => new (mod as unknown as { PrismaClient: new () => never }).PrismaClient(),
-      );
-    }
-    return this.clientPromise;
+    return getSharedPrismaClient<{
+      message: {
+        create(args: unknown): Promise<StoredMessage>;
+        // `user` opcional y aparte de `StoredMessage`: solo `pending()` la
+        // pide (con `include`), para saber el email de quien creó una tarea
+        // asignada a otra persona — ver `asignadaPor` en repository.ts.
+        findMany(args: unknown): Promise<(StoredMessage & { user?: { email: string } | null })[]>;
+        findFirst(args: unknown): Promise<StoredMessage | null>;
+        // `updateMany` (no `update`) para markDone/recategorize: el `where`
+        // combina id + userId, que Prisma no acepta en `update` sin una
+        // restricción única compuesta — así de paso el `count` devuelto sirve
+        // para saber si el id era ajeno/inventado, sin una consulta aparte.
+        updateMany(args: unknown): Promise<{ count: number }>;
+        // `deleteMany` por el mismo motivo que `updateMany`: el `where` lleva
+        // id + userId, y el `count` dice si el id era ajeno sin otra consulta.
+        deleteMany(args: unknown): Promise<{ count: number }>;
+      };
+      // Solo para verificar propiedad en setCustomCategory — ver su comentario.
+      customCategory: {
+        findFirst(args: unknown): Promise<{ id: string } | null>;
+      };
+      $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
+      // Misma razón que $executeRaw: la similitud coseno sobre `embedding`
+      // (columna Unsupported) solo se puede consultar por SQL crudo.
+      $queryRaw<T>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+    }>();
   }
 
   async save(userId: string, record: NewMessage): Promise<StoredMessage> {

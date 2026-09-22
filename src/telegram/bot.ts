@@ -1156,13 +1156,23 @@ export const WEBHOOK_PATH = '/telegram/webhook';
 export function createWebhookServer(
   handleUpdate: (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>,
   webhookPath: string = WEBHOOK_PATH,
+  logger?: Logger,
 ): http.Server {
   return http.createServer((req, res) => {
     if (req.url !== webhookPath) {
       res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
       return;
     }
-    void handleUpdate(req, res);
+    // Red de seguridad aparte de la de `startWebhookServer` (que evita el
+    // caso conocido): Telegraf normalmente atrapa los fallos de un handler
+    // dentro de su propio `bot.catch`, pero un rechazo que escape de ahí
+    // (p. ej. dentro del propio `bot.catch`) no debe tumbar el proceso
+    // entero por quedar sin capturar — un servidor HTTP de verdad no puede
+    // permitírselo.
+    Promise.resolve(handleUpdate(req, res)).catch((err) => {
+      logger?.error('telegram.webhook_update_failed', errorContext(err));
+      if (!res.writableEnded) res.writeHead(500).end();
+    });
   });
 }
 
@@ -1188,15 +1198,30 @@ export function startWebhookServer(
 ): http.Server {
   const secretToken = env.WEBHOOK_SECRET ?? randomBytes(24).toString('hex');
   const handleUpdate = bot.webhookCallback(WEBHOOK_PATH, { secretToken });
-  const server = createWebhookServer(handleUpdate, WEBHOOK_PATH);
+  const server = createWebhookServer(handleUpdate, WEBHOOK_PATH, logger);
 
   server.listen(port, () => {
     logger.info('telegram.webhook_listening', { port });
   });
 
   const fullUrl = `${webhookUrl.replace(/\/+$/, '')}${WEBHOOK_PATH}`;
+  // `getMe()` PRIMERO y esperado, antes de registrar el webhook. Telegraf
+  // resuelve `botInfo` él solo dentro de `handleUpdate` si nadie lo ha
+  // hecho antes — pero esa llamada vive FUERA de su propio try/catch (visto
+  // en el fuente compilado de la librería). Si falla (un simple parón de
+  // red al arrancar, justo lo esperable en el cold start de un host de
+  // free tier — la razón de ser de este modo), la promesa rechazada queda
+  // cacheada para siempre dentro de Telegraf y CADA update siguiente
+  // vuelve a lanzar la misma excepción sin capturar, tumbando el proceso
+  // una y otra vez hasta un reinicio manual. Haciéndolo aquí, ANTES de
+  // `setWebhook` (Telegram no manda ningún update hasta que responda bien),
+  // nunca se llega a esa ruta.
   void bot.telegram
-    .setWebhook(fullUrl, { secret_token: secretToken })
+    .getMe()
+    .then((me) => {
+      bot.botInfo = me;
+      return bot.telegram.setWebhook(fullUrl, { secret_token: secretToken });
+    })
     .then(() => logger.info('telegram.webhook_registered', { url: fullUrl }))
     .catch((err) => {
       logger.error('telegram.webhook_registration_failed', errorContext(err));

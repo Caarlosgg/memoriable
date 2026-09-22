@@ -60,10 +60,13 @@ ejecutar y probar** — incluido un pipeline de simulación de extremo a extremo
   (`DAILY_SUMMARY_HOUR`) cada usuario con Telegram vinculado recibe SU
   resumen en SU chat — pendientes y lo guardado el día anterior. Idempotente
   ante reinicios del proceso, con la marca de "ya enviado hoy" por usuario.
-- **Bot de Telegram** con Telegraf en modo *polling*, con reconexión automática
-  ante caídas y logs claros si el token es inválido. Cada respuesta se
-  presenta como una tarjeta HTML (`formatResponseCard()`): categoría en
-  negrita con emoji temático, resumen y fecha legible.
+- **Bot de Telegram** con Telegraf, en modo *polling* (por defecto, con
+  reconexión automática ante caídas) o *webhook* (con `WEBHOOK_URL`
+  definida — para hosts de free tier que no dan un proceso siempre
+  encendido, ver el despliegue en Render más abajo), con logs claros si el
+  token es inválido. Cada respuesta se presenta como una tarjeta HTML
+  (`formatResponseCard()`): categoría en negrita con emoji temático,
+  resumen y fecha legible.
 - **CLI de simulación** para probar el pipeline completo sin Telegram ni base de
   datos reales.
 - **Categorizador offline** (heurístico) de reserva: si no hay API key, si la
@@ -424,18 +427,48 @@ Notas:
 - Es una imagen **multi-stage**: la etapa de build compila TypeScript y genera
   el cliente de Prisma; la etapa final solo lleva dependencias de producción.
 - Corre como usuario **no-root**.
-- El bot usa *polling*, así que la imagen **no expone ningún puerto**.
+- Por defecto (sin `WEBHOOK_URL`) el bot usa *polling* y no expone ningún
+  puerto. Con `WEBHOOK_URL` definida arranca en modo webhook y sí escucha en
+  `PORT` — ver la sección de despliegue en Render más abajo.
 - El volumen `/data` guarda el contador del fusible de coste
   (`BUDGET_FILE=/data/budget.json` dentro del contenedor), para que sobreviva
   a reinicios del contenedor.
 - Las tres claves (`TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, `DATABASE_URL`)
   se pasan por `--env-file .env`; nunca se hornean en la imagen.
 
-### Dejarlo corriendo 24/7 (Fly.io)
+### Dejarlo corriendo 24/7
 
 `docker run` en el portátil sirve para probar, pero el bot deja de leer
-mensajes en cuanto cierras el ordenador. Para que esté siempre activo hay
-un [`fly.toml`](./fly.toml) listo, que ejecuta el mismo `Dockerfile`:
+mensajes en cuanto cierras el ordenador. Dos formas de dejarlo siempre
+activo, según si te importa más "gratis y sin tarjeta" o "proceso siempre
+encendido de verdad":
+
+#### Opción A — Render (gratis, sin tarjeta, modo webhook)
+
+El bot sabe arrancar en modo **webhook** (un servidor HTTP mínimo que
+Telegram llama directamente, en vez del bot preguntando todo el rato) con
+solo definir `WEBHOOK_URL` — y Render la fija ella sola
+(`RENDER_EXTERNAL_URL`) en cuanto conectas el repo, sin tocar nada a mano.
+[`render.yaml`](./render.yaml) deja el despliegue en un solo paso: render.com
+→ New → Blueprint → conecta este repo → rellena los secretos
+(`DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY`, etc.) en el panel.
+
+Aviso real (está también en `render.yaml`): el plan gratuito se duerme a
+los 15 min sin tráfico y su disco es efímero — el bot sigue funcionando,
+solo que el primer mensaje tras un rato callado tarda 30-60s en responder,
+y el resumen diario programado puede no dispararse si el proceso estaba
+dormido justo a esa hora. El fusible de coste y la marca de "resumen ya
+enviado hoy" viven en la base de datos (no en fichero), así que SÍ
+sobreviven a esos reinicios — lo único que no sobrevive es el propio
+temporizador del cron mientras el proceso está dormido.
+
+#### Opción B — Fly.io (de pago, proceso siempre encendido)
+
+Sin el sueño por inactividad de Render, a cambio de pedir tarjeta (aunque
+el uso real de este bot quepa en el nivel gratuito de Fly). Sigue en modo
+*polling* — sin `WEBHOOK_URL` definida, el bot arranca así solo — porque
+aquí sí hay un proceso vivo permanentemente. Hay un
+[`fly.toml`](./fly.toml) listo, que ejecuta el mismo `Dockerfile`:
 
 ```bash
 fly auth login
@@ -452,15 +485,17 @@ fly deploy
 fly logs          # debería verse el arranque del bot
 ```
 
-Por qué Fly y no Vercel: el bot usa *polling*, o sea un proceso vivo
-permanentemente, y eso no cabe en una función serverless. El dashboard sí
-va en Vercel — son dos despliegues independientes que solo comparten la
-base de datos.
+Por qué ninguna de las dos es Vercel: el dashboard sí va en Vercel
+(función serverless, encaja bien), pero un bot en modo polling necesita un
+proceso vivo permanentemente, que no cabe en serverless — y aunque el
+modo webhook SÍ encajaría en Vercel, Render ya cubre ese caso gratis sin
+que haga falta añadir un tercer proveedor.
 
-Importante: **una sola instancia**. Dos procesos haciendo polling del
-mismo bot se roban los mensajes entre sí (Telegram entrega cada update a
-un único lector) y el resumen diario saldría duplicado. Si arrancas el bot
-en Fly, no lo dejes corriendo también en local.
+Importante en cualquiera de las dos: **una sola instancia a la vez**. Dos
+procesos respondiendo al mismo bot (dos polling, o un polling y un webhook
+a la vez) se pisan entre sí — Telegram entrega cada update a un único
+lector — y el resumen diario saldría duplicado. Si despliegas el bot en
+Render o Fly, no lo dejes corriendo también en local.
 
 ---
 

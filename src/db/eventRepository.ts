@@ -1,4 +1,4 @@
-import { env } from '../config/env.js';
+import { getSharedPrismaClient } from './prismaClient.js';
 
 /** Datos mínimos de un evento del calendario que necesita el resumen diario. */
 export interface EventSummary {
@@ -29,25 +29,15 @@ export class InMemoryEventRepository implements EventRepository {
 }
 
 /**
- * Respaldada por Prisma, mismo criterio de import perezoso que
- * `PrismaMessageRepository`: si falta `DATABASE_URL` o el cliente no se ha
- * generado, el resto del sistema sigue importándose sin fallar en carga.
+ * Respaldada por Prisma — cliente COMPARTIDO por todo el proceso (ver
+ * prismaClient.ts), así que sin `DATABASE_URL` el resto del sistema sigue
+ * importándose sin fallar en carga.
  */
 export class PrismaEventRepository implements EventRepository {
-  private clientPromise: Promise<{
-    evento: { findMany(args: unknown): Promise<EventSummary[]> };
-  }> | null = null;
-
   private async getClient() {
-    if (!env.DATABASE_URL) {
-      throw new Error('DATABASE_URL no está definida: el repositorio de eventos no puede arrancar.');
-    }
-    if (!this.clientPromise) {
-      this.clientPromise = import('@prisma/client').then(
-        (mod) => new (mod as unknown as { PrismaClient: new () => never }).PrismaClient(),
-      );
-    }
-    return this.clientPromise;
+    return getSharedPrismaClient<{
+      evento: { findMany(args: unknown): Promise<EventSummary[]> };
+    }>();
   }
 
   async eventsBetween(userId: string, from: Date, to: Date): Promise<EventSummary[]> {
